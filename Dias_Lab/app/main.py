@@ -1,17 +1,30 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from utils import limpiar_fechas, calcular_busdays_seguro, obtener_festivos
-from config import PAGE_TITLE, ICON, LAYOUT
+from processing import procesar_datos
+from visuals import grafica_barras
 
-st.set_page_config(page_title=PAGE_TITLE, page_icon=ICON, layout=LAYOUT)
+st.set_page_config(page_title="Dashboard", layout="wide")
 
-st.title("📊 Dashboard Analítico de Días Laborales")
+st.title("📊 Dashboard Días Laborales")
 
-# SIDEBAR
+# Sidebar
 with st.sidebar:
     archivo = st.file_uploader("Cargar Excel", type=["xlsx"])
 
+    excluir_sabado = st.checkbox("Excluir sábado", True)
+    excluir_domingo = st.checkbox("Excluir domingo", True)
+    excluir_festivos = st.checkbox("Excluir festivos", True)
+
+    dias = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    if excluir_sabado: dias.remove("Sat")
+    if excluir_domingo: dias.remove("Sun")
+
+    config = {
+        "weekmask": " ".join(dias),
+        "festivos": excluir_festivos
+    }
+
+# App
 if archivo:
     df = pd.read_excel(archivo)
 
@@ -19,16 +32,14 @@ if archivo:
     col_fin = st.selectbox("Fecha fin", df.columns)
 
     if st.button("Procesar"):
-        df["fecha_inicio"] = limpiar_fechas(df[col_inicio])
-        df["fecha_fin"] = limpiar_fechas(df[col_fin])
+        df = procesar_datos(df, col_inicio, col_fin, config)
 
-        festivos = obtener_festivos()
+        # KPIs
+        st.metric("Registros", len(df))
+        st.metric("Promedio días", round(df["dias_num"].mean(),2))
 
-        df["dias"] = calcular_busdays_seguro(
-            df["fecha_inicio"].values.astype("datetime64[D]"),
-            df["fecha_fin"].values.astype("datetime64[D]"),
-            festivos,
-            "Mon Tue Wed Thu Fri"
-        )
+        # Gráfica
+        st.altair_chart(grafica_barras(df), use_container_width=True)
 
+        # Tabla
         st.dataframe(df)
