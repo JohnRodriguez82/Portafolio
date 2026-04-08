@@ -1,23 +1,25 @@
-# 📊 Dashboard de Días Laborales
+# 📊 Dashboard de Análisis de Días Laborales
 
-Aplicación desarrollada en Streamlit para el análisis de tiempos de proceso por sede y sección, considerando días laborales, festivos y reglas de negocio.
+Aplicación analítica desarrollada en Streamlit para evaluar tiempos de proceso en entornos operativos (salud/laboratorio).
 
-## 🚀 Funcionalidades
+## 🚀 Highlights
 
-- Limpieza inteligente de fechas
-- Cálculo de días laborales
-- Indicadores KPI
-- Visualizaciones interactivas (Altair)
-- Exportación a Excel
+- Limpieza avanzada de fechas (Excel + texto)
+- Cálculo de días laborales con festivos
+- KPI operativos
+- Visualización interactiva
+- Exportación de resultados
 
-## 🧠 Tecnologías
+## 🧠 Arquitectura
 
-- Python
-- Streamlit
-- Pandas / NumPy
-- Altair
+El proyecto sigue principios de separación de responsabilidades:
 
-## ▶️ Ejecución
+- `processing.py`: lógica de negocio
+- `utils.py`: funciones reutilizables
+- `visuals.py`: visualización
+- `main.py`: interfaz
+
+## ▶️ Ejecutar
 
 ```bash
 pip install -r requirements.txt
