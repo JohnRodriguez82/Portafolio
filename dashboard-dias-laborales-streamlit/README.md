@@ -9,7 +9,18 @@ Dashboard interactivo desarrollado en Python y Streamlit para el análisis de ti
 - Altair
 - Excel
 
+## 🧪 Tests
+El proyecto incluye tests unitarios con pytest para:
+- Limpieza de fechas
+- Reglas de negocio
+- Procesamiento de datos
+
+Ejecutar:
+```bash
+pytest
+
 ## ⚙️ Ejecución local
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
+
