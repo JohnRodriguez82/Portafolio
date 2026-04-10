@@ -5,3 +5,4 @@ holidays
 altair
 xlsxwriter
 matplotlib
+pytest
