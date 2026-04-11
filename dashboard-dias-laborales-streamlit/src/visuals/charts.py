@@ -33,15 +33,22 @@ def render_charts(df):
         tooltip=["SECCION", "Estado", "Total"]
     )
 
-    texto = alt.Chart(resumen).mark_text(
-        fontSize=10,
-        dx=0
-    ).encode(
-        x="SECCION:N",
-        y=alt.Y("Total:Q", stack="center"),
-        text="Label:N",
-        color=alt.value("black")
-    )
+
+texto = alt.Chart(resumen).mark_text(
+    fontSize=11,
+    fontWeight="normal",
+    dy=0,                  # ⬅ sin desplazamiento extra
+    align="center",
+    baseline="middle",
+    stroke="white",
+    strokeOpacity=0.7,
+    strokeWidth=1
+).encode(
+    x="SECCION:N",
+    y=alt.Y("Total:Q", stack="center"),  # ⬅ CLAVE: centro del segmento
+    text="Label:N",
+    color=alt.value("#333333")
+)
 
     st.subheader("Cumplimiento por sección")
     st.altair_chart(barras + texto, use_container_width=True)
