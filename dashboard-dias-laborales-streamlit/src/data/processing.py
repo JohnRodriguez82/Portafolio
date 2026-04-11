@@ -15,10 +15,18 @@ def load_sidebar_data():
             type=["xlsx", "xls", "xlsm"],
         )
 
-        excluir_festivos = st.checkbox("Excluir festivos", value=True)
+        
+st.subheader("📅 Configuración días laborales")
 
-        dias = ["Mon", "Tue", "Wed", "Thu", "Fri"]
-        weekmask = " ".join(dias)
+excluir_sabado = st.checkbox("Excluir sábado", value=True)
+excluir_domingo = st.checkbox("Excluir domingo", value=True)
+excluir_festivos = st.checkbox("Excluir festivos", value=True)
+
+dias = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+if excluir_sabado and "Sat" in dias:
+    dias.remove("Sat")
+
 
         if archivo:
             df = pd.read_excel(archivo)
