@@ -40,7 +40,39 @@ if df is not None:
 # PROCESAMIENTO (SOLO CUANDO SE PRESIONA PROCESAR)
 # =========================
 if df is not None and config["procesar"]:
-    df_procesado, duracion = process_dataframe(df, config)
+
+    col_inicio = config.get("col_inicio")
+    col_fin = config.get("col_fin")
+
+    # =========================
+    # VALIDACIÓN DE COLUMNAS DE FECHA
+    # =========================
+    if not col_inicio or not col_fin:
+        st.warning(
+            "⚠️ Debe seleccionar columnas válidas para **Fecha inicio** y **Fecha fin** "
+            "antes de procesar los datos."
+        )
+
+    elif col_inicio == col_fin:
+        st.warning(
+            "⚠️ La columna de **Fecha inicio** y **Fecha fin** no pueden ser la misma."
+        )
+
+    elif col_inicio not in df.columns or col_fin not in df.columns:
+        st.warning(
+            "⚠️ Las columnas seleccionadas de fecha no existen en el archivo cargado."
+        )
+
+    else:
+        # ✅ SOLO SI TODO ESTÁ BIEN, SE PROCESA
+        df_procesado, duracion = process_dataframe(df, config)
+
+        # Reglas de negocio
+        df_procesado = aplicar_reglas_negocio(df_procesado)
+
+        # Guardar en session_state
+        st.session_state.df_procesado = df_procesado
+        st.session_state.duracion = duracion
 
     # Reglas de negocio
     df_procesado = aplicar_reglas_negocio(df_procesado)
