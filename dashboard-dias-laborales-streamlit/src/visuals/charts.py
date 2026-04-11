@@ -22,10 +22,9 @@ def render_charts(df: pd.DataFrame):
         resumen_global["Total"] / resumen_global["Total"].sum() * 100
     ).round(1)
 
-    # Colores: fuerte para dentro, claro para fuera
     escala_colores = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"]  # azul fuerte / azul claro
+        range=["#1f77b4", "#aec7e8"]
     )
 
     torta = alt.Chart(resumen_global).mark_arc(
@@ -39,21 +38,24 @@ def render_charts(df: pd.DataFrame):
             scale=escala_colores,
             legend=alt.Legend(title="Estado")
         ),
-        tooltip=["Estado", "Total", "Porcentaje"]
+        tooltip=[
+            alt.Tooltip("Estado:N"),
+            alt.Tooltip("Total:Q", format=","),
+            alt.Tooltip("Porcentaje:Q", format=".1f")
+        ],
     )
 
-    # Texto centrado en cada arco
     torta_texto = alt.Chart(resumen_global).mark_text(
         radius=85,
         size=14,
         fontWeight="bold"
     ).encode(
         theta=alt.Theta("Total:Q", stack=True),
-        text=alt.Text("Porcentaje:Q", format=".1f"),
+        text=alt.Text("Porcentaje:Q", format=".1f%"),
         color=alt.condition(
             alt.datum.Estado == "Dentro de oportunidad",
-            alt.value("white"),   # texto blanco sobre color fuerte
-            alt.value("black")    # texto negro sobre color claro
+            alt.value("white"),
+            alt.value("black")
         )
     )
 
@@ -78,19 +80,24 @@ def render_charts(df: pd.DataFrame):
             scale=escala_colores,
             legend=None
         ),
-        tooltip=["SECCION", "Estado", "Total"]
+        tooltip=[
+            alt.Tooltip("SECCION:N"),
+            alt.Tooltip("Estado:N"),
+            alt.Tooltip("Total:Q", format=",")
+        ],
     )
 
-    texto_barras = alt.Chart(resumen_seccion).mark_text(
+    texto_barras = alt.Chart(
+        resumen_seccion[resumen_seccion["Estado"] == "Fuera de oportunidad"]
+    ).mark_text(
         dy=-5,
         fontSize=12,
-        fontWeight="bold"
+        fontWeight="bold",
+        color="black"
     ).encode(
         x="SECCION:N",
-        y=alt.Y("Total:Q", stack="zero"),
-        text="Total:Q",
-        detail="Estado:N",
-        color=alt.value("black")
+        y=alt.Y("Total:Q"),
+        text=alt.Text("Total:Q", format=",")
     )
 
     # =========================
@@ -103,5 +110,5 @@ def render_charts(df: pd.DataFrame):
         st.altair_chart(torta + torta_texto, use_container_width=True)
 
     with col2:
-        st.markdown("### 📊 Cumplimiento por sección")
+        st.markdown("### 📊 Fuera de oportunidad por sección")
         st.altair_chart(barras + texto_barras, use_container_width=True)
