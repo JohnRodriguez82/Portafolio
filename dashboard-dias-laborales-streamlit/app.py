@@ -7,6 +7,7 @@ from src.utils.business_rules import aplicar_reglas_negocio
 from src.utils.kpis import mostrar_kpis
 from src.visuals.charts import render_charts
 from src.utils.export import dataframe_to_excel_bytes
+from src.utils.dates import limpiar_fechas
 
 # =========================
 # SESSION STATE INICIAL
@@ -59,16 +60,16 @@ if df is not None and config["procesar"]:
         st.warning(
             "⚠️ Las columnas seleccionadas de fecha no existen en el archivo."
         )
-
-    elif (
-        pd.to_datetime(df[col_inicio], errors="coerce").notna().mean() < 0.7
-        or
-        pd.to_datetime(df[col_fin], errors="coerce").notna().mean() < 0.7
-    ):
-        st.warning(
-            "⚠️ Una o ambas columnas seleccionadas **no contienen fechas válidas**. "
-            "Seleccione columnas que correspondan a fechas."
-        )
+    
+elif (
+    limpiar_fechas(df[col_inicio]).notna().mean() < 0.7
+    or
+    limpiar_fechas(df[col_fin]).notna().mean() < 0.7
+):
+    st.warning(
+        "⚠️ Una o ambas columnas seleccionadas **no contienen fechas válidas**. "
+        "Seleccione columnas que correspondan a fechas."
+    )
 
     else:
         df_procesado, duracion = process_dataframe(df, config)
