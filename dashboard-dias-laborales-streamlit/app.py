@@ -44,9 +44,6 @@ if df is not None and config["procesar"]:
     col_inicio = config.get("col_inicio")
     col_fin = config.get("col_fin")
 
-    # =========================
-    # VALIDACIÓN DE FECHAS
-    # =========================
     if not col_inicio or not col_fin:
         st.warning(
             "⚠️ Debe seleccionar columnas válidas para Fecha inicio y Fecha fin."
@@ -62,14 +59,20 @@ if df is not None and config["procesar"]:
             "⚠️ Las columnas seleccionadas de fecha no existen en el archivo."
         )
 
-    else:
-        # ✅ AQUÍ SE CREA df_procesado
-        df_procesado, duracion = process_dataframe(df, config)
+    elif (
+        pd.to_datetime(df[col_inicio], errors="coerce").notna().mean() < 0.7
+        or
+        pd.to_datetime(df[col_fin], errors="coerce").notna().mean() < 0.7
+    ):
+        st.warning(
+            "⚠️ Una o ambas columnas seleccionadas **no contienen fechas válidas**. "
+            "Seleccione columnas que correspondan a fechas."
+        )
 
-        # ✅ AQUÍ Y SOLO AQUÍ SE USA
+    else:
+        df_procesado, duracion = process_dataframe(df, config)
         df_procesado = aplicar_reglas_negocio(df_procesado)
 
-        # ✅ SE GUARDA EN SESSION STATE
         st.session_state.df_procesado = df_procesado
         st.session_state.duracion = duracion
 
