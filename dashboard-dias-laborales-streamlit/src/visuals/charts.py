@@ -64,7 +64,7 @@ def render_charts(df):
     # TEXTO CENTRADO DENTRO DE LAS BARRAS
     # =========================
     texto = alt.Chart(resumen).mark_text(
-        fontSize=10,
+        fontSize=12,
         fontWeight="normal",
         align="center",
         baseline="middle",
