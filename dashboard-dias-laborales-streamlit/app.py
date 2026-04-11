@@ -37,7 +37,7 @@ if df is not None:
         df = df[df["SECCION"].isin(config["seccion_sel"])]
 
 # =========================
-# PROCESAMIENTO (SOLO SI SE PRESIONA PROCESAR)
+# PROCESAMIENTO (SOLO CUANDO SE PRESIONA PROCESAR)
 # =========================
 if df is not None and config["procesar"]:
     df_procesado, duracion = process_dataframe(df, config)
@@ -45,12 +45,18 @@ if df is not None and config["procesar"]:
     # Reglas de negocio
     df_procesado = aplicar_reglas_negocio(df_procesado)
 
-    # Guardar en session_state
+    # Guardar resultados en session_state
     st.session_state.df_procesado = df_procesado
     st.session_state.duracion = duracion
 
 # =========================
-# MOSTRAR RESULTADOS (SI EXISTEN EN SESSION_STATE)
+# MENSAJE INICIAL (SOLO SI NO HAY RESULTADOS)
+# =========================
+if st.session_state.df_procesado is None:
+    st.info("📂 Carga un archivo Excel y configura los filtros para iniciar el análisis.")
+
+# =========================
+# MOSTRAR RESULTADOS (SI EXISTEN)
 # =========================
 if st.session_state.df_procesado is not None:
     df_procesado = st.session_state.df_procesado
@@ -62,3 +68,26 @@ if st.session_state.df_procesado is not None:
     mostrar_kpis(df_procesado, duracion)
 
     # -------------------------
+    # GRÁFICAS
+    # -------------------------
+    render_charts(df_procesado)
+
+    # -------------------------
+    # TABLA FINAL
+    # -------------------------
+    st.subheader("📂 Datos procesados")
+    st.dataframe(df_procesado, use_container_width=True)
+
+    # -------------------------
+    # DESCARGA EXCEL
+    # -------------------------
+    st.subheader("⬇ Descarga de resultados")
+
+    excel_bytes = dataframe_to_excel_bytes(df_procesado)
+
+    st.download_button(
+        label="⬇ Descargar Excel",
+        data=excel_bytes,
+        file_name="resultado_dias_laborales.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
