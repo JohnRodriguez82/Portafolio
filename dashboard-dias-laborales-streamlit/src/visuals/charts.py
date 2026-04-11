@@ -70,10 +70,10 @@ def render_charts(df: pd.DataFrame):
     # =========================
     texto = alt.Chart(fuera).mark_text(
         dy=-6,
-        fontSize=11,
-        fontWeight="bold",
+        fontSize=10,
+        fontWeight="normal",
         stroke="white",
-        strokeWidth=0.6
+        strokeWidth=0.4
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="zero"),
@@ -81,7 +81,7 @@ def render_charts(df: pd.DataFrame):
         color=alt.condition(
             "datum.Es_Max",
             alt.value("#1f77b4"),
-            alt.value("#333333")
+            alt.value("#44444")
         )
     )
 
