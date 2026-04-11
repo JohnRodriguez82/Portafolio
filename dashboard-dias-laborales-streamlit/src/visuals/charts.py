@@ -22,9 +22,10 @@ def render_charts(df: pd.DataFrame):
         resumen_global["Total"] / resumen_global["Total"].sum() * 100
     ).round(1)
 
-    # 🔑 Texto explícito con símbolo %
+    # Texto explícito con símbolo %
     resumen_global["Porcentaje_txt"] = resumen_global["Porcentaje"].astype(str) + "%"
 
+    # Escala de colores (semántica correcta)
     escala_colores = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
         range=["#1f77b4", "#aec7e8"]  # fuerte / claro
@@ -48,18 +49,18 @@ def render_charts(df: pd.DataFrame):
         ]
     )
 
+    # Texto con fondo y borde (legible en modo oscuro)
     torta_texto = alt.Chart(resumen_global).mark_text(
         radius=85,
         size=14,
-        fontWeight="bold"
+        fontWeight="bold",
+        fill="#00000080",   # fondo negro semitransparente
+        stroke="white",     # borde blanco
+        strokeWidth=2
     ).encode(
         theta=alt.Theta("Total:Q", stack=True),
         text="Porcentaje_txt:N",
-        color=alt.condition(
-            alt.datum.Estado == "Dentro de oportunidad",
-            alt.value("white"),
-            alt.value("black")
-        )
+        color=alt.value("white")
     )
 
     # =========================
@@ -76,9 +77,11 @@ def render_charts(df: pd.DataFrame):
     )
 
     # Solo Fuera de oportunidad
-    fuera = resumen_seccion[resumen_seccion["Estado"] == "Fuera de oportunidad"].copy()
+    fuera = resumen_seccion[
+        resumen_seccion["Estado"] == "Fuera de oportunidad"
+    ].copy()
 
-    # 🔑 Identificar el mayor valor
+    # Identificar el mayor valor
     max_val = fuera["Total"].max()
     fuera["Es_Max"] = fuera["Total"] == max_val
 
@@ -86,40 +89,3 @@ def render_charts(df: pd.DataFrame):
         x=alt.X("SECCION:N", title="Sección"),
         y=alt.Y("Total:Q", title="Total fuera de oportunidad"),
         color=alt.condition(
-            "datum.Es_Max",
-            alt.value("#1f77b4"),   # 🔵 fuerte = mayor
-            alt.value("#aec7e8")    # 🔹 claro = resto
-        ),
-        tooltip=[
-            alt.Tooltip("SECCION:N"),
-            alt.Tooltip("Total:Q", format=",")
-        ]
-    )
-
-    texto_barras = alt.Chart(fuera).mark_text(
-        dy=-5,
-        fontSize=12,
-        fontWeight="bold"
-    ).encode(
-        x="SECCION:N",
-        y="Total:Q",
-        text=alt.Text("Total:Q", format=","),
-        color=alt.condition(
-            "datum.Es_Max",
-            alt.value("black"),
-            alt.value("gray")
-        )
-    )
-
-    # =========================
-    # MOSTRAR EN STREAMLIT
-    # =========================
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("### 🥧 Cumplimiento global")
-        st.altair_chart(torta + torta_texto, use_container_width=True)
-
-    with col2:
-        st.markdown("### 📊 Fuera de oportunidad por sección")
-        st.altair_chart(barras + texto_barras, use_container_width=True)
