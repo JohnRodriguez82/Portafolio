@@ -8,6 +8,15 @@ from src.visuals.charts import render_charts
 from src.utils.export import dataframe_to_excel_bytes
 
 # =========================
+# SESSION STATE INICIAL
+# =========================
+if "df_procesado" not in st.session_state:
+    st.session_state.df_procesado = None
+
+if "duracion" not in st.session_state:
+    st.session_state.duracion = None
+
+# =========================
 # CONFIGURACIÓN INICIAL
 # =========================
 setup_page()
@@ -28,15 +37,24 @@ if df is not None:
         df = df[df["SECCION"].isin(config["seccion_sel"])]
 
 # =========================
-# PROCESAMIENTO PRINCIPAL
+# PROCESAMIENTO (SOLO SI SE PRESIONA PROCESAR)
 # =========================
 if df is not None and config["procesar"]:
     df_procesado, duracion = process_dataframe(df, config)
 
-    # -------------------------
-    # REGLAS DE NEGOCIO
-    # -------------------------
+    # Reglas de negocio
     df_procesado = aplicar_reglas_negocio(df_procesado)
+
+    # Guardar en session_state
+    st.session_state.df_procesado = df_procesado
+    st.session_state.duracion = duracion
+
+# =========================
+# MOSTRAR RESULTADOS (SI EXISTEN EN SESSION_STATE)
+# =========================
+if st.session_state.df_procesado is not None:
+    df_procesado = st.session_state.df_procesado
+    duracion = st.session_state.duracion
 
     # -------------------------
     # INDICADORES (KPI)
@@ -44,29 +62,3 @@ if df is not None and config["procesar"]:
     mostrar_kpis(df_procesado, duracion)
 
     # -------------------------
-    # GRÁFICAS
-    # -------------------------
-    render_charts(df_procesado)
-
-    # -------------------------
-    # TABLA FINAL
-    # -------------------------
-    st.subheader("📂 Datos procesados")
-    st.dataframe(df_procesado, use_container_width=True)
-
-    # -------------------------
-    # DESCARGA EXCEL
-    # -------------------------
-    st.subheader("⬇ Descarga de resultados")
-
-    excel_bytes = dataframe_to_excel_bytes(df_procesado)
-
-    st.download_button(
-        label="⬇ Descargar Excel",
-        data=excel_bytes,
-        file_name="resultado_dias_laborales.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-else:
-    st.info("📂 Carga un archivo Excel y configura los filtros para iniciar el análisis.")
