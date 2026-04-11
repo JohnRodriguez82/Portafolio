@@ -19,15 +19,29 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # ESCALA DE COLORES (SEMÁNTICA)
+    # CÁLCULO DE PORCENTAJES
     # =========================
-    color_scale = alt.Scale(
-        domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"]  # azul fuerte / azul claro
+    resumen["Total_Seccion"] = resumen.groupby("SECCION")["Total"].transform("sum")
+    resumen["Porcentaje"] = resumen["Total"] / resumen["Total_Seccion"] * 100
+
+    # Texto combinado: Total / %
+    resumen["Label"] = (
+        resumen["Total"].map(lambda x: f"{x:,}")
+        + " / "
+        + resumen["Porcentaje"].round(1).astype(str)
+        + "%"
     )
 
     # =========================
-    # BARRA APILADA
+    # ESCALA DE COLORES
+    # =========================
+    color_scale = alt.Scale(
+        domain=["Dentro de oportunidad", "Fuera de oportunidad"],
+        range=["#1f77b4", "#aec7e8"]  # fuerte / claro
+    )
+
+    # =========================
+    # BARRAS APILADAS
     # =========================
     barras = alt.Chart(resumen).mark_bar().encode(
         x=alt.X("SECCION:N", title="Sección"),
@@ -40,7 +54,8 @@ def render_charts(df: pd.DataFrame):
         tooltip=[
             alt.Tooltip("SECCION:N", title="Sección"),
             alt.Tooltip("Estado:N", title="Estado"),
-            alt.Tooltip("Total:Q", title="Total", format=",")
+            alt.Tooltip("Total:Q", title="Total", format=","),
+            alt.Tooltip("Porcentaje:Q", title="Porcentaje", format=".1f")
         ]
     )
 
@@ -51,14 +66,14 @@ def render_charts(df: pd.DataFrame):
         resumen[resumen["Estado"] == "Fuera de oportunidad"]
     ).mark_text(
         dy=-6,
-        fontSize=11,
+        fontSize=10,
         fontWeight="normal",
         stroke="white",
-        strokeWidth=0.6
+        strokeWidth=0.4
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="zero"),
-        text=alt.Text("Total:Q", format=","),
+        text="Label:N",
         color=alt.value("#333333")
     )
 
@@ -69,22 +84,15 @@ def render_charts(df: pd.DataFrame):
         resumen[resumen["Estado"] == "Dentro de oportunidad"]
     ).mark_text(
         dy=12,
-        fontSize=10,
+        fontSize=9,
         fontWeight="normal",
         stroke="white",
-        strokeWidth=0.4
+        strokeWidth=0.3
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="zero"),
-        text=alt.Text("Total:Q", format=","),
+        text="Label:N",
         color=alt.value("#666666")
     )
 
     # =========================
-    # MOSTRAR EN STREAMLIT
-    # =========================
-    st.subheader("Cumplimiento por sección")
-    st.altair_chart(
-        barras + texto_fuera + texto_dentro,
-        use_container_width=True
-    )
