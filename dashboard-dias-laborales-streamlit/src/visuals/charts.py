@@ -53,36 +53,38 @@ def render_charts(df):
     # ==================================
 
     texto_dentro = alt.Chart(
-        resumen[resumen["Estado"] == "Dentro de oportunidad"]
-    ).mark_text(
-        fontSize=10,
-        align="center",
-        baseline="top",
-        dy=6,
-        stroke="white",
-        strokeWidth=1
-    ).encode(
-        x="SECCION:N",
-        y=alt.Y("Total:Q", stack="center"),
-        text="Label:N",
-        color=alt.value("#666666")
-    )
-
-    texto_fuera = alt.Chart(
-        resumen[resumen["Estado"] == "Fuera de oportunidad"]
-    ).mark_text(
-        fontSize=10,
-        align="center",
-        baseline="bottom",
-        dy=-6,
-        stroke="white",
-        strokeWidth=1
-    ).encode(
-        x="SECCION:N",
-        y=alt.Y("Total:Q", stack="center"),
-        text="Label:N",
-        color=alt.value("#333333")
-    )
+    resumen[resumen["Estado"] == "Dentro de oportunidad"]
+).mark_text(
+    fontSize=10,
+    align="center",
+    baseline="top",
+    dy=12,                  # ⬅ empuja hacia la base del segmento
+    stroke="white",
+    strokeOpacity=0.7,
+    strokeWidth=1
+).encode(
+    x="SECCION:N",
+    y=alt.Y("Total:Q", stack="center"),
+    text="Label:N",
+    color=alt.value("#666666")
+)
+    
+texto_fuera = alt.Chart(
+    resumen[resumen["Estado"] == "Fuera de oportunidad"]
+).mark_text(
+    fontSize=10,
+    align="center",
+    baseline="bottom",
+    dy=-12,                 # ⬅ clave: lo acerca al final sin tocar borde
+    stroke="white",
+    strokeOpacity=0.7,
+    strokeWidth=1
+).encode(
+    x="SECCION:N",
+    y=alt.Y("Total:Q", stack="center"),
+    text="Label:N",
+    color=alt.value("#333333")
+)
 
     # ==================================
     # MOSTRAR
