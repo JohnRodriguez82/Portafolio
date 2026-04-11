@@ -1,30 +1,12 @@
 import pandas as pd
-import numpy as np
-import time
 import streamlit as st
+import time
+import numpy as np
+
 from src.utils.dates import limpiar_fechas, obtener_festivos
 
-def process_dataframe(df, config):
-    start = time.time()
 
-    df["fecha_inicio"] = limpiar_fechas(df[config["col_inicio"]])
-    df["fecha_fin"] = limpiar_fechas(df[config["col_fin"]])
-
-    festivos = obtener_festivos() if config["excluir_festivos"] else []
-
-    df["Dias_Laborales"] = np.busday_count(
-        df["fecha_inicio"].values.astype("datetime64[D]"),
-        df["fecha_fin"].values.astype("datetime64[D]") + np.timedelta64(1, "D"),
-        holidays=festivos,
-        weekmask=config["weekmask"]
-    )
-
-    return df, time.time() - start
-
-ef load_sidebar_data():
-    """
-    Maneja la UI del sidebar y devuelve el DataFrame y la configuración.
-    """
+def load_sidebar_data():
     with st.sidebar:
         st.header("⚙️ Configuración")
 
@@ -72,3 +54,30 @@ ef load_sidebar_data():
     }
 
     return df, config
+
+
+def process_dataframe(df, config):
+    start_time = time.time()
+
+    df = df.copy()
+
+    df["fecha_inicio"] = limpiar_fechas(df[config["col_inicio"]])
+    df["fecha_fin"] = limpiar_fechas(df[config["col_fin"]])
+
+    if config["excluir_festivos"]:
+        festivos = obtener_festivos()
+    else:
+        festivos = []
+
+    inicio_vals = df["fecha_inicio"].values.astype("datetime64[D]")
+    fin_vals = df["fecha_fin"].values.astype("datetime64[D]")
+
+    df["Dias_Laborales"] = np.busday_count(
+        inicio_vals,
+        fin_vals + np.timedelta64(1, "D"),
+        holidays=festivos,
+        weekmask=config["weekmask"]
+    )
+
+    duracion = time.time() - start_time
+    return df, duracion
