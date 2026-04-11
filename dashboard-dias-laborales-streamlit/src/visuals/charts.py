@@ -6,113 +6,79 @@ import pandas as pd
 def render_charts(df: pd.DataFrame):
 
     # =========================
-    # RESUMEN GLOBAL (TORTA)
+    # PREPARAR DATOS
     # =========================
-    resumen_global = (
-        df.groupby("Dias_Oportunidad")
-        .size()
-        .reset_index(name="Total")
-    )
-
-    resumen_global["Estado"] = resumen_global["Dias_Oportunidad"].map(
-        {1: "Dentro de oportunidad", 0: "Fuera de oportunidad"}
-    )
-
-    resumen_global["Porcentaje"] = (
-        resumen_global["Total"] / resumen_global["Total"].sum() * 100
-    ).round(1)
-
-    resumen_global["Porcentaje_txt"] = (
-        resumen_global["Porcentaje"].astype(str) + "%"
-    )
-
-    escala_colores = alt.Scale(
-        domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"]
-    )
-
-    torta = alt.Chart(resumen_global).mark_arc(
-        innerRadius=60,
-        stroke="white",
-        strokeWidth=1
-    ).encode(
-        theta="Total:Q",
-        color=alt.Color("Estado:N", scale=escala_colores),
-        tooltip=[
-            alt.Tooltip("Estado:N"),
-            alt.Tooltip("Total:Q", format=","),
-            alt.Tooltip("Porcentaje:Q", format=".1f"),
-        ],
-    )
-
-    torta_texto = alt.Chart(resumen_global).mark_text(
-        radius=80,
-        size=13,
-        fontWeight="bold",
-        stroke="white",
-        strokeWidth=0.8
-    ).encode(
-        theta="Total:Q",
-        text="Porcentaje_txt:N",
-        color=alt.value("white")
-    )
-
-    # =========================
-    # RESUMEN POR SECCIÓN (BARRAS)
-    # =========================
-    resumen_seccion = (
+    resumen = (
         df.groupby(["SECCION", "Dias_Oportunidad"])
         .size()
         .reset_index(name="Total")
     )
 
-    resumen_seccion["Estado"] = resumen_seccion["Dias_Oportunidad"].map(
+    resumen["Estado"] = resumen["Dias_Oportunidad"].map(
         {1: "Dentro de oportunidad", 0: "Fuera de oportunidad"}
     )
 
-    fuera = resumen_seccion[
-        resumen_seccion["Estado"] == "Fuera de oportunidad"
-    ].copy()
-
-    max_val = fuera["Total"].max()
-    fuera["Es_Max"] = fuera["Total"] == max_val
-
-    barras = alt.Chart(fuera).mark_bar().encode(
-        x="SECCION:N",
-        y=alt.Y("Total:Q", title="Total fuera de oportunidad"),
-        color=alt.condition(
-            "datum.Es_Max",
-            alt.value("#1f77b4"),
-            alt.value("#aec7e8")
-        ),
-        tooltip=[
-            alt.Tooltip("SECCION:N"),
-            alt.Tooltip("Total:Q", format=","),
-        ],
+    resumen["Porcentaje"] = (
+        resumen.groupby("SECCION")["Total"]
+        .transform(lambda x: x / x.sum() * 100)
+        .round(1)
     )
 
-    texto_barras = alt.Chart(fuera).mark_text(
-        dy=-8,
-        fontSize=11,
+    resumen["Porcentaje_txt"] = resumen["Porcentaje"].astype(str) + "%"
+
+    # =========================
+    # PALETA DE COLORES POR SECCIÓN
+    # =========================
+    secciones = resumen["SECCION"].unique().tolist()
+
+    palette = [
+        "#1f77b4", "#ff7f0e", "#2ca02c",
+        "#d62728", "#9467bd", "#8c564b",
+        "#e377c2", "#7f7f7f"
+    ][: len(secciones)]
+
+    color_scale = alt.Scale(domain=secciones, range=palette)
+
+    # =========================
+    # TORTAS POR SECCIÓN
+    # =========================
+    pie = alt.Chart(resumen).mark_arc(
+        innerRadius=45,
+        stroke="white",
+        strokeWidth=1
+    ).encode(
+        theta="Total:Q",
+        color=alt.Color("SECCION:N", scale=color_scale, legend=None),
+        tooltip=[
+            alt.Tooltip("SECCION:N"),
+            alt.Tooltip("Estado:N"),
+            alt.Tooltip("Total:Q", format=","),
+            alt.Tooltip("Porcentaje:Q", format=".1f")
+        ],
+        facet=alt.Facet(
+            "SECCION:N",
+            columns=3,
+            title=None
+        )
+    )
+
+    pie_text = alt.Chart(resumen).mark_text(
+        radius=70,
+        size=12,
         fontWeight="bold",
         stroke="white",
-        strokeWidth=0.6
+        strokeWidth=0.7
     ).encode(
-        x="SECCION:N",
-        y="Total:Q",
-        text=alt.Text("Total:Q", format=","),
-        color=alt.value("#333333")
+        theta="Total:Q",
+        text="Porcentaje_txt:N",
+        color=alt.value("white")
+    ).facet(
+        "SECCION:N",
+        columns=3
     )
 
     # =========================
     # MOSTRAR EN STREAMLIT
     # =========================
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Cumplimiento global")
-        st.altair_chart(torta + torta_texto, use_container_width=True)
-
-    with col2:
-        st.subheader("Fuera de oportunidad por sección")
-        st.altair_chart(barras + texto_barras, use_container_width=True)
+    st.subheader("Cumplimiento por sección")
+    st.altair_chart(pie + pie_text, use_container_width=True)
