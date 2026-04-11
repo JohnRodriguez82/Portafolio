@@ -40,19 +40,19 @@ def render_charts(df: pd.DataFrame):
         color=alt.Color("Estado:N", scale=escala_colores),
         tooltip=["Estado:N", alt.Tooltip("Total:Q", format=","), "Porcentaje:Q"]
     )
+    
+pie_text = alt.Chart(resumen_global).mark_text(
+    radius=80,
+    size=13,
+    fontWeight="bold",
+    stroke="white",
+    strokeWidth=0.8
+).encode(
+    theta="Total:Q",
+    text="Porcentaje_txt:N",
+    color=alt.value("white")
+)
 
-    pie_text = alt.Chart(resumen_global).mark_text(
-        radius=85,
-        size=14,
-        fontWeight="bold",
-        fill="#00000080",
-        stroke="white",
-        strokeWidth=2
-    ).encode(
-        theta="Total:Q",
-        text="Porcentaje_txt:N",
-        color=alt.value("white")
-    )
 
     # =========================
     # BARRAS - FUERA DE OPORTUNIDAD
@@ -84,20 +84,20 @@ def render_charts(df: pd.DataFrame):
         ),
         tooltip=["SECCION:N", alt.Tooltip("Total:Q", format=",")]
     )
+    
+bars_text = alt.Chart(fuera).mark_text(
+    dy=-8,
+    fontSize=11,
+    fontWeight="bold",
+    stroke="white",
+    strokeWidth=0.6
+).encode(
+    x="SECCION:N",
+    y="Total:Q",
+    text=alt.Text("Total:Q", format=","),
+    color=alt.value("#333333")
+)
 
-    bars_text = alt.Chart(fuera).mark_text(
-        dy=-10,
-        fontSize=12,
-        fontWeight="bold",
-        fill="#00000080",
-        stroke="white",
-        strokeWidth=1.5
-    ).encode(
-        x="SECCION:N",
-        y="Total:Q",
-        text=alt.Text("Total:Q", format=","),
-        color=alt.value("white")
-    )
 
     col1, col2 = st.columns(2)
 
