@@ -90,10 +90,7 @@ def render_charts(df):
         fontSize=13,
         align="center",
         baseline="bottom",
-        dy=12,
-        stroke="white",
-        strokeOpacity=0.7,
-        strokeWidth=1,
+        dy=12
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="center"),
