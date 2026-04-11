@@ -60,16 +60,18 @@ if df is not None and config["procesar"]:
         st.warning(
             "⚠️ Las columnas seleccionadas de fecha no existen en el archivo."
         )
-    
-elif (
-    limpiar_fechas(df[col_inicio]).notna().mean() < 0.7
+
+    elif (
+        
+limpiar_fechas(df[col_inicio]).notna().mean() < 0.7
     or
     limpiar_fechas(df[col_fin]).notna().mean() < 0.7
-):
-    st.warning(
-        "⚠️ Una o ambas columnas seleccionadas **no contienen fechas válidas**. "
-        "Seleccione columnas que correspondan a fechas."
-    )
+
+    ):
+        st.warning(
+            "⚠️ Una o ambas columnas seleccionadas **no contienen fechas válidas**. "
+            "Seleccione columnas que correspondan a fechas."
+        )
 
     else:
         df_procesado, duracion = process_dataframe(df, config)
