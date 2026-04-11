@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from src.config.settings import setup_page
 from src.data.processing import load_sidebar_data, process_dataframe
