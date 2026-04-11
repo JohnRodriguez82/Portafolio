@@ -106,4 +106,4 @@ texto_fuera = alt.Chart(
     # MOSTRAR EN STREAMLIT
     # =========================
     st.subheader("Cumplimiento por sección")
-    st.altair_chart(barras + texto, use_container_width=True)
+    st.altair_chart(barras + texto_dentro + texto_fuera, use_container_width=True)
