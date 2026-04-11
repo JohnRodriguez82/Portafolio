@@ -6,7 +6,7 @@ import pandas as pd
 def render_charts(df: pd.DataFrame):
 
     # =========================
-    # RESUMEN GLOBAL - PIE
+    # RESUMEN GLOBAL (TORTA)
     # =========================
     resumen_global = (
         df.groupby("Dias_Oportunidad")
@@ -31,31 +31,34 @@ def render_charts(df: pd.DataFrame):
         range=["#1f77b4", "#aec7e8"]
     )
 
-    pie = alt.Chart(resumen_global).mark_arc(
+    torta = alt.Chart(resumen_global).mark_arc(
         innerRadius=60,
         stroke="white",
         strokeWidth=1
     ).encode(
         theta="Total:Q",
         color=alt.Color("Estado:N", scale=escala_colores),
-        tooltip=["Estado:N", alt.Tooltip("Total:Q", format=","), "Porcentaje:Q"]
+        tooltip=[
+            alt.Tooltip("Estado:N"),
+            alt.Tooltip("Total:Q", format=","),
+            alt.Tooltip("Porcentaje:Q", format=".1f"),
+        ],
     )
-    
-pie_text = alt.Chart(resumen_global).mark_text(
-    radius=80,
-    size=13,
-    fontWeight="bold",
-    stroke="white",
-    strokeWidth=0.8
-).encode(
-    theta="Total:Q",
-    text="Porcentaje_txt:N",
-    color=alt.value("white")
-)
 
+    torta_texto = alt.Chart(resumen_global).mark_text(
+        radius=80,
+        size=13,
+        fontWeight="bold",
+        stroke="white",
+        strokeWidth=0.8
+    ).encode(
+        theta="Total:Q",
+        text="Porcentaje_txt:N",
+        color=alt.value("white")
+    )
 
     # =========================
-    # BARRAS - FUERA DE OPORTUNIDAD
+    # RESUMEN POR SECCIÓN (BARRAS)
     # =========================
     resumen_seccion = (
         df.groupby(["SECCION", "Dias_Oportunidad"])
@@ -74,37 +77,42 @@ pie_text = alt.Chart(resumen_global).mark_text(
     max_val = fuera["Total"].max()
     fuera["Es_Max"] = fuera["Total"] == max_val
 
-    bars = alt.Chart(fuera).mark_bar().encode(
+    barras = alt.Chart(fuera).mark_bar().encode(
         x="SECCION:N",
-        y="Total:Q",
+        y=alt.Y("Total:Q", title="Total fuera de oportunidad"),
         color=alt.condition(
             "datum.Es_Max",
             alt.value("#1f77b4"),
             alt.value("#aec7e8")
         ),
-        tooltip=["SECCION:N", alt.Tooltip("Total:Q", format=",")]
+        tooltip=[
+            alt.Tooltip("SECCION:N"),
+            alt.Tooltip("Total:Q", format=","),
+        ],
     )
-    
-bars_text = alt.Chart(fuera).mark_text(
-    dy=-8,
-    fontSize=11,
-    fontWeight="bold",
-    stroke="white",
-    strokeWidth=0.6
-).encode(
-    x="SECCION:N",
-    y="Total:Q",
-    text=alt.Text("Total:Q", format=","),
-    color=alt.value("#333333")
-)
 
+    texto_barras = alt.Chart(fuera).mark_text(
+        dy=-8,
+        fontSize=11,
+        fontWeight="bold",
+        stroke="white",
+        strokeWidth=0.6
+    ).encode(
+        x="SECCION:N",
+        y="Total:Q",
+        text=alt.Text("Total:Q", format=","),
+        color=alt.value("#333333")
+    )
 
+    # =========================
+    # MOSTRAR EN STREAMLIT
+    # =========================
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("Cumplimiento global")
-        st.altair_chart(pie + pie_text, use_container_width=True)
+        st.altair_chart(torta + torta_texto, use_container_width=True)
 
     with col2:
         st.subheader("Fuera de oportunidad por sección")
-        st.altair_chart(bars + bars_text, use_container_width=True)
+        st.altair_chart(barras + texto_barras, use_container_width=True)
