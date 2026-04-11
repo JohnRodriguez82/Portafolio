@@ -50,28 +50,34 @@ if df is not None and config["procesar"]:
         st.warning(
             "⚠️ Debe seleccionar columnas válidas para Fecha inicio y Fecha fin."
         )
+        st.session_state.df_procesado = None
+        st.session_state.duracion = None
 
     elif col_inicio == col_fin:
         st.warning(
             "⚠️ La columna de Fecha inicio y Fecha fin no pueden ser la misma."
         )
+        st.session_state.df_procesado = None
+        st.session_state.duracion = None
 
     elif col_inicio not in df.columns or col_fin not in df.columns:
         st.warning(
             "⚠️ Las columnas seleccionadas de fecha no existen en el archivo."
         )
+        st.session_state.df_procesado = None
+        st.session_state.duracion = None
 
     elif (
-        
-limpiar_fechas(df[col_inicio]).notna().mean() < 0.7
-    or
-    limpiar_fechas(df[col_fin]).notna().mean() < 0.7
-
+        limpiar_fechas(df[col_inicio]).notna().mean() < 0.7
+        or
+        limpiar_fechas(df[col_fin]).notna().mean() < 0.7
     ):
         st.warning(
-            "⚠️ Una o ambas columnas seleccionadas **no contienen fechas válidas**. "
-            "Seleccione columnas que correspondan a fechas."
+            "⚠️ Una o ambas columnas seleccionadas "
+            "**no contienen fechas válidas**."
         )
+        st.session_state.df_procesado = None
+        st.session_state.duracion = None
 
     else:
         df_procesado, duracion = process_dataframe(df, config)
