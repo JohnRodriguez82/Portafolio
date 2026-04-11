@@ -19,12 +19,12 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # CÁLCULO DE PORCENTAJES
+    # PORCENTAJE POR SECCIÓN
     # =========================
     resumen["Total_Seccion"] = resumen.groupby("SECCION")["Total"].transform("sum")
     resumen["Porcentaje"] = resumen["Total"] / resumen["Total_Seccion"] * 100
 
-    # Texto combinado: Total / %
+    # Label combinado: Total / %
     resumen["Label"] = (
         resumen["Total"].map(lambda x: f"{x:,}")
         + " / "
@@ -33,7 +33,7 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # ESCALA DE COLORES
+    # COLORES SEMÁNTICOS
     # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
@@ -60,39 +60,15 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO PARA FUERA DE OPORTUNIDAD
+    # TEXTO CENTRADO EN CADA SEGMENTO
     # =========================
-    texto_fuera = alt.Chart(
-        resumen[resumen["Estado"] == "Fuera de oportunidad"]
-    ).mark_text(
-        dy=-6,
+    texto = alt.Chart(resumen).mark_text(
         fontSize=10,
         fontWeight="normal",
         stroke="white",
         strokeWidth=0.4
     ).encode(
         x="SECCION:N",
-        y=alt.Y("Total:Q", stack="zero"),
+        y=alt.Y("Total:Q", stack="center"),
         text="Label:N",
-        color=alt.value("#333333")
-    )
-
-    # =========================
-    # TEXTO PARA DENTRO DE OPORTUNIDAD
-    # =========================
-    texto_dentro = alt.Chart(
-        resumen[resumen["Estado"] == "Dentro de oportunidad"]
-    ).mark_text(
-        dy=12,
-        fontSize=9,
-        fontWeight="normal",
-        stroke="white",
-        strokeWidth=0.3
-    ).encode(
-        x="SECCION:N",
-        y=alt.Y("Total:Q", stack="zero"),
-        text="Label:N",
-        color=alt.value("#666666")
-    )
-
-    # =========================
+        color=alt.condition(
