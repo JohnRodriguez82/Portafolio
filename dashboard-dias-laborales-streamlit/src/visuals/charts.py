@@ -95,7 +95,7 @@ def render_charts(df):
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="center"),
         text="Label:N",
-        color=alt.value("#000000"),
+        color=alt.value("#FF6600"),
     )
 
     # =========================
