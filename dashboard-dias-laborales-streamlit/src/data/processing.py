@@ -15,23 +15,26 @@ def load_sidebar_data():
             type=["xlsx", "xls", "xlsm"],
         )
 
-        
-st.subheader("📅 Configuración días laborales")
+        st.subheader("📅 Configuración días laborales")
 
-excluir_sabado = st.checkbox("Excluir sábado", value=True)
-excluir_domingo = st.checkbox("Excluir domingo", value=True)
-excluir_festivos = st.checkbox("Excluir festivos", value=True)
+        excluir_sabado = st.checkbox("Excluir sábado", value=True)
+        excluir_domingo = st.checkbox("Excluir domingo", value=True)
+        excluir_festivos = st.checkbox("Excluir festivos", value=True)
 
-dias = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        dias = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-if excluir_sabado and "Sat" in dias:
-    dias.remove("Sat")
+        if excluir_sabado and "Sat" in dias:
+            dias.remove("Sat")
 
+        if excluir_domingo and "Sun" in dias:
+            dias.remove("Sun")
+
+        weekmask = " ".join(dias)
 
         if archivo:
             df = pd.read_excel(archivo)
-            columnas = df.columns.tolist()
 
+            columnas = df.columns.tolist()
             col_inicio = st.selectbox("Columna fecha inicio", columnas)
             col_fin = st.selectbox("Columna fecha fin", columnas)
 
@@ -57,6 +60,7 @@ def process_dataframe(df, config):
     start_time = time.time()
 
     df = df.copy()
+
     df["fecha_inicio"] = limpiar_fechas(df[config["col_inicio"]])
     df["fecha_fin"] = limpiar_fechas(df[config["col_fin"]])
 
