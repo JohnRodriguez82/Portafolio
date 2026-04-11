@@ -69,15 +69,12 @@ def render_charts(df):
         fontSize=13,
         align="center",
         baseline="top",
-        dy=-22,
-        stroke="white",
-        strokeOpacity=0.7,
-        strokeWidth=1,
+        dy=-22
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="center"),
         text="Label:N",
-        color=alt.value("#666666"),
+        color=alt.value("#FFFF00"),
     )
 
     # =========================
