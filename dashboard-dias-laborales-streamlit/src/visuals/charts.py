@@ -22,22 +22,39 @@ def render_charts(df: pd.DataFrame):
         resumen_global["Total"] / resumen_global["Total"].sum() * 100
     ).round(1)
 
-    torta = alt.Chart(resumen_global).mark_arc(innerRadius=60).encode(
+    # Colores: fuerte para dentro, claro para fuera
+    escala_colores = alt.Scale(
+        domain=["Dentro de oportunidad", "Fuera de oportunidad"],
+        range=["#1f77b4", "#aec7e8"]  # azul fuerte / azul claro
+    )
+
+    torta = alt.Chart(resumen_global).mark_arc(
+        innerRadius=60,
+        stroke="white",
+        strokeWidth=1
+    ).encode(
         theta=alt.Theta("Total:Q", stack=True),
         color=alt.Color(
             "Estado:N",
+            scale=escala_colores,
             legend=alt.Legend(title="Estado")
         ),
         tooltip=["Estado", "Total", "Porcentaje"]
     )
 
+    # Texto centrado en cada arco
     torta_texto = alt.Chart(resumen_global).mark_text(
-        radius=90,
+        radius=85,
         size=14,
         fontWeight="bold"
     ).encode(
         theta=alt.Theta("Total:Q", stack=True),
-        text=alt.Text("Porcentaje:Q", format=".1f")
+        text=alt.Text("Porcentaje:Q", format=".1f"),
+        color=alt.condition(
+            alt.datum.Estado == "Dentro de oportunidad",
+            alt.value("white"),   # texto blanco sobre color fuerte
+            alt.value("black")    # texto negro sobre color claro
+        )
     )
 
     # =========================
@@ -58,6 +75,7 @@ def render_charts(df: pd.DataFrame):
         y=alt.Y("Total:Q", title="Total de registros"),
         color=alt.Color(
             "Estado:N",
+            scale=escala_colores,
             legend=None
         ),
         tooltip=["SECCION", "Estado", "Total"]
@@ -71,7 +89,8 @@ def render_charts(df: pd.DataFrame):
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="zero"),
         text="Total:Q",
-        detail="Estado:N"
+        detail="Estado:N",
+        color=alt.value("black")
     )
 
     # =========================
