@@ -27,7 +27,7 @@ def render_charts(df: pd.DataFrame):
     resumen["Porcentaje_txt"] = resumen["Porcentaje"].astype(str) + "%"
 
     # =========================
-    # PALETA DE COLORES POR SECCIÓN
+    # COLORES POR SECCIÓN
     # =========================
     secciones = resumen["SECCION"].unique().tolist()
 
@@ -40,7 +40,7 @@ def render_charts(df: pd.DataFrame):
     color_scale = alt.Scale(domain=secciones, range=palette)
 
     # =========================
-    # TORTAS POR SECCIÓN
+    # LAYER: TORTA + TEXTO
     # =========================
     pie = alt.Chart(resumen).mark_arc(
         innerRadius=45,
@@ -54,12 +54,7 @@ def render_charts(df: pd.DataFrame):
             alt.Tooltip("Estado:N"),
             alt.Tooltip("Total:Q", format=","),
             alt.Tooltip("Porcentaje:Q", format=".1f")
-        ],
-        facet=alt.Facet(
-            "SECCION:N",
-            columns=3,
-            title=None
-        )
+        ]
     )
 
     pie_text = alt.Chart(resumen).mark_text(
@@ -72,13 +67,19 @@ def render_charts(df: pd.DataFrame):
         theta="Total:Q",
         text="Porcentaje_txt:N",
         color=alt.value("white")
-    ).facet(
-        "SECCION:N",
-        columns=3
+    )
+
+    pie_layer = pie + pie_text
+
+    # =========================
+    # FACET POR SECCIÓN
+    # =========================
+    pie_facet = pie_layer.facet(
+        facet=alt.Facet("SECCION:N", columns=3, title=None)
     )
 
     # =========================
     # MOSTRAR EN STREAMLIT
     # =========================
     st.subheader("Cumplimiento por sección")
-    st.altair_chart(pie + pie_text, use_container_width=True)
+    st.altair_chart(pie_facet, use_container_width=True)
