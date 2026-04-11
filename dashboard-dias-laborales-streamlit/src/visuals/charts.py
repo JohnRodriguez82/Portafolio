@@ -64,13 +64,13 @@ def render_charts(df):
     # TEXTO CENTRADO DENTRO DE LAS BARRAS
     # =========================
     texto = alt.Chart(resumen).mark_text(
-        fontSize=11,
+        fontSize=10,
         fontWeight="normal",
         align="center",
         baseline="middle",
         stroke="white",
-        strokeOpacity=0.7,
-        strokeWidth=1
+        strokeOpacity=0.5,
+        strokeWidth=0.8
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="center"),
