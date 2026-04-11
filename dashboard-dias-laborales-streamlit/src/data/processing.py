@@ -7,6 +7,11 @@ from src.utils.dates import limpiar_fechas, obtener_festivos
 
 
 def load_sidebar_data():
+    """
+    Construye el sidebar y retorna:
+    - df: DataFrame cargado
+    - config: diccionario de configuración del usuario
+    """
     with st.sidebar:
         st.header("⚙️ Configuración")
 
@@ -33,6 +38,7 @@ def load_sidebar_data():
             df = pd.read_excel(archivo)
             columnas = df.columns.tolist()
 
+            # Filtros opcionales
             sedes_sel = []
             seccion_sel = []
 
@@ -48,6 +54,7 @@ def load_sidebar_data():
             col_fin = st.selectbox("Columna fecha fin", columnas)
 
             procesar = st.button("🚀 Procesar")
+
         else:
             df = None
             col_inicio = None
@@ -70,6 +77,11 @@ def load_sidebar_data():
 
 
 def process_dataframe(df: pd.DataFrame, config: dict):
+    """
+    Procesa el DataFrame:
+    - Limpia fechas
+    - Calcula días laborales de forma segura
+    """
     start_time = time.time()
     df = df.copy()
 
@@ -77,12 +89,14 @@ def process_dataframe(df: pd.DataFrame, config: dict):
     df["fecha_inicio"] = limpiar_fechas(df[config["col_inicio"]])
     df["fecha_fin"] = limpiar_fechas(df[config["col_fin"]])
 
-    # Inicialización segura
-    df["Dias_Laborales"] = "Sin dato"
+    # Columnas de resultado
     df["Dias_Laborales_num"] = np.nan
+    df["Dias_Laborales"] = "Sin dato"
 
+    # Festivos
     festivos = obtener_festivos() if config["excluir_festivos"] else []
 
+    # Filas válidas para cálculo
     mask_validas = (
         df["fecha_inicio"].notna()
         & df["fecha_fin"].notna()
@@ -100,8 +114,11 @@ def process_dataframe(df: pd.DataFrame, config: dict):
             weekmask=config["weekmask"],
         )
 
+        # ✅ numérico puro para cálculos
         df.loc[mask_validas, "Dias_Laborales_num"] = dias
-        df.loc[mask_validas, "Dias_Laborales"] = dias.astype(int)
+
+        # ✅ texto solo para visualización
+        df.loc[mask_validas, "Dias_Laborales"] = dias.astype(str)
 
     duracion = time.time() - start_time
     return df, duracion
