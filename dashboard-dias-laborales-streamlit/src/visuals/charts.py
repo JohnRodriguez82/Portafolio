@@ -68,12 +68,13 @@ def render_charts(df):
         fontWeight="normal",
         align="center",
         baseline="middle",
+        dy=-4,
         stroke="white",
         strokeOpacity=0.5,
         strokeWidth=0.8
     ).encode(
         x="SECCION:N",
-        y=alt.Y("Total:Q", stack="center"),
+        y=alt.Y("Total:Q", stack="zero"),
         text="Label:N",
         color=alt.condition(
             alt.datum.Estado == "Fuera de oportunidad",
