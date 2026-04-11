@@ -66,7 +66,7 @@ def render_charts(df):
     texto = alt.Chart(resumen).mark_text(
         fontSize=13,
         fontWeight="normal",
-        align="center",
+        align="right",
         baseline="middle",
         dy=-4,
         stroke="white",
