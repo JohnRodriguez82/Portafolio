@@ -64,13 +64,13 @@ if df is not None and config["procesar"]:
         )
 
     else:
-        # ✅ SOLO SI TODO ESTÁ BIEN, SE PROCESA
+        # ✅ SOLO AQUÍ SE CREA df_procesado
         df_procesado, duracion = process_dataframe(df, config)
 
-        # Reglas de negocio
+        # ✅ TODO lo que depende de df_procesado VA AQUÍ
         df_procesado = aplicar_reglas_negocio(df_procesado)
 
-        # Guardar en session_state
+        # ✅ Guardar en session_state
         st.session_state.df_procesado = df_procesado
         st.session_state.duracion = duracion
 
