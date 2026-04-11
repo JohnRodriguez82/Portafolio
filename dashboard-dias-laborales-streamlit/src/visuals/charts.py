@@ -61,27 +61,46 @@ def render_charts(df):
     )
 
     # =========================
-    # TEXTO CENTRADO DENTRO DE LAS BARRAS
-    # =========================
-    texto = alt.Chart(resumen).mark_text(
-        fontSize=13,
-        fontWeight="normal",
-        align="right",
-        baseline="top",
-        dy=6,
-        stroke="white",
-        strokeOpacity=0.5,
-        strokeWidth=0.8
-    ).encode(
-        x="SECCION:N",
-        y=alt.Y("Total:Q", stack="center"),
-        text="Label:N",
-        color=alt.condition(
-            alt.datum.Estado == "Fuera de oportunidad",
-            alt.value("#333333"),
-            alt.value("#666666")
-        )
-    )
+# TEXTO PARA DENTRO DE OPORTUNIDAD
+# =========================
+texto_dentro = alt.Chart(
+    resumen[resumen["Estado"] == "Dentro de oportunidad"]
+).mark_text(
+    fontSize=10,
+    fontWeight="normal",
+    align="center",
+    baseline="top",
+    dy=6,                      # ⬇ baja dentro del segmento
+    stroke="white",
+    strokeOpacity=0.7,
+    strokeWidth=1
+).encode(
+    x="SECCION:N",
+    y=alt.Y("Total:Q", stack="center"),
+    text="Label:N",
+    color=alt.value("#666666")
+)
+
+# =========================
+# TEXTO PARA FUERA DE OPORTUNIDAD
+# =========================
+texto_fuera = alt.Chart(
+    resumen[resumen["Estado"] == "Fuera de oportunidad"]
+).mark_text(
+    fontSize=10,
+    fontWeight="normal",
+    align="center",
+    baseline="bottom",
+    dy=-6,                     # ⬆ sube dentro del segmento
+    stroke="white",
+    strokeOpacity=0.7,
+    strokeWidth=1
+).encode(
+    x="SECCION:N",
+    y=alt.Y("Total:Q", stack="center"),
+    text="Label:N",
+    color=alt.value("#333333")
+)
 
     # =========================
     # MOSTRAR EN STREAMLIT
