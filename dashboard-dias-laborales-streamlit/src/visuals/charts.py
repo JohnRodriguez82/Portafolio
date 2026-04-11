@@ -6,7 +6,7 @@ import pandas as pd
 def render_charts(df: pd.DataFrame):
 
     # =========================
-    # PREPARAR DATOS
+    # RESUMEN POR SECCIÓN
     # =========================
     resumen = (
         df.groupby(["SECCION", "Dias_Oportunidad"])
@@ -18,62 +18,59 @@ def render_charts(df: pd.DataFrame):
         {1: "Dentro de oportunidad", 0: "Fuera de oportunidad"}
     )
 
-    resumen["Porcentaje"] = (
-        resumen.groupby("SECCION")["Total"]
-        .transform(lambda x: x / x.sum() * 100)
-        .round(1)
+    # =========================
+    # COLORES SEMÁNTICOS
+    # =========================
+    color_scale = alt.Scale(
+        domain=["Dentro de oportunidad", "Fuera de oportunidad"],
+        range=["#1f77b4", "#aec7e8"]  # fuerte / claro
     )
 
-    resumen["Porcentaje_txt"] = resumen["Porcentaje"].astype(str) + "%"
-
     # =========================
-    # CAPA 1: ARCO
+    # BARRA APILADA
     # =========================
-    pie = alt.Chart(resumen).mark_arc(
-        innerRadius=45,
-        stroke="white",
-        strokeWidth=1
-    ).encode(
-        theta="Total:Q",
+    barras = alt.Chart(resumen).mark_bar().encode(
+        x=alt.X("SECCION:N", title="Sección"),
+        y=alt.Y("Total:Q", title="Total de registros"),
         color=alt.Color(
             "Estado:N",
-            scale=alt.Scale(
-                domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-                range=["#1f77b4", "#aec7e8"]
-            ),
+            scale=color_scale,
             legend=alt.Legend(title="Estado")
         ),
         tooltip=[
             alt.Tooltip("SECCION:N"),
             alt.Tooltip("Estado:N"),
-            alt.Tooltip("Total:Q", format=","),
-            alt.Tooltip("Porcentaje:Q", format=".1f")
-        ],
-        column=alt.Column(
-            "SECCION:N",
-            title="",
-            header=alt.Header(labelOrient="bottom")
+            alt.Tooltip("Total:Q", format=",")
+        ]
+    )
+
+    # =========================
+    # TEXTO SOLO PARA FUERA
+    # =========================
+    fuera = resumen[resumen["Estado"] == "Fuera de oportunidad"]
+
+    max_val = fuera["Total"].max()
+    fuera["Es_Max"] = fuera["Total"] == max_val
+
+    texto = alt.Chart(fuera).mark_text(
+        dy=-5,
+        fontSize=11,
+        fontWeight="bold",
+        stroke="white",
+        strokeWidth=0.6
+    ).encode(
+        x="SECCION:N",
+        y=alt.Y("Total:Q", stack="zero"),
+        text=alt.Text("Total:Q", format=","),
+        color=alt.condition(
+            "datum.Es_Max",
+            alt.value("#1f77b4"),
+            alt.value("#333333")
         )
     )
 
     # =========================
-    # CAPA 2: TEXTO
-    # =========================
-    pie_text = alt.Chart(resumen).mark_text(
-        radius=65,
-        size=12,
-        fontWeight="bold",
-        stroke="white",
-        strokeWidth=0.7
-    ).encode(
-        theta="Total:Q",
-        text="Porcentaje_txt:N",
-        color=alt.value("white"),
-        column="SECCION:N"
-    )
-
-    # =========================
-    # MOSTRAR EN STREAMLIT
+    # MOSTRAR
     # =========================
     st.subheader("Cumplimiento por sección")
-    st.altair_chart(pie + pie_text, use_container_width=True)
+    st.altair_chart(barras + texto, use_container_width=True)
