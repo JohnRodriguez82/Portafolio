@@ -1,5 +1,8 @@
 import streamlit as st
 
+from io import BytesIO
+import pandas as pd
+
 from src.config.settings import setup_page
 from src.data.processing import load_sidebar_data, process_dataframe
 from src.utils.business_rules import aplicar_reglas_negocio
