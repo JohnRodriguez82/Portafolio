@@ -38,7 +38,14 @@ def load_sidebar_data():
             df = pd.read_excel(archivo)
             columnas = df.columns.tolist()
 
-            # Filtros opcionales
+            # ✅ PRIMERO: selección de columnas de fecha
+            st.subheader("📅 Columnas de fecha")
+            col_inicio = st.selectbox("Columna fecha inicio", columnas)
+            col_fin = st.selectbox("Columna fecha fin", columnas)
+
+            # ✅ DESPUÉS: filtros de negocio
+            st.subheader("🏢 Filtros de negocio")
+
             sedes_sel = []
             seccion_sel = []
 
@@ -49,9 +56,6 @@ def load_sidebar_data():
             if "SECCION" in columnas:
                 secciones = df["SECCION"].dropna().unique().tolist()
                 seccion_sel = st.multiselect("Filtrar por sección", secciones)
-
-            col_inicio = st.selectbox("Columna fecha inicio", columnas)
-            col_fin = st.selectbox("Columna fecha fin", columnas)
 
             procesar = st.button("🚀 Procesar")
 
@@ -93,10 +97,8 @@ def process_dataframe(df: pd.DataFrame, config: dict):
     df["Dias_Laborales_num"] = np.nan
     df["Dias_Laborales"] = "Sin dato"
 
-    # Festivos
     festivos = obtener_festivos() if config["excluir_festivos"] else []
 
-    # Filas válidas para cálculo
     mask_validas = (
         df["fecha_inicio"].notna()
         & df["fecha_fin"].notna()
@@ -114,10 +116,7 @@ def process_dataframe(df: pd.DataFrame, config: dict):
             weekmask=config["weekmask"],
         )
 
-        # ✅ numérico puro para cálculos
         df.loc[mask_validas, "Dias_Laborales_num"] = dias
-
-        # ✅ texto solo para visualización
         df.loc[mask_validas, "Dias_Laborales"] = dias.astype(str)
 
     duracion = time.time() - start_time
