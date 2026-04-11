@@ -90,7 +90,7 @@ def render_charts(df):
         fontSize=13,
         align="center",
         baseline="bottom",
-        dy=8,
+        dy=12,
         stroke="white",
         strokeOpacity=0.7,
         strokeWidth=1,
