@@ -24,7 +24,6 @@ def render_charts(df: pd.DataFrame):
     resumen["Total_Seccion"] = resumen.groupby("SECCION")["Total"].transform("sum")
     resumen["Porcentaje"] = resumen["Total"] / resumen["Total_Seccion"] * 100
 
-    # Label combinado: Total / %
     resumen["Label"] = (
         resumen["Total"].map(lambda x: f"{x:,}")
         + " / "
@@ -33,11 +32,11 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # COLORES SEMÁNTICOS
+    # COLORES
     # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"]  # fuerte / claro
+        range=["#1f77b4", "#aec7e8"]
     )
 
     # =========================
@@ -52,15 +51,15 @@ def render_charts(df: pd.DataFrame):
             legend=alt.Legend(title="Estado")
         ),
         tooltip=[
-            alt.Tooltip("SECCION:N", title="Sección"),
-            alt.Tooltip("Estado:N", title="Estado"),
-            alt.Tooltip("Total:Q", title="Total", format=","),
-            alt.Tooltip("Porcentaje:Q", title="Porcentaje", format=".1f")
+            alt.Tooltip("SECCION:N"),
+            alt.Tooltip("Estado:N"),
+            alt.Tooltip("Total:Q", format=","),
+            alt.Tooltip("Porcentaje:Q", format=".1f")
         ]
     )
 
     # =========================
-    # TEXTO CENTRADO EN CADA SEGMENTO
+    # TEXTO CENTRADO POR SEGMENTO
     # =========================
     texto = alt.Chart(resumen).mark_text(
         fontSize=10,
@@ -72,3 +71,6 @@ def render_charts(df: pd.DataFrame):
         y=alt.Y("Total:Q", stack="center"),
         text="Label:N",
         color=alt.condition(
+            alt.datum.Estado == "Fuera de oportunidad",
+            alt.value("#333333"),
+            alt.value("#666666")
