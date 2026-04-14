@@ -81,7 +81,7 @@ if df is not None and config["procesar"]:
 
     else:
         df_procesado, duracion = process_dataframe(df, config)
-        df_procesado = aplicar_reglas_negocio(df_procesado)
+        df_procesado = aplicar_reglas_negocio(df_procesado, config)
 
         st.session_state.df_procesado = df_procesado
         st.session_state.duracion = duracion
