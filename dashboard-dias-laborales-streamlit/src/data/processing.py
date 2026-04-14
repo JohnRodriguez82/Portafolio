@@ -35,7 +35,7 @@ def load_sidebar_data():
         weekmask = " ".join(dias)
 
         if archivo:
-            df = pd.read_excel(archivo)
+            df = pd.read_excel(archivo, engine="openpyxl")
             columnas = df.columns.tolist()
 
             # ✅ PRIMERO: selección de columnas de fecha
