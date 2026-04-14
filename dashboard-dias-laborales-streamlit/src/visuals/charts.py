@@ -3,20 +3,23 @@ import streamlit as st
 import pandas as pd
 
 
-def render_charts(df):
+def render_charts(df: pd.DataFrame):
+
     # =========================
     # RESUMEN POR SECCIÓN
     # =========================
     resumen = (
-        df.groupby(["SECCION", "Dias_Oportunidad"])
+        df.groupby(["SECCION", "Dentro_Oportunidad"])
         .size()
         .reset_index(name="Total")
     )
 
-    resumen["Estado"] = resumen["Dias_Oportunidad"].map({
-        1: "Dentro de oportunidad",
-        0: "Fuera de oportunidad",
-    })
+    resumen["Estado"] = resumen["Dentro_Oportunidad"].map(
+        {
+            1: "Dentro de oportunidad",
+            0: "Fuera de oportunidad",
+        }
+    )
 
     # =========================
     # PORCENTAJE POR SECCIÓN
@@ -24,7 +27,6 @@ def render_charts(df):
     total_seccion = resumen.groupby("SECCION")["Total"].transform("sum")
     resumen["Porcentaje"] = (resumen["Total"] / total_seccion * 100).round(1)
 
-    # Label: Total / %
     resumen["Label"] = (
         resumen["Total"].map("{:,}".format)
         + " / "
@@ -37,7 +39,7 @@ def render_charts(df):
     # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"],  # fuerte / claro
+        range=["#1f77b4", "#aec7e8"],
     )
 
     # =========================
@@ -52,51 +54,52 @@ def render_charts(df):
             legend=alt.Legend(title="Estado"),
         ),
         tooltip=[
-            alt.Tooltip("SECCION:N", title="Sección"),
-            alt.Tooltip("Estado:N", title="Estado"),
-            alt.Tooltip("Total:Q", title="Total", format=","),
-            alt.Tooltip("Porcentaje:Q", title="Porcentaje", format=".1f"),
+            alt.Tooltip("SECCION:N"),
+            alt.Tooltip("Estado:N"),
+            alt.Tooltip("Total:Q", format=","),
+            alt.Tooltip("Porcentaje:Q", format=".1f"),
         ],
     )
 
     # =========================
-    # TEXTO: DENTRO DE OPORTUNIDAD
-    # (ligeramente hacia abajo)
+    # TEXTO DENTRO DE OPORTUNIDAD
     # =========================
     texto_dentro = alt.Chart(
-        resumen[resumen["Estado"] == "Dentro de oportunidad"]
+        resumen[resumen["Dentro_Oportunidad"] == 1]
     ).mark_text(
-        fontSize=13,
+        fontSize=10,
         align="center",
         baseline="top",
-        dy=-22
+        dy=6,
+        stroke="white",
+        strokeOpacity=0.7,
+        strokeWidth=1,
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="center"),
         text="Label:N",
-        color=alt.value("#2ECC71"),
+        color=alt.value("#666666"),
     )
 
     # =========================
-    # TEXTO: FUERA DE OPORTUNIDAD
-    # (ligeramente hacia arriba)
+    # TEXTO FUERA DE OPORTUNIDAD
     # =========================
     texto_fuera = alt.Chart(
-        resumen[resumen["Estado"] == "Fuera de oportunidad"]
+        resumen[resumen["Dentro_Oportunidad"] == 0]
     ).mark_text(
-        fontSize=13,
+        fontSize=10,
         align="center",
         baseline="bottom",
-        dy=12
+        dy=-6,
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="center"),
         text="Label:N",
-        color=alt.value("#FF6600"),
+        color=alt.value("#000000"),
     )
 
     # =========================
-    # MOSTRAR EN STREAMLIT
+    # MOSTRAR
     # =========================
     st.subheader("Cumplimiento por sección")
     st.altair_chart(
