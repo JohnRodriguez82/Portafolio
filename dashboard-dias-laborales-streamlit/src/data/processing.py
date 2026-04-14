@@ -7,11 +7,6 @@ from src.utils.dates import limpiar_fechas, obtener_festivos
 
 
 def load_sidebar_data():
-    """
-    Construye el sidebar y retorna:
-    - df: DataFrame cargado
-    - config: diccionario de configuración del usuario
-    """
     with st.sidebar:
         st.header("⚙️ Configuración")
 
@@ -37,14 +32,22 @@ def load_sidebar_data():
         weekmask = " ".join(dias)
 
         if archivo is not None:
-            # ✅ Elegir engine según extensión
             nombre = archivo.name.lower()
 
+            # ✅ Cargar metadata del Excel
             if nombre.endswith(".xls"):
-                df = pd.read_excel(archivo, engine="xlrd")
+                xls = pd.ExcelFile(archivo, engine="xlrd")
             else:
-                df = pd.read_excel(archivo, engine="openpyxl")
+                xls = pd.ExcelFile(archivo, engine="openpyxl")
 
+            # ✅ Selección de hoja
+            hoja = st.selectbox(
+                "📄 Seleccione la hoja del Excel",
+                xls.sheet_names
+            )
+
+            # ✅ Leer solo la hoja seleccionada
+            df = pd.read_excel(xls, sheet_name=hoja)
             columnas = df.columns.tolist()
 
             # Selección de columnas de fecha
@@ -86,46 +89,3 @@ def load_sidebar_data():
     }
 
     return df, config
-
-
-def process_dataframe(df: pd.DataFrame, config: dict):
-    """
-    Procesa el DataFrame:
-    - Limpia fechas
-    - Calcula días laborales de forma segura
-    """
-    start_time = time.time()
-    df = df.copy()
-
-    # Limpieza de fechas
-    df["fecha_inicio"] = limpiar_fechas(df[config["col_inicio"]])
-    df["fecha_fin"] = limpiar_fechas(df[config["col_fin"]])
-
-    # Columnas de resultado
-    df["Dias_Laborales_num"] = np.nan
-    df["Dias_Laborales"] = "Sin dato"
-
-    festivos = obtener_festivos() if config["excluir_festivos"] else []
-
-    mask_validas = (
-        df["fecha_inicio"].notna()
-        & df["fecha_fin"].notna()
-        & (df["fecha_fin"] >= df["fecha_inicio"])
-    )
-
-    if mask_validas.any():
-        inicio_vals = df.loc[mask_validas, "fecha_inicio"].values.astype("datetime64[D]")
-        fin_vals = df.loc[mask_validas, "fecha_fin"].values.astype("datetime64[D]")
-
-        dias = np.busday_count(
-            inicio_vals,
-            fin_vals + np.timedelta64(1, "D"),
-            holidays=festivos,
-            weekmask=config["weekmask"],
-        )
-
-        df.loc[mask_validas, "Dias_Laborales_num"] = dias
-        df.loc[mask_validas, "Dias_Laborales"] = dias.astype(str)
-
-    duracion = time.time() - start_time
-    return df, duracion
