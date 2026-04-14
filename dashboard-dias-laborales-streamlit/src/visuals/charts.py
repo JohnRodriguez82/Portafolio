@@ -35,7 +35,7 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # ESCALA DE COLORES
+    # COLORES (IGUAL QUE ANTES)
     # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
@@ -62,7 +62,7 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO DENTRO DE OPORTUNIDAD
+    # TEXTO DENTRO DE OPORTUNIDAD (GRIS + HALO)
     # =========================
     texto_dentro = alt.Chart(
         resumen[resumen["Dentro_Oportunidad"] == 1]
@@ -82,7 +82,7 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO FUERA DE OPORTUNIDAD
+    # TEXTO FUERA DE OPORTUNIDAD (NEGRO, SIN HALO)
     # =========================
     texto_fuera = alt.Chart(
         resumen[resumen["Dentro_Oportunidad"] == 0]
