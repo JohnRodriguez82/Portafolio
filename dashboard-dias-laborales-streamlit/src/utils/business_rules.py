@@ -2,16 +2,29 @@ import numpy as np
 import pandas as pd
 
 
-def aplicar_reglas_negocio(df: pd.DataFrame) -> pd.DataFrame:
+def aplicar_reglas_negocio(df, config):
     df = df.copy()
 
-    condiciones = [
-        (df["SECCION"] == "ESPECIMEN QUIRURGICO") & (df["Dias_Laborales_num"] <= 10),
-        (df["SECCION"] == "CITOLOGIA DE LIQUIDOS") & (df["Dias_Laborales_num"] <= 6),
-        (df["SECCION"] == "HEMATOPATOLOGIA") & (df["Dias_Laborales_num"] <= 6),
-        (df["SECCION"] == "AUTOPSIA") & (df["Dias_Laborales_num"] <= 30),
-    ]
+    def evaluar(row):
+        seccion = row["SECCION"]
+        dias = row["Dias_Laborales_num"]
 
-    df["Dias_Oportunidad"] = np.select(condiciones, [1, 1, 1, 1], default=0)
+        if pd.isna(dias):
+            return 0
 
+        if seccion == "ESPECIMEN QUIRURGICO":
+            return int(dias <= config["sla_quirurgico"])
+
+        if seccion == "CITOLOGIA DE LIQUIDOS":
+            return int(dias <= config["sla_citologia"])
+
+        if seccion == "HEMATOPATOLOGIA":
+            return int(dias <= config["sla_hematopatologia"])
+
+        if seccion == "AUTOPSIA":
+            return int(dias <= config["sla_autopsia"])
+
+        return 0
+
+    df["Dentro_Oportunidad"] = df.apply(evaluar, axis=1)
     return df
