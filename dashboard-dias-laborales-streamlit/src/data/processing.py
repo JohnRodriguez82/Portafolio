@@ -125,6 +125,12 @@ def load_sidebar_data():
         "procesar": procesar,
         "sedes_sel": sedes_sel,
         "seccion_sel": seccion_sel,
+        
+        # ✅ SLA definidos por el usuario
+        "sla_quirurgico": sla_quirurgico,
+        "sla_citologia": sla_citologia,
+        "sla_hematopatologia": sla_hematopatologia,
+        "sla_autopsia": sla_autopsia,
     }
 
     return df, config
