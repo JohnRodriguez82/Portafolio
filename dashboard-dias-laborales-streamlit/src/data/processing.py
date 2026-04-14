@@ -17,10 +17,10 @@ def load_sidebar_data():
 
         archivo = st.file_uploader(
             "📂 Cargar archivo Excel",
-            type=["xlsx", "xlsm"],
+            type=["xlsx", "xlsm", "xls"],
         )
 
-        st.caption("ℹ️ Archivos soportados: .xlsx y .xlsm")
+        st.caption("ℹ️ Archivos soportados: .xlsx, .xlsm y .xls")
 
         st.subheader("📅 Configuración días laborales")
 
@@ -37,8 +37,14 @@ def load_sidebar_data():
         weekmask = " ".join(dias)
 
         if archivo is not None:
-            # ✅ Leer Excel con engine estable
-            df = pd.read_excel(archivo, engine="openpyxl")
+            # ✅ Elegir engine según extensión
+            nombre = archivo.name.lower()
+
+            if nombre.endswith(".xls"):
+                df = pd.read_excel(archivo, engine="xlrd")
+            else:
+                df = pd.read_excel(archivo, engine="openpyxl")
+
             columnas = df.columns.tolist()
 
             # Selección de columnas de fecha
