@@ -17,8 +17,10 @@ def load_sidebar_data():
 
         archivo = st.file_uploader(
             "📂 Cargar archivo Excel",
-            type=["xlsx", "xls", "xlsm"],
+            type=["xlsx", "xlsm"],
         )
+
+        st.caption("ℹ️ Archivos soportados: .xlsx y .xlsm")
 
         st.subheader("📅 Configuración días laborales")
 
@@ -27,42 +29,47 @@ def load_sidebar_data():
         excluir_festivos = st.checkbox("Excluir festivos", value=True)
 
         dias = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        if excluir_sabado and "Sat" in dias:
+        if excluir_sabado:
             dias.remove("Sat")
-        if excluir_domingo and "Sun" in dias:
+        if excluir_domingo:
             dias.remove("Sun")
 
         weekmask = " ".join(dias)
 
-        if archivo:
-            
-if archivo.name.endswith(".xls"):
-    df = pd.read_excel(archivo, engine="xlrd")
-    columnas = df.columns.tolist()
-else:
-    df = pd.read_excel(archivo, engine="openpyxl")
-    columnas = df.columns.tolist()            
+        if archivo is not None:
+            # ✅ Validar extensión soportada
+            if not archivo.name.endswith((".xlsx", ".xlsm")):
+                st.warning("⚠️ Solo se admiten archivos Excel .xlsx o .xlsm")
+                df = None
+                col_inicio = None
+                col_fin = None
+                sedes_sel = []
+                seccion_sel = []
+                procesar = False
+            else:
+                # ✅ Forzamos openpyxl (estable en Streamlit Cloud)
+                df = pd.read_excel(archivo, engine="openpyxl")
+                columnas = df.columns.tolist()
 
-            # ✅ PRIMERO: selección de columnas de fecha
-            st.subheader("📅 Columnas de fecha")
-            col_inicio = st.selectbox("Columna fecha inicio", columnas)
-            col_fin = st.selectbox("Columna fecha fin", columnas)
+                # Selección de columnas de fecha
+                st.subheader("📅 Columnas de fecha")
+                col_inicio = st.selectbox("Columna fecha inicio", columnas)
+                col_fin = st.selectbox("Columna fecha fin", columnas)
 
-            # ✅ DESPUÉS: filtros de negocio
-            st.subheader("🏢 Filtros de negocio")
+                # Filtros de negocio
+                st.subheader("🏢 Filtros de negocio")
+                sedes_sel = []
+                seccion_sel = []
 
-            sedes_sel = []
-            seccion_sel = []
+                if "NOMBRESEDE" in columnas:
+                    sedes = df["NOMBRESEDE"].dropna().unique().tolist()
+                    sedes_sel = st.multiselect("Filtrar por sede", sedes)
 
-            if "NOMBRESEDE" in columnas:
-                sedes = df["NOMBRESEDE"].dropna().unique().tolist()
-                sedes_sel = st.multiselect("Filtrar por sede", sedes)
+                if "SECCION" in columnas:
+                    secciones = df["SECCION"].dropna().unique().tolist()
+                    seccion_sel = st.multiselect("Filtrar por sección", secciones)
 
-            if "SECCION" in columnas:
-                secciones = df["SECCION"].dropna().unique().tolist()
-                seccion_sel = st.multiselect("Filtrar por sección", secciones)
-
-            procesar = st.button("🚀 Procesar")
+                procesar = st.button("🚀 Procesar")
 
         else:
             df = None
