@@ -7,7 +7,10 @@ def mostrar_kpis(df: pd.DataFrame, duracion: float):
     st.caption(f"⏱ Procesado en {duracion:.2f}s | {len(df):,} registros")
 
     total = len(df)
-    cumplimiento = df["Dias_Oportunidad"].mean() * 100
+
+    # ✅ Columna correcta
+    cumplimiento = df["Dentro_Oportunidad"].mean() * 100
+
     promedio = df["Dias_Laborales_num"].mean()
     sin_fecha = (df["Dias_Laborales"] == "Sin dato").sum()
 
