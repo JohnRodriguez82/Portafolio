@@ -37,14 +37,22 @@ def load_sidebar_data():
         weekmask = " ".join(dias)
 
         if archivo is not None:
-            # ✅ Elegir engine según extensión
             nombre = archivo.name.lower()
 
+            # ✅ Abrir el archivo Excel para leer hojas
             if nombre.endswith(".xls"):
-                df = pd.read_excel(archivo, engine="xlrd")
+                xls = pd.ExcelFile(archivo, engine="xlrd")
             else:
-                df = pd.read_excel(archivo, engine="openpyxl")
+                xls = pd.ExcelFile(archivo, engine="openpyxl")
 
+            # ✅ Selección de hoja
+            hoja = st.selectbox(
+                "📄 Seleccione la hoja del Excel",
+                xls.sheet_names
+            )
+
+            # ✅ Leer solo la hoja seleccionada
+            df = pd.read_excel(xls, sheet_name=hoja)
             columnas = df.columns.tolist()
 
             # Selección de columnas de fecha
@@ -107,6 +115,7 @@ def process_dataframe(df: pd.DataFrame, config: dict):
 
     festivos = obtener_festivos() if config["excluir_festivos"] else []
 
+    # ✅ CORRECCIÓN: operadores Python reales
     mask_validas = (
         df["fecha_inicio"].notna()
         & df["fecha_fin"].notna()
