@@ -28,6 +28,40 @@ def load_sidebar_data():
         excluir_domingo = st.checkbox("Excluir domingo", value=True)
         excluir_festivos = st.checkbox("Excluir festivos", value=True)
 
+        st.subheader("⏱️ Días de oportunidad (SLA)")
+
+        sla_quirurgico = st.number_input(
+            "Especimen quirúrgico (días)",
+            min_value=1,
+            max_value=60,
+            value=10,
+            step=1,
+        )
+        
+        sla_citologia = st.number_input(
+            "Citología de líquidos (días)",
+            min_value=1,
+            max_value=60,
+            value=6,
+            step=1,
+        )
+        
+        sla_hematopatologia = st.number_input(
+            "Hematopatología (días)",
+            min_value=1,
+            max_value=60,
+            value=6,
+            step=1,
+        )
+        
+        sla_autopsia = st.number_input(
+            "Autopsia (días)",
+            min_value=1,
+            max_value=120,
+            value=30,
+            step=1,
+        )
+
         dias = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         if excluir_sabado:
             dias.remove("Sat")
