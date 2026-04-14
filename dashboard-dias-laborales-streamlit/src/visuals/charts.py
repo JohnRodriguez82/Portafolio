@@ -71,9 +71,6 @@ def render_charts(df: pd.DataFrame):
         align="center",
         baseline="top",
         dy=6,
-        stroke="white",
-        strokeOpacity=0.7,
-        strokeWidth=1,
     ).encode(
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="center"),
