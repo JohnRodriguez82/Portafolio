@@ -51,34 +51,78 @@ def load_sidebar_data():
         # =====================================
         # 2. Validar y abrir archivo
         # =====================================
-        if archivo is not None:
-            nombre = archivo.name.lower()
-
-            try:
-                if nombre.endswith(".xls"):
-                    xls = pd.ExcelFile(archivo, engine="xlrd")
-                else:
-                    xls = pd.ExcelFile(archivo, engine="openpyxl")
-            except Exception as e:
-                st.error(
-                    "❌ El archivo no es un Excel válido o está dañado.\n\n"
-                    f"Detalle técnico: {e}"
-                )
-                return None, {
-                    "procesar": False,
-                    "col_inicio": None,
-                    "col_fin": None,
-                    "excluir_festivos": True,
-                    "weekmask": weekmask,
-                    "sedes_sel": [],
-                    "seccion_sel": [],
-                    "sla_quirurgico": sla_quirurgico,
-                    "sla_citologia": sla_citologia,
-                    "sla_hematopatologia": sla_hematopatologia,
-                    "sla_autopsia": sla_autopsia,
-                    "estudio_especial": None,
-                    "sla_estudio_especial": None,
-                }
+        if archivo is None:
+            st.info("ℹ️ Cargue un archivo Excel para continuar.")
+            return None, {
+                "procesar": False,
+                "col_inicio": None,
+                "col_fin": None,
+                "excluir_festivos": True,
+                "weekmask": "Mon Tue Wed Thu Fri",
+                "sedes_sel": [],
+                "seccion_sel": [],
+                "sla_quirurgico": 10,
+                "sla_citologia": 6,
+                "sla_hematopatologia": 10,
+                "sla_autopsia": 30,
+                "estudio_especial": None,
+                "sla_estudio_especial": None,
+            }
+        
+        nombre = archivo.name.lower()
+        
+        # 🚫 2.1. Validar extensión
+        if not nombre.endswith((".xls", ".xlsx", ".xlsm")):
+            st.error(
+                "❌ Archivo no válido\n\n"
+                "El archivo cargado **no es un Excel**.\n\n"
+                "✅ Formatos permitidos:\n"
+                "- .xls\n"
+                "- .xlsx\n"
+                "- .xlsm\n\n"
+                "📌 Verifique el archivo antes de cargarlo."
+            )
+            return None, {
+                "procesar": False,
+                "col_inicio": None,
+                "col_fin": None,
+                "excluir_festivos": True,
+                "weekmask": "Mon Tue Wed Thu Fri",
+                "sedes_sel": [],
+                "seccion_sel": [],
+                "sla_quirurgico": 10,
+                "sla_citologia": 6,
+                "sla_hematopatologia": 10,
+                "sla_autopsia": 30,
+                "estudio_especial": None,
+                "sla_estudio_especial": None,
+            }
+        
+        # 🚫 2.2. Validar que el Excel se pueda abrir
+        try:
+            if nombre.endswith(".xls"):
+                xls = pd.ExcelFile(archivo, engine="xlrd")
+            else:
+                xls = pd.ExcelFile(archivo, engine="openpyxl")
+        except ValueError:
+            st.error(
+                "❌ Archivo Excel inválido\n\n"
+                "El archivo tiene extensión Excel, pero **no se puede abrir**.\n\n"
+                "📌 Posibles causas:\n"
+                "- Archivo dañado\n"
+                "- Archivo no es realmente Excel\n"
+            )
+            return None, config_invalido
+        except Exception as e:
+            st.error(
+                "❌ No se pudo leer el archivo Excel\n\n"
+                "📌 Verifique que:\n"
+                "- No esté protegido con contraseña\n"
+                "- No esté dañado\n"
+                "- Sea un Excel válido\n\n"
+                f"Detalle técnico: {e}"
+            )
+            return None, config_invalido
 
             # =====================================
             # 3. Seleccionar hoja
