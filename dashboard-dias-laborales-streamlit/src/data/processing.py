@@ -123,7 +123,8 @@ def load_sidebar_data():
                 f"Detalle técnico: {e}"
             )
             return None, config_invalido
-
+            st.toast("✅ Archivo Excel válido y cargado", icon="✅")
+            
             # =====================================
             # 3. Seleccionar hoja
             # =====================================
