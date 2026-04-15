@@ -8,7 +8,6 @@ def render_charts(df: pd.DataFrame):
 	# =========================
     # RESUMEN POR SECCIÓN
     # =========================
-
 	resumen = (
 	    df.groupby(
 	        ["SECCION", "Dentro_Oportunidad"],
