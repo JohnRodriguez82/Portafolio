@@ -39,30 +39,22 @@ def load_sidebar_data():
 
         weekmask = " ".join(dias)
 
-        # -----------------------------
-        # SLA generales
-        # -----------------------------
-        st.subheader("⏱️ Días de oportunidad (SLA generales)")
+        # Inicializar variables
+        df = None
+        col_inicio = None
+        col_fin = None
+        sedes_sel = []
+        seccion_sel = []
+        procesar = False
 
-        sla_quirurgico = st.number_input(
-            "Especimen quirúrgico (días)",
-            min_value=1, max_value=60, value=10
-        )
+        estudio_especial = None
+        sla_estudio_especial = None
 
-        sla_citologia = st.number_input(
-            "Citología de líquidos (días)",
-            min_value=1, max_value=60, value=6
-        )
-
-        sla_hematopatologia = st.number_input(
-            "Hematopatología (días)",
-            min_value=1, max_value=60, value=6
-        )
-
-        sla_autopsia = st.number_input(
-            "Autopsia (días)",
-            min_value=1, max_value=120, value=30
-        )
+        # SLA generales (valores por defecto)
+        sla_quirurgico = 10
+        sla_citologia = 6
+        sla_hematopatologia = 6
+        sla_autopsia = 30
 
         # -----------------------------
         # Lectura del archivo
@@ -89,14 +81,11 @@ def load_sidebar_data():
             # -----------------------------
             st.subheader("🎯 SLA específico por ESTUDIO (opcional)")
 
-            estudio_especial = None
-            sla_estudio_especial = None
-
             if "ESTUDIO" in columnas:
                 estudios = sorted(df["ESTUDIO"].dropna().unique().tolist())
 
                 estudio_especial = st.selectbox(
-                    "Seleccione un ESTUDIO para SLA especial",
+                    "Seleccione un ESTUDIO",
                     ["(Ninguno)"] + estudios
                 )
 
@@ -106,6 +95,31 @@ def load_sidebar_data():
                         min_value=1,
                         max_value=120,
                         value=10
+                    )
+                else:
+                    # -----------------------------
+                    # SLA generales (solo si NO hay estudio especial)
+                    # -----------------------------
+                    st.subheader("⏱️ Días de oportunidad (SLA generales)")
+
+                    sla_quirurgico = st.number_input(
+                        "Especimen quirúrgico (días)",
+                        min_value=1, max_value=60, value=10
+                    )
+
+                    sla_citologia = st.number_input(
+                        "Citología de líquidos (días)",
+                        min_value=1, max_value=60, value=6
+                    )
+
+                    sla_hematopatologia = st.number_input(
+                        "Hematopatología (días)",
+                        min_value=1, max_value=60, value=6
+                    )
+
+                    sla_autopsia = st.number_input(
+                        "Autopsia (días)",
+                        min_value=1, max_value=120, value=30
                     )
 
             # -----------------------------
@@ -119,8 +133,6 @@ def load_sidebar_data():
             # Filtros de negocio
             # -----------------------------
             st.subheader("🏢 Filtros de negocio")
-            sedes_sel = []
-            seccion_sel = []
 
             if "NOMBRESEDE" in columnas:
                 sedes = df["NOMBRESEDE"].dropna().unique().tolist()
@@ -132,18 +144,8 @@ def load_sidebar_data():
 
             procesar = st.button("🚀 Procesar")
 
-        else:
-            df = None
-            col_inicio = None
-            col_fin = None
-            sedes_sel = []
-            seccion_sel = []
-            procesar = False
-            estudio_especial = None
-            sla_estudio_especial = None
-
     # -----------------------------
-    # PASO 2: Guardar todo en config
+    # Config final
     # -----------------------------
     config = {
         "col_inicio": col_inicio,
@@ -166,7 +168,6 @@ def load_sidebar_data():
     }
 
     return df, config
-
 
 def process_dataframe(df: pd.DataFrame, config: dict):
     """
