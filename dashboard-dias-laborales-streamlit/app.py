@@ -87,6 +87,14 @@ if df is not None and config["procesar"]:
     else:
         # limpieza previa (si el usuario lo activó)
         df_limpio = eliminar_duplicados(df, config)
+
+        
+        # MENSAJE INFORMATIVO 
+        if config.get("aplicar_deduplicacion"):
+            st.info(
+                f"🧹 Registros originales: {len(df):,}\n"
+                f"✅ Registros después de limpieza: {len(df_limpio):,}"
+            )
     
         # cálculo normal
         df_procesado, duracion = process_dataframe(df_limpio, config)
