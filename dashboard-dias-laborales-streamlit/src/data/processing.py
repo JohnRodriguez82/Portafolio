@@ -83,46 +83,52 @@ def load_sidebar_data():
             # -----------------------------
             st.subheader("🎯 SLA específico por ESTUDIO (opcional)")
 
-            if "ESTUDIO" in columnas:
+            usar_sla_estudio = st.radio(
+                "¿Desea aplicar SLA específico por ESTUDIO?",
+                ["Ninguna", "Seleccionar ESTUDIO"],
+                horizontal=True
+            )
+
+            if usar_sla_estudio == "Seleccionar ESTUDIO" and "ESTUDIO" in columnas:
                 estudios = sorted(df["ESTUDIO"].dropna().unique().tolist())
 
                 estudio_especial = st.selectbox(
                     "Seleccione un ESTUDIO",
-                    ["(Ninguno)"] + estudios
+                    estudios
                 )
 
-                if estudio_especial != "(Ninguno)":
-                    sla_estudio_especial = st.number_input(
-                        f"Días de oportunidad para {estudio_especial}",
-                        min_value=1,
-                        max_value=120,
-                        value=10
-                    )
-                else:
-                    # -----------------------------
-                    # 5. SLA generales
-                    # -----------------------------
-                    st.subheader("⏱️ Días de oportunidad (SLA generales)")
+                sla_estudio_especial = st.number_input(
+                    f"Días de oportunidad para {estudio_especial}",
+                    min_value=1,
+                    max_value=120,
+                    value=10
+                )
 
-                    sla_quirurgico = st.number_input(
-                        "Especimen quirúrgico (días)",
-                        min_value=1, max_value=60, value=10
-                    )
+            else:
+                # -----------------------------
+                # 5. SLA generales
+                # -----------------------------
+                st.subheader("⏱️ Días de oportunidad (SLA generales)")
 
-                    sla_citologia = st.number_input(
-                        "Citología de líquidos (días)",
-                        min_value=1, max_value=60, value=6
-                    )
+                sla_quirurgico = st.number_input(
+                    "Especimen quirúrgico (días)",
+                    min_value=1, max_value=60, value=10
+                )
 
-                    sla_hematopatologia = st.number_input(
-                        "Hematopatología (días)",
-                        min_value=1, max_value=60, value=6
-                    )
+                sla_citologia = st.number_input(
+                    "Citología de líquidos (días)",
+                    min_value=1, max_value=60, value=6
+                )
 
-                    sla_autopsia = st.number_input(
-                        "Autopsia (días)",
-                        min_value=1, max_value=120, value=30
-                    )
+                sla_hematopatologia = st.number_input(
+                    "Hematopatología (días)",
+                    min_value=1, max_value=60, value=6
+                )
+
+                sla_autopsia = st.number_input(
+                    "Autopsia (días)",
+                    min_value=1, max_value=120, value=30
+                )
 
             # -----------------------------
             # 6. Columnas de fecha
@@ -179,6 +185,7 @@ def load_sidebar_data():
     }
 
     return df, config
+
 
 def process_dataframe(df: pd.DataFrame, config: dict):
     """
