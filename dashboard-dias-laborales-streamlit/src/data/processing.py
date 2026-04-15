@@ -37,7 +37,7 @@ def load_sidebar_data():
         estudio_especial = None
         sla_estudio_especial = None
 
-        # SLA generales (defaults seguros)
+        # SLA generales (defaults)
         sla_quirurgico = 10
         sla_citologia = 6
         sla_hematopatologia = 10
@@ -49,7 +49,7 @@ def load_sidebar_data():
         weekmask = "Mon Tue Wed Thu Fri"
 
         # =====================================
-        # 2. Seleccionar hoja del Excel
+        # 2. Validar y abrir archivo
         # =====================================
         if archivo is not None:
             nombre = archivo.name.lower()
@@ -61,8 +61,7 @@ def load_sidebar_data():
                     xls = pd.ExcelFile(archivo, engine="openpyxl")
             except Exception as e:
                 st.error(
-                    "❌ Error al leer el archivo Excel.\n"
-                    "Verifique que el archivo no esté dañado.\n\n"
+                    "❌ El archivo no es un Excel válido o está dañado.\n\n"
                     f"Detalle técnico: {e}"
                 )
                 return None, {
@@ -81,23 +80,22 @@ def load_sidebar_data():
                     "sla_estudio_especial": None,
                 }
 
-            hoja = st.selectbox(
-                "📄 Seleccione la hoja del Excel",
-                xls.sheet_names
-            )
-
+            # =====================================
+            # 3. Seleccionar hoja
+            # =====================================
+            hoja = st.selectbox("📄 Seleccione la hoja del Excel", xls.sheet_names)
             df = pd.read_excel(xls, sheet_name=hoja)
             columnas = df.columns.tolist()
 
             # =====================================
-            # 3. Columnas de fecha
+            # 4. Columnas de fecha
             # =====================================
             st.subheader("📅 Columnas de fecha")
             col_inicio = st.selectbox("Columna fecha inicio", columnas)
             col_fin = st.selectbox("Columna fecha fin", columnas)
 
             # =====================================
-            # 4. Configuración días laborales
+            # 5. Configuración días laborales
             # =====================================
             st.subheader("📅 Configuración días laborales")
 
@@ -112,12 +110,12 @@ def load_sidebar_data():
                 dias.remove("Sun")
 
             weekmask = " ".join(dias)
-            
+
             # =====================================
-            # 5. Selección del tipo de SLA (PASO 1 REAL)
+            # 6. Selección del tipo de SLA (PASO 1 REAL)
             # =====================================
             st.subheader("⏱️ Configuración de SLA")
-            
+
             tipo_sla = st.selectbox(
                 "Seleccione el tipo de SLA a aplicar",
                 [
@@ -126,65 +124,32 @@ def load_sidebar_data():
                     "SLA generales",
                 ]
             )
-            
-            # Reiniciar SLA visibles
-            estudio_especial = None
-            sla_estudio_especial = None
-            
-            # -------- SLA por ESTUDIO --------
+
             if tipo_sla == "SLA específico por ESTUDIO" and "ESTUDIO" in columnas:
                 st.subheader("🎯 SLA específico por ESTUDIO")
-            
                 estudios = sorted(df["ESTUDIO"].dropna().unique().tolist())
                 estudio_especial = st.selectbox("Seleccione un ESTUDIO", estudios)
-            
+
                 sla_estudio_especial = st.number_input(
                     f"Días de oportunidad para {estudio_especial}",
                     min_value=1,
                     max_value=120,
-                    value=10,
-                    step=1
+                    value=10
                 )
-            
-            # -------- SLA generales --------
+
             elif tipo_sla == "SLA generales":
                 st.subheader("⏱️ Días de oportunidad (SLA generales)")
-            
-                sla_quirurgico = st.number_input(
-                    "Especimen quirúrgico (días)",
-                    min_value=1, 
-                    max_value=60, 
-                    value=10
-                )
-            
-                sla_citologia = st.number_input(
-                    "Citología de líquidos (días)",
-                    min_value=1, 
-                    max_value=60, 
-                    value=6
-                )
-            
-                sla_hematopatologia = st.number_input(
-                    "Hematopatología (días)",
-                    min_value=1, 
-                    max_value=60, 
-                    value=10
-                )
-            
-                sla_autopsia = st.number_input(
-                    "Autopsia (días)",
-                    min_value=1, 
-                    max_value=120, 
-                    value=30
-                )
-            
-            # -------- PASO 1: NO MOSTRAR NADA --------
-            else:
-                st.info("ℹ️ Primero seleccione el tipo de SLA que desea aplicar.")
 
+                sla_quirurgico = st.number_input("Especimen quirúrgico (días)", 1, 60, 10)
+                sla_citologia = st.number_input("Citología de líquidos (días)", 1, 60, 6)
+                sla_hematopatologia = st.number_input("Hematopatología (días)", 1, 60, 10)
+                sla_autopsia = st.number_input("Autopsia (días)", 1, 120, 30)
+
+            else:
+                st.info("ℹ️ Seleccione un tipo de SLA para continuar.")
 
             # =====================================
-            # 6. Filtros de negocio
+            # 7. Filtros de negocio
             # =====================================
             st.subheader("🏢 Filtros de negocio")
 
@@ -196,14 +161,8 @@ def load_sidebar_data():
                 secciones = df["SECCION"].dropna().unique().tolist()
                 seccion_sel = st.multiselect("Filtrar por sección", secciones)
 
-            # =====================================
-            # 7. Procesar
-            # =====================================
             procesar = st.button("🚀 Procesar")
 
-    # =====================================
-    # Config final
-    # =====================================
     config = {
         "col_inicio": col_inicio,
         "col_fin": col_fin,
@@ -212,14 +171,10 @@ def load_sidebar_data():
         "procesar": procesar,
         "sedes_sel": sedes_sel,
         "seccion_sel": seccion_sel,
-
-        # SLA generales
         "sla_quirurgico": sla_quirurgico,
         "sla_citologia": sla_citologia,
         "sla_hematopatologia": sla_hematopatologia,
         "sla_autopsia": sla_autopsia,
-
-        # SLA por ESTUDIO
         "estudio_especial": estudio_especial,
         "sla_estudio_especial": sla_estudio_especial,
     }
@@ -229,9 +184,7 @@ def load_sidebar_data():
 
 def process_dataframe(df: pd.DataFrame, config: dict):
     """
-    Procesa el DataFrame:
-    - Limpia fechas
-    - Calcula días laborales
+    Limpia fechas y calcula días laborales
     """
     start_time = time.time()
     df = df.copy()
@@ -266,3 +219,4 @@ def process_dataframe(df: pd.DataFrame, config: dict):
 
     duracion = time.time() - start_time
     return df, duracion
+``
