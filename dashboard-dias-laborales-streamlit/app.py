@@ -38,6 +38,10 @@ if df is not None:
     if config["seccion_sel"]:
         df = df[df["SECCION"].isin(config["seccion_sel"])]
 
+    # ✅ FILTRO POR ESTUDIO (si se seleccionó SLA especial)
+    if config.get("estudio_especial") and config["estudio_especial"] != "(Ninguno)":
+        df = df[df["ESTUDIO"] == config["estudio_especial"]]
+
 # =========================
 # PROCESAMIENTO (SOLO CUANDO SE PRESIONA PROCESAR)
 # =========================
