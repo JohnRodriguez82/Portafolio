@@ -67,7 +67,7 @@ def render_charts(df: pd.DataFrame):
     texto_dentro = alt.Chart(
         resumen[resumen["Dentro_Oportunidad"] == 1]
     ).mark_text(
-        fontSize=10,
+        fontSize=13,
         align="center",
         baseline="top",
         dy=6,
@@ -84,7 +84,7 @@ def render_charts(df: pd.DataFrame):
     texto_fuera = alt.Chart(
         resumen[resumen["Dentro_Oportunidad"] == 0]
     ).mark_text(
-        fontSize=10,
+        fontSize=13,
         align="center",
         baseline="bottom",
         dy=-6,
