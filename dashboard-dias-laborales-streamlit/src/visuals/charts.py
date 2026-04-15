@@ -5,11 +5,14 @@ import pandas as pd
 
 def render_charts(df: pd.DataFrame):
 
-    # =========================
+	# =========================
     # RESUMEN POR SECCIÓN
     # =========================
     resumen = (
-        df.groupby(["SECCION", "Dentro_Oportunidad"])
+        df.groupby(
+            ["SECCION", "Dentro_Oportunidad"],
+            dropna=False
+        )
         .size()
         .reset_index(name="Total")
     )
@@ -21,6 +24,15 @@ def render_charts(df: pd.DataFrame):
         }
     )
 
+    # Forzar orden lógico para la gráfica
+    resumen["Estado"] = pd.Categorical(
+        resumen["Estado"],
+        categories=[
+            "Dentro de oportunidad",
+            "Fuera de oportunidad",
+        ],
+        ordered=True
+    )
     # =========================
     # PORCENTAJE POR SECCIÓN
     # =========================
