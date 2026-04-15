@@ -92,7 +92,7 @@ def render_charts(df: pd.DataFrame):
         x="SECCION:N",
         y=alt.Y("Total:Q", stack="center"),
         text="Label:N",
-        color=alt.value("#FF0000"),
+        color=alt.value("#880808"),
     )
 
     # =========================
