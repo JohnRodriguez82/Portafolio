@@ -1,11 +1,3 @@
-import pandas as pd
-import streamlit as st
-import time
-import numpy as np
-
-from src.utils.dates import limpiar_fechas, obtener_festivos
-
-
 def load_sidebar_data():
     """
     Construye el sidebar y retorna:
@@ -62,7 +54,14 @@ def load_sidebar_data():
             columnas = df.columns.tolist()
 
             # -----------------------------
-            # 3. Configuración días laborales
+            # 3. Columnas de fecha (MOVIDO AQUÍ)
+            # -----------------------------
+            st.subheader("📅 Columnas de fecha")
+            col_inicio = st.selectbox("Columna fecha inicio", columnas)
+            col_fin = st.selectbox("Columna fecha fin", columnas)
+
+            # -----------------------------
+            # 4. Configuración días laborales
             # -----------------------------
             st.subheader("📅 Configuración días laborales")
 
@@ -79,10 +78,10 @@ def load_sidebar_data():
             weekmask = " ".join(dias)
 
             # -----------------------------
-            # 4. Tipo de SLA (SELECCIÓN PREVIA)
+            # 5. Tipo de SLA (selección previa)
             # -----------------------------
             st.subheader("⏱️ Configuración de SLA")
-            
+
             tipo_sla = st.selectbox(
                 "Seleccione el tipo de SLA a aplicar",
                 [
@@ -91,71 +90,50 @@ def load_sidebar_data():
                     "SLA generales",
                 ]
             )
-            
-            estudio_especial = None
-            sla_estudio_especial = None
-            
+
             # -----------------------------
-            # 4A. SLA específico por ESTUDIO
+            # 5A. SLA específico por ESTUDIO
             # -----------------------------
             if tipo_sla == "SLA específico por ESTUDIO" and "ESTUDIO" in columnas:
                 st.subheader("🎯 SLA específico por ESTUDIO")
-            
+
                 estudios = sorted(df["ESTUDIO"].dropna().unique().tolist())
-            
-                estudio_especial = st.selectbox(
-                    "Seleccione un ESTUDIO",
-                    estudios
-                )
-            
+                estudio_especial = st.selectbox("Seleccione un ESTUDIO", estudios)
+
                 sla_estudio_especial = st.number_input(
                     f"Días de oportunidad para {estudio_especial}",
                     min_value=1,
                     max_value=120,
-                    value=6
+                    value=10
                 )
-            
+
             # -----------------------------
-            # 4B. SLA generales
+            # 5B. SLA generales
             # -----------------------------
             elif tipo_sla == "SLA generales":
                 st.subheader("⏱️ Días de oportunidad (SLA generales)")
-            
+
                 sla_quirurgico = st.number_input(
                     "Especimen quirúrgico (días)",
                     min_value=1, max_value=60, value=10
                 )
-            
                 sla_citologia = st.number_input(
                     "Citología de líquidos (días)",
                     min_value=1, max_value=60, value=6
                 )
-            
                 sla_hematopatologia = st.number_input(
                     "Hematopatología (días)",
                     min_value=1, max_value=60, value=6
                 )
-            
                 sla_autopsia = st.number_input(
                     "Autopsia (días)",
                     min_value=1, max_value=120, value=30
                 )
-            
-            # -----------------------------
-            # 4C. Ninguna opción seleccionada
-            # -----------------------------
             else:
                 st.info("ℹ️ Seleccione un tipo de SLA para continuar.")
 
             # -----------------------------
-            # 6. Columnas de fecha
-            # -----------------------------
-            st.subheader("📅 Columnas de fecha")
-            col_inicio = st.selectbox("Columna fecha inicio", columnas)
-            col_fin = st.selectbox("Columna fecha fin", columnas)
-
-            # -----------------------------
-            # 7. Filtros de negocio
+            # 6. Filtros de negocio
             # -----------------------------
             st.subheader("🏢 Filtros de negocio")
 
@@ -168,7 +146,7 @@ def load_sidebar_data():
                 seccion_sel = st.multiselect("Filtrar por sección", secciones)
 
             # -----------------------------
-            # 8. Procesar
+            # 7. Procesar
             # -----------------------------
             procesar = st.button("🚀 Procesar")
 
@@ -202,44 +180,3 @@ def load_sidebar_data():
     }
 
     return df, config
-
-
-def process_dataframe(df: pd.DataFrame, config: dict):
-    """
-    Procesa el DataFrame:
-    - Limpia fechas
-    - Calcula días laborales
-    """
-    start_time = time.time()
-    df = df.copy()
-
-    df["fecha_inicio"] = limpiar_fechas(df[config["col_inicio"]])
-    df["fecha_fin"] = limpiar_fechas(df[config["col_fin"]])
-
-    df["Dias_Laborales_num"] = np.nan
-    df["Dias_Laborales"] = "Sin dato"
-
-    festivos = obtener_festivos() if config["excluir_festivos"] else []
-
-    mask_validas = (
-        df["fecha_inicio"].notna()
-        & df["fecha_fin"].notna()
-        & (df["fecha_fin"] >= df["fecha_inicio"])
-    )
-
-    if mask_validas.any():
-        inicio_vals = df.loc[mask_validas, "fecha_inicio"].values.astype("datetime64[D]")
-        fin_vals = df.loc[mask_validas, "fecha_fin"].values.astype("datetime64[D]")
-
-        dias = np.busday_count(
-            inicio_vals,
-            fin_vals + np.timedelta64(1, "D"),
-            holidays=festivos,
-            weekmask=config["weekmask"],
-        )
-
-        df.loc[mask_validas, "Dias_Laborales_num"] = dias
-        df.loc[mask_validas, "Dias_Laborales"] = dias.astype(str)
-
-    duracion = time.time() - start_time
-    return df, duracion
