@@ -18,12 +18,8 @@ def load_sidebar_data():
         # =====================================
         # 1. Cargar archivo
         # =====================================
-        archivo = st.file_uploader(
-            "📂 Cargar archivo Excel",
-            type=["xlsx", "xlsm", "xls"],
-        )
-
-        st.caption("ℹ️ Archivos soportados: .xlsx, .xlsm y .xls")
+        archivo = st.file_uploader("📂 Cargar archivo Excel")
+        st.caption("ℹ️ Formatos permitidos: .xls, .xlsx, .xlsm")
 
         # Inicialización segura
         df = None
