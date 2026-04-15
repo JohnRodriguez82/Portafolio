@@ -152,22 +152,30 @@ def load_sidebar_data():
             
                 sla_quirurgico = st.number_input(
                     "Especimen quirúrgico (días)",
-                    min_value=1, max_value=60, value=10
+                    min_value=1, 
+                    max_value=60, 
+                    value=10
                 )
             
                 sla_citologia = st.number_input(
                     "Citología de líquidos (días)",
-                    min_value=1, max_value=60, value=6
+                    min_value=1, 
+                    max_value=60, 
+                    value=6
                 )
             
                 sla_hematopatologia = st.number_input(
                     "Hematopatología (días)",
-                    min_value=1, max_value=60, value=10
+                    min_value=1, 
+                    max_value=60, 
+                    value=10
                 )
             
                 sla_autopsia = st.number_input(
                     "Autopsia (días)",
-                    min_value=1, max_value=120, value=30
+                    min_value=1, 
+                    max_value=120, 
+                    value=30
                 )
             
             # -------- PASO 1: NO MOSTRAR NADA --------
