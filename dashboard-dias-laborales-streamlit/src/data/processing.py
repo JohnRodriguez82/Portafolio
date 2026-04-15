@@ -138,7 +138,7 @@ def load_sidebar_data():
                     f"Días de oportunidad para {estudio_especial}",
                     min_value=1,
                     max_value=120,
-                    value=10,
+                    value=6,
                     step=1
                 )
 
