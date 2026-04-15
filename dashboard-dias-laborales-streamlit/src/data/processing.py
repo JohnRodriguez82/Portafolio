@@ -112,12 +112,12 @@ def load_sidebar_data():
                 dias.remove("Sun")
 
             weekmask = " ".join(dias)
-
+            
             # =====================================
-            # 5. Selección del tipo de SLA
+            # 5. Selección del tipo de SLA (PASO 1 REAL)
             # =====================================
             st.subheader("⏱️ Configuración de SLA")
-
+            
             tipo_sla = st.selectbox(
                 "Seleccione el tipo de SLA a aplicar",
                 [
@@ -126,48 +126,54 @@ def load_sidebar_data():
                     "SLA generales",
                 ]
             )
-
+            
+            # Reiniciar SLA visibles
+            estudio_especial = None
+            sla_estudio_especial = None
+            
             # -------- SLA por ESTUDIO --------
             if tipo_sla == "SLA específico por ESTUDIO" and "ESTUDIO" in columnas:
                 st.subheader("🎯 SLA específico por ESTUDIO")
-
+            
                 estudios = sorted(df["ESTUDIO"].dropna().unique().tolist())
                 estudio_especial = st.selectbox("Seleccione un ESTUDIO", estudios)
-
+            
                 sla_estudio_especial = st.number_input(
                     f"Días de oportunidad para {estudio_especial}",
                     min_value=1,
                     max_value=120,
-                    value=6,
+                    value=10,
                     step=1
                 )
-
+            
             # -------- SLA generales --------
             elif tipo_sla == "SLA generales":
                 st.subheader("⏱️ Días de oportunidad (SLA generales)")
-
+            
                 sla_quirurgico = st.number_input(
                     "Especimen quirúrgico (días)",
                     min_value=1, max_value=60, value=10
                 )
-
+            
                 sla_citologia = st.number_input(
                     "Citología de líquidos (días)",
                     min_value=1, max_value=60, value=6
                 )
-
+            
                 sla_hematopatologia = st.number_input(
                     "Hematopatología (días)",
-                    min_value=1, max_value=60, value=6
+                    min_value=1, max_value=60, value=10
                 )
-
+            
                 sla_autopsia = st.number_input(
                     "Autopsia (días)",
                     min_value=1, max_value=120, value=30
                 )
-
+            
+            # -------- PASO 1: NO MOSTRAR NADA --------
             else:
-                st.info("ℹ️ Seleccione un tipo de SLA para continuar.")
+                st.info("ℹ️ Primero seleccione el tipo de SLA que desea aplicar.")
+
 
             # =====================================
             # 6. Filtros de negocio
