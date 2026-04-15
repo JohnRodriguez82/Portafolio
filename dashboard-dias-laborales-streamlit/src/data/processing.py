@@ -79,56 +79,73 @@ def load_sidebar_data():
             weekmask = " ".join(dias)
 
             # -----------------------------
-            # 4. SLA específico por ESTUDIO
+            # 4. Tipo de SLA (SELECCIÓN PREVIA)
             # -----------------------------
-            st.subheader("🎯 SLA específico por ESTUDIO (opcional)")
-
-            usar_sla_estudio = st.radio(
-                "¿Desea aplicar SLA específico por ESTUDIO?",
-                ["Ninguna", "Seleccionar ESTUDIO"],
-                horizontal=True
+            st.subheader("⏱️ Configuración de SLA")
+            
+            tipo_sla = st.selectbox(
+                "Seleccione el tipo de SLA a aplicar",
+                [
+                    "Seleccione una opción",
+                    "SLA específico por ESTUDIO",
+                    "SLA generales",
+                ]
             )
-
-            if usar_sla_estudio == "Seleccionar ESTUDIO" and "ESTUDIO" in columnas:
+            
+            estudio_especial = None
+            sla_estudio_especial = None
+            
+            # -----------------------------
+            # 4A. SLA específico por ESTUDIO
+            # -----------------------------
+            if tipo_sla == "SLA específico por ESTUDIO" and "ESTUDIO" in columnas:
+                st.subheader("🎯 SLA específico por ESTUDIO")
+            
                 estudios = sorted(df["ESTUDIO"].dropna().unique().tolist())
-
+            
                 estudio_especial = st.selectbox(
                     "Seleccione un ESTUDIO",
                     estudios
                 )
-
+            
                 sla_estudio_especial = st.number_input(
                     f"Días de oportunidad para {estudio_especial}",
                     min_value=1,
                     max_value=120,
                     value=10
                 )
-
-            else:
-                # -----------------------------
-                # 5. SLA generales
-                # -----------------------------
+            
+            # -----------------------------
+            # 4B. SLA generales
+            # -----------------------------
+            elif tipo_sla == "SLA generales":
                 st.subheader("⏱️ Días de oportunidad (SLA generales)")
-
+            
                 sla_quirurgico = st.number_input(
                     "Especimen quirúrgico (días)",
                     min_value=1, max_value=60, value=10
                 )
-
+            
                 sla_citologia = st.number_input(
                     "Citología de líquidos (días)",
                     min_value=1, max_value=60, value=6
                 )
-
+            
                 sla_hematopatologia = st.number_input(
                     "Hematopatología (días)",
                     min_value=1, max_value=60, value=6
                 )
-
+            
                 sla_autopsia = st.number_input(
                     "Autopsia (días)",
                     min_value=1, max_value=120, value=30
                 )
+            
+            # -----------------------------
+            # 4C. Ninguna opción seleccionada
+            # -----------------------------
+            else:
+                st.info("ℹ️ Seleccione un tipo de SLA para continuar.")
 
             # -----------------------------
             # 6. Columnas de fecha
