@@ -106,6 +106,9 @@ if df is not None and config["procesar"]:
         st.session_state.df_procesado = df_procesado
         st.session_state.duracion = duracion
 
+        # guardaruardar cantidad de duplicados
+        st.session_state.duplicados = len(df) - len(df_limpio)
+
 # =========================
 # MENSAJE INICIAL (SOLO SI NO HAY RESULTADOS)
 # =========================
