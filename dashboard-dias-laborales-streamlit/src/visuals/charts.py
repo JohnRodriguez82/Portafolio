@@ -23,6 +23,7 @@ def render_charts(df: pd.DataFrame):
 	        1: "Dentro de oportunidad",
 	        0: "Fuera de oportunidad",
 	    }
+	)
     # =========================
     # PORCENTAJE POR SECCIÓN
     # =========================
