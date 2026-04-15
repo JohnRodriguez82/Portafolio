@@ -219,4 +219,3 @@ def process_dataframe(df: pd.DataFrame, config: dict):
 
     duracion = time.time() - start_time
     return df, duracion
-``
