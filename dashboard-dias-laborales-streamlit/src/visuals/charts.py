@@ -23,16 +23,6 @@ def render_charts(df: pd.DataFrame):
 	        1: "Dentro de oportunidad",
 	        0: "Fuera de oportunidad",
 	    }
-
-    # Forzar orden lógico para la gráfica
-    resumen["Estado"] = pd.Categorical(
-        resumen["Estado"],
-        categories=[
-            "Dentro de oportunidad",
-            "Fuera de oportunidad",
-        ],
-        ordered=True
-    )
     # =========================
     # PORCENTAJE POR SECCIÓN
     # =========================
