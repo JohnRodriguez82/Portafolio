@@ -1,3 +1,11 @@
+import pandas as pd
+import streamlit as st
+import time
+import numpy as np
+
+from src.utils.dates import limpiar_fechas, obtener_festivos
+
+
 def load_sidebar_data():
     """
     Construye el sidebar y retorna:
@@ -7,9 +15,9 @@ def load_sidebar_data():
     with st.sidebar:
         st.header("⚙️ Configuración")
 
-        # -----------------------------
+        # =====================================
         # 1. Cargar archivo
-        # -----------------------------
+        # =====================================
         archivo = st.file_uploader(
             "📂 Cargar archivo Excel",
             type=["xlsx", "xlsm", "xls"],
@@ -19,6 +27,7 @@ def load_sidebar_data():
 
         # Inicialización segura
         df = None
+        columnas = []
         col_inicio = None
         col_fin = None
         sedes_sel = []
@@ -28,22 +37,49 @@ def load_sidebar_data():
         estudio_especial = None
         sla_estudio_especial = None
 
-        # SLA generales (valores por defecto)
+        # SLA generales (defaults seguros)
         sla_quirurgico = 10
         sla_citologia = 6
         sla_hematopatologia = 6
         sla_autopsia = 30
 
-        # -----------------------------
+        excluir_sabado = True
+        excluir_domingo = True
+        excluir_festivos = True
+        weekmask = "Mon Tue Wed Thu Fri"
+
+        # =====================================
         # 2. Seleccionar hoja del Excel
-        # -----------------------------
+        # =====================================
         if archivo is not None:
             nombre = archivo.name.lower()
 
-            if nombre.endswith(".xls"):
-                xls = pd.ExcelFile(archivo, engine="xlrd")
-            else:
-                xls = pd.ExcelFile(archivo, engine="openpyxl")
+            try:
+                if nombre.endswith(".xls"):
+                    xls = pd.ExcelFile(archivo, engine="xlrd")
+                else:
+                    xls = pd.ExcelFile(archivo, engine="openpyxl")
+            except Exception as e:
+                st.error(
+                    "❌ Error al leer el archivo Excel.\n"
+                    "Verifique que el archivo no esté dañado.\n\n"
+                    f"Detalle técnico: {e}"
+                )
+                return None, {
+                    "procesar": False,
+                    "col_inicio": None,
+                    "col_fin": None,
+                    "excluir_festivos": True,
+                    "weekmask": weekmask,
+                    "sedes_sel": [],
+                    "seccion_sel": [],
+                    "sla_quirurgico": sla_quirurgico,
+                    "sla_citologia": sla_citologia,
+                    "sla_hematopatologia": sla_hematopatologia,
+                    "sla_autopsia": sla_autopsia,
+                    "estudio_especial": None,
+                    "sla_estudio_especial": None,
+                }
 
             hoja = st.selectbox(
                 "📄 Seleccione la hoja del Excel",
@@ -53,16 +89,16 @@ def load_sidebar_data():
             df = pd.read_excel(xls, sheet_name=hoja)
             columnas = df.columns.tolist()
 
-            # -----------------------------
-            # 3. Columnas de fecha (MOVIDO AQUÍ)
-            # -----------------------------
+            # =====================================
+            # 3. Columnas de fecha
+            # =====================================
             st.subheader("📅 Columnas de fecha")
             col_inicio = st.selectbox("Columna fecha inicio", columnas)
             col_fin = st.selectbox("Columna fecha fin", columnas)
 
-            # -----------------------------
+            # =====================================
             # 4. Configuración días laborales
-            # -----------------------------
+            # =====================================
             st.subheader("📅 Configuración días laborales")
 
             excluir_sabado = st.checkbox("Excluir sábado", value=True)
@@ -77,9 +113,9 @@ def load_sidebar_data():
 
             weekmask = " ".join(dias)
 
-            # -----------------------------
-            # 5. Tipo de SLA (selección previa)
-            # -----------------------------
+            # =====================================
+            # 5. Selección del tipo de SLA
+            # =====================================
             st.subheader("⏱️ Configuración de SLA")
 
             tipo_sla = st.selectbox(
@@ -91,9 +127,7 @@ def load_sidebar_data():
                 ]
             )
 
-            # -----------------------------
-            # 5A. SLA específico por ESTUDIO
-            # -----------------------------
+            # -------- SLA por ESTUDIO --------
             if tipo_sla == "SLA específico por ESTUDIO" and "ESTUDIO" in columnas:
                 st.subheader("🎯 SLA específico por ESTUDIO")
 
@@ -104,12 +138,11 @@ def load_sidebar_data():
                     f"Días de oportunidad para {estudio_especial}",
                     min_value=1,
                     max_value=120,
-                    value=10
+                    value=10,
+                    step=1
                 )
 
-            # -----------------------------
-            # 5B. SLA generales
-            # -----------------------------
+            # -------- SLA generales --------
             elif tipo_sla == "SLA generales":
                 st.subheader("⏱️ Días de oportunidad (SLA generales)")
 
@@ -117,24 +150,28 @@ def load_sidebar_data():
                     "Especimen quirúrgico (días)",
                     min_value=1, max_value=60, value=10
                 )
+
                 sla_citologia = st.number_input(
                     "Citología de líquidos (días)",
                     min_value=1, max_value=60, value=6
                 )
+
                 sla_hematopatologia = st.number_input(
                     "Hematopatología (días)",
                     min_value=1, max_value=60, value=6
                 )
+
                 sla_autopsia = st.number_input(
                     "Autopsia (días)",
                     min_value=1, max_value=120, value=30
                 )
+
             else:
                 st.info("ℹ️ Seleccione un tipo de SLA para continuar.")
 
-            # -----------------------------
+            # =====================================
             # 6. Filtros de negocio
-            # -----------------------------
+            # =====================================
             st.subheader("🏢 Filtros de negocio")
 
             if "NOMBRESEDE" in columnas:
@@ -145,20 +182,14 @@ def load_sidebar_data():
                 secciones = df["SECCION"].dropna().unique().tolist()
                 seccion_sel = st.multiselect("Filtrar por sección", secciones)
 
-            # -----------------------------
+            # =====================================
             # 7. Procesar
-            # -----------------------------
+            # =====================================
             procesar = st.button("🚀 Procesar")
 
-        else:
-            excluir_sabado = True
-            excluir_domingo = True
-            excluir_festivos = True
-            weekmask = "Mon Tue Wed Thu Fri"
-
-    # -----------------------------
+    # =====================================
     # Config final
-    # -----------------------------
+    # =====================================
     config = {
         "col_inicio": col_inicio,
         "col_fin": col_fin,
@@ -180,3 +211,44 @@ def load_sidebar_data():
     }
 
     return df, config
+
+
+def process_dataframe(df: pd.DataFrame, config: dict):
+    """
+    Procesa el DataFrame:
+    - Limpia fechas
+    - Calcula días laborales
+    """
+    start_time = time.time()
+    df = df.copy()
+
+    df["fecha_inicio"] = limpiar_fechas(df[config["col_inicio"]])
+    df["fecha_fin"] = limpiar_fechas(df[config["col_fin"]])
+
+    df["Dias_Laborales_num"] = np.nan
+    df["Dias_Laborales"] = "Sin dato"
+
+    festivos = obtener_festivos() if config["excluir_festivos"] else []
+
+    mask_validas = (
+        df["fecha_inicio"].notna()
+        & df["fecha_fin"].notna()
+        & (df["fecha_fin"] >= df["fecha_inicio"])
+    )
+
+    if mask_validas.any():
+        inicio_vals = df.loc[mask_validas, "fecha_inicio"].values.astype("datetime64[D]")
+        fin_vals = df.loc[mask_validas, "fecha_fin"].values.astype("datetime64[D]")
+
+        dias = np.busday_count(
+            inicio_vals,
+            fin_vals + np.timedelta64(1, "D"),
+            holidays=festivos,
+            weekmask=config["weekmask"],
+        )
+
+        df.loc[mask_validas, "Dias_Laborales_num"] = dias
+        df.loc[mask_validas, "Dias_Laborales"] = dias.astype(str)
+
+    duracion = time.time() - start_time
+    return df, duracion
