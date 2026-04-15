@@ -48,6 +48,35 @@ def load_sidebar_data():
         excluir_festivos = True
         weekmask = "Mon Tue Wed Thu Fri"
 
+        # -------------------------------------
+        # ✅ Validación temprana del archivo
+        # -------------------------------------
+        if archivo is None:
+            st.info("ℹ️ Cargue un archivo Excel para continuar.")
+            st.stop()
+        
+        if archivo.size == 0:
+            st.error(
+                "❌ El archivo cargado no es un Excel válido.\n\n"
+                "📌 Formatos permitidos:\n"
+                "- .xls\n"
+                "- .xlsx\n"
+                "- .xlsm"
+            )
+            st.stop()
+        
+        nombre = archivo.name.lower()
+        
+        if not nombre.endswith((".xls", ".xlsx", ".xlsm")):
+            st.error(
+                "❌ El archivo cargado no es un Excel válido.\n\n"
+                "📌 Formatos permitidos:\n"
+                "- .xls\n"
+                "- .xlsx\n"
+                "- .xlsm"
+            )
+            st.stop()
+
         # =====================================
         # 2. Validar archivo cargado
         # =====================================
