@@ -8,21 +8,21 @@ def render_charts(df: pd.DataFrame):
 	# =========================
     # RESUMEN POR SECCIÓN
     # =========================
-    resumen = (
-        df.groupby(
-            ["SECCION", "Dentro_Oportunidad"],
-            dropna=False
-        )
-        .size()
-        .reset_index(name="Total")
-    )
 
-    resumen["Estado"] = resumen["Dentro_Oportunidad"].map(
-        {
-            1: "Dentro de oportunidad",
-            0: "Fuera de oportunidad",
-        }
-    )
+	resumen = (
+	    df.groupby(
+	        ["SECCION", "Dentro_Oportunidad"],
+	        dropna=False
+	    )
+	    .size()
+	    .reset_index(name="Total")
+	)
+	
+	resumen["Estado"] = resumen["Dentro_Oportunidad"].map(
+	    {
+	        1: "Dentro de oportunidad",
+	        0: "Fuera de oportunidad",
+	    }
 
     # Forzar orden lógico para la gráfica
     resumen["Estado"] = pd.Categorical(
