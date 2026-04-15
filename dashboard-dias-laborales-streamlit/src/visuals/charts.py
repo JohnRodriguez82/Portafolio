@@ -62,12 +62,12 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO DENTRO DE OPORTUNIDAD (GRIS + HALO)
+    # TEXTO DENTRO DE OPORTUNIDAD 
     # =========================
     texto_dentro = alt.Chart(
         resumen[resumen["Dentro_Oportunidad"] == 1]
     ).mark_text(
-        fontSize=13,
+        fontSize=14,
         align="center",
         baseline="top",
         dy=6,
@@ -79,14 +79,14 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO FUERA DE OPORTUNIDAD (NEGRO, SIN HALO)
+    # TEXTO FUERA DE OPORTUNIDAD 
     # =========================
     texto_fuera = alt.Chart(
         resumen[resumen["Dentro_Oportunidad"] == 0]
     ).mark_text(
-        fontSize=13,
+        fontSize=14,
         align="center",
-        baseline="bottom",
+        baseline="top",
         dy=-6,
     ).encode(
         x="SECCION:N",
