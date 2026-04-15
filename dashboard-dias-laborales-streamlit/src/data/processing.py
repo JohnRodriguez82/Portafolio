@@ -146,6 +146,31 @@ def load_sidebar_data():
         columnas = df.columns.tolist()
 
         # =====================================
+        # Limpieza de registros duplicados (opcional)
+        # =====================================
+        st.subheader("🧹 Limpieza de registros (opcional)")
+        
+        aplicar_deduplicacion = st.checkbox(
+            "Eliminar registros duplicados antes del cálculo",
+            value=False
+        )
+        
+        columna_duplicados = None
+        columna_fecha_dedup = None
+        
+        if aplicar_deduplicacion:
+            st.caption("Se conservará el registro con la fecha más reciente")
+        
+            columna_duplicados = st.selectbox(
+                "Columna identificadora de duplicados",
+                columnas
+            )
+        
+            columna_fecha_dedup = st.selectbox(
+                "Columna de fecha para conservar el registro más reciente",
+                columnas
+            )
+        # =====================================
         # 4. Columnas de fecha
         # =====================================
         st.subheader("📅 Columnas de fecha")
@@ -230,6 +255,7 @@ def load_sidebar_data():
     # Config final
     # =====================================
     config = {
+         # Configuración existente
         "col_inicio": col_inicio,
         "col_fin": col_fin,
         "excluir_festivos": excluir_festivos,
@@ -237,12 +263,21 @@ def load_sidebar_data():
         "procesar": procesar,
         "sedes_sel": sedes_sel,
         "seccion_sel": seccion_sel,
+    
+        # SLA existentes
         "sla_quirurgico": sla_quirurgico,
         "sla_citologia": sla_citologia,
         "sla_hematopatologia": sla_hematopatologia,
         "sla_autopsia": sla_autopsia,
+    
+        # SLA por estudio
         "estudio_especial": estudio_especial,
         "sla_estudio_especial": sla_estudio_especial,
+    
+        # Deduplicación
+        "aplicar_deduplicacion": aplicar_deduplicacion,
+        "columna_duplicados": columna_duplicados,
+        "columna_fecha_dedup": columna_fecha_dedup,  
     }
 
     return df, config
