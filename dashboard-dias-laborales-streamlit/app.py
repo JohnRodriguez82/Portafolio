@@ -8,6 +8,7 @@ from src.utils.kpis import mostrar_kpis
 from src.visuals.charts import render_charts
 from src.utils.export import dataframe_to_excel_bytes
 from src.utils.dates import limpiar_fechas
+from src.utils.deduplicacion import eliminar_duplicados
 
 # =========================
 # SESSION STATE INICIAL
@@ -84,9 +85,16 @@ if df is not None and config["procesar"]:
         st.session_state.duracion = None
 
     else:
-        df_procesado, duracion = process_dataframe(df, config)
+        # limpieza previa (si el usuario lo activó)
+        df_limpio = eliminar_duplicados(df, config)
+    
+        # cálculo normal
+        df_procesado, duracion = process_dataframe(df_limpio, config)
+    
+        # reglas de negocio
         df_procesado = aplicar_reglas_negocio(df_procesado, config)
-
+    
+        # Guardar en session_state
         st.session_state.df_procesado = df_procesado
         st.session_state.duracion = duracion
 
