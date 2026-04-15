@@ -40,7 +40,7 @@ def load_sidebar_data():
         # SLA generales (defaults seguros)
         sla_quirurgico = 10
         sla_citologia = 6
-        sla_hematopatologia = 6
+        sla_hematopatologia = 10
         sla_autopsia = 30
 
         excluir_sabado = True
