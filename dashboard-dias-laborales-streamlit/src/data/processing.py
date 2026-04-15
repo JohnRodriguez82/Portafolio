@@ -15,6 +15,9 @@ def load_sidebar_data():
     with st.sidebar:
         st.header("⚙️ Configuración")
 
+        # -----------------------------
+        # 1. Cargar archivo
+        # -----------------------------
         archivo = st.file_uploader(
             "📂 Cargar archivo Excel",
             type=["xlsx", "xlsm", "xls"],
@@ -22,24 +25,7 @@ def load_sidebar_data():
 
         st.caption("ℹ️ Archivos soportados: .xlsx, .xlsm y .xls")
 
-        # -----------------------------
-        # Configuración días laborales
-        # -----------------------------
-        st.subheader("📅 Configuración días laborales")
-
-        excluir_sabado = st.checkbox("Excluir sábado", value=True)
-        excluir_domingo = st.checkbox("Excluir domingo", value=True)
-        excluir_festivos = st.checkbox("Excluir festivos", value=True)
-
-        dias = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        if excluir_sabado:
-            dias.remove("Sat")
-        if excluir_domingo:
-            dias.remove("Sun")
-
-        weekmask = " ".join(dias)
-
-        # Inicializar variables
+        # Inicialización segura
         df = None
         col_inicio = None
         col_fin = None
@@ -57,7 +43,7 @@ def load_sidebar_data():
         sla_autopsia = 30
 
         # -----------------------------
-        # Lectura del archivo
+        # 2. Seleccionar hoja del Excel
         # -----------------------------
         if archivo is not None:
             nombre = archivo.name.lower()
@@ -67,7 +53,6 @@ def load_sidebar_data():
             else:
                 xls = pd.ExcelFile(archivo, engine="openpyxl")
 
-            # Selección de hoja
             hoja = st.selectbox(
                 "📄 Seleccione la hoja del Excel",
                 xls.sheet_names
@@ -77,7 +62,24 @@ def load_sidebar_data():
             columnas = df.columns.tolist()
 
             # -----------------------------
-            # SLA específico por ESTUDIO
+            # 3. Configuración días laborales
+            # -----------------------------
+            st.subheader("📅 Configuración días laborales")
+
+            excluir_sabado = st.checkbox("Excluir sábado", value=True)
+            excluir_domingo = st.checkbox("Excluir domingo", value=True)
+            excluir_festivos = st.checkbox("Excluir festivos", value=True)
+
+            dias = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            if excluir_sabado:
+                dias.remove("Sat")
+            if excluir_domingo:
+                dias.remove("Sun")
+
+            weekmask = " ".join(dias)
+
+            # -----------------------------
+            # 4. SLA específico por ESTUDIO
             # -----------------------------
             st.subheader("🎯 SLA específico por ESTUDIO (opcional)")
 
@@ -98,7 +100,7 @@ def load_sidebar_data():
                     )
                 else:
                     # -----------------------------
-                    # SLA generales (solo si NO hay estudio especial)
+                    # 5. SLA generales
                     # -----------------------------
                     st.subheader("⏱️ Días de oportunidad (SLA generales)")
 
@@ -123,14 +125,14 @@ def load_sidebar_data():
                     )
 
             # -----------------------------
-            # Columnas de fecha
+            # 6. Columnas de fecha
             # -----------------------------
             st.subheader("📅 Columnas de fecha")
             col_inicio = st.selectbox("Columna fecha inicio", columnas)
             col_fin = st.selectbox("Columna fecha fin", columnas)
 
             # -----------------------------
-            # Filtros de negocio
+            # 7. Filtros de negocio
             # -----------------------------
             st.subheader("🏢 Filtros de negocio")
 
@@ -142,7 +144,16 @@ def load_sidebar_data():
                 secciones = df["SECCION"].dropna().unique().tolist()
                 seccion_sel = st.multiselect("Filtrar por sección", secciones)
 
+            # -----------------------------
+            # 8. Procesar
+            # -----------------------------
             procesar = st.button("🚀 Procesar")
+
+        else:
+            excluir_sabado = True
+            excluir_domingo = True
+            excluir_festivos = True
+            weekmask = "Mon Tue Wed Thu Fri"
 
     # -----------------------------
     # Config final
