@@ -55,6 +55,20 @@ def load_sidebar_data():
             st.info("ℹ️ Cargue un archivo Excel para continuar.")
             st.stop()
 
+        # -------------------------------------
+        # ✅ Validación: archivo inválido (Word, PDF, etc.)
+        # -------------------------------------
+        if archivo.size == 0:
+            st.error(
+                "❌ El archivo cargado no es un Excel válido.\n\n"
+                "📌 Formatos permitidos:\n"
+                "- .xls\n"
+                "- .xlsx\n"
+                "- .xlsm\n\n"
+                "Por favor cargue un archivo Excel correcto."
+            )
+            st.stop()
+
         nombre = archivo.name.lower()
 
         # Validar extensión
