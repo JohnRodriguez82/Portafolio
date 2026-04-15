@@ -77,6 +77,7 @@ def load_sidebar_data():
         # 2. Validar archivo cargado
         # =====================================
         if archivo is None:
+            st.session_state.pop("archivo_validado_id", None)
             st.info("ℹ️ Cargue un archivo Excel para continuar.")
             st.stop()
 
@@ -126,8 +127,12 @@ def load_sidebar_data():
             )
             st.stop()
 
-        # ✅ Feedback positivo (opcional recomendado)
-        st.toast("✅ Archivo Excel válido y cargado", icon="✅")
+        # ✅ Feedback positivo 
+        archivo_id = f"{archivo.name}_{archivo.size}"
+
+        if st.session_state.get("archivo_validado_id") != archivo_id:
+            st.toast("✅ Archivo Excel válido y cargado", icon="✅")
+            st.session_state["archivo_validado_id"] = archivo_id
 
         # =====================================
         # 3. Seleccionar hoja
