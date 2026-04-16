@@ -1,12 +1,13 @@
-
 import pandas as pd
 
 
 def eliminar_duplicados(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     """
-    Elimina registros duplicados conservando:
-    - el más reciente según una columna auxiliar de fecha
-    - sin modificar las columnas originales de fecha
+    Elimina registros duplicados sin modificar las columnas originales.
+    - Usa una columna auxiliar de fecha SOLO para ordenar.
+    - Conserva:
+        • el más reciente si existe fecha válida
+        • uno cualquiera si no hay fecha válida
     """
 
     if not config.get("aplicar_deduplicacion"):
@@ -20,33 +21,36 @@ def eliminar_duplicados(df: pd.DataFrame, config: dict) -> pd.DataFrame:
 
     df = df.copy()
 
-    # ✅ Crear columna auxiliar SOLO para deduplicación
-    col_aux = "__fecha_dedup_aux__"
+    # ✅ Columna auxiliar solo para deduplicación
+    aux_col = "__fecha_dedup_aux__"
 
-    df[col_aux] = pd.to_datetime(
+    df[aux_col] = pd.to_datetime(
         df[col_fecha],
         errors="coerce",
-        dayfirst=True  # 🔑 MUY IMPORTANTE para tu formato
+        dayfirst=True
     )
 
-    # Separar con y sin fecha válida (auxiliar)
-    df_con_fecha = df[df[col_aux].notna()]
-    df_sin_fecha = df[df[col_aux].isna()]
+    # Separar con y sin fecha válida
+    df_con_fecha = df[df[aux_col].notna()]
+    df_sin_fecha = df[df[aux_col].isna()]
 
-    # ✅ Con fecha válida → conservar el más reciente
+    # ✅ Con fecha → conservar el más reciente
     df_con_fecha = (
         df_con_fecha
-        .sort_values(by=col_aux, ascending=False)
+        .sort_values(by=aux_col, ascending=False)
         .drop_duplicates(subset=col_id, keep="first")
     )
 
-    # ✅ Sin fecha válida → dejar uno cualquiera
-    df_sin_fecha = df_sin_fecha.drop_duplicates(subset=col_id, keep="first")
+    # ✅ Sin fecha → dejar uno cualquiera
+    df_sin_fecha = (
+        df_sin_fecha
+        .drop_duplicates(subset=col_id, keep="first")
+    )
 
     # Unir resultados
     df_final = pd.concat([df_con_fecha, df_sin_fecha], ignore_index=True)
 
-    # ✅ Eliminar columna auxiliar (NO contaminar cálculo)
-    df_final = df_final.drop(columns=[col_aux])
+    # ✅ Eliminar columna auxiliar
+    df_final.drop(columns=[aux_col], inplace=True)
 
     return df_final
