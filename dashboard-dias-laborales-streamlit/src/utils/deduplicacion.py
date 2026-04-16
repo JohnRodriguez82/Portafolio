@@ -3,11 +3,14 @@ import pandas as pd
 
 def eliminar_duplicados(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     """
-    Elimina registros duplicados sin modificar las columnas originales.
-    - Usa una columna auxiliar de fecha SOLO para ordenar.
-    - Conserva:
-        • el más reciente si existe fecha válida
-        • uno cualquiera si no hay fecha válida
+    Elimina registros duplicados dejando EXACTAMENTE UNO por identificador.
+
+    Prioridad:
+    1. Registro con fecha válida
+    2. Fecha más reciente
+    3. Si ninguno tiene fecha, deja uno cualquiera
+
+    NO modifica columnas originales del DataFrame.
     """
 
     if not config.get("aplicar_deduplicacion"):
@@ -21,36 +24,30 @@ def eliminar_duplicados(df: pd.DataFrame, config: dict) -> pd.DataFrame:
 
     df = df.copy()
 
-    # ✅ Columna auxiliar solo para deduplicación
-    aux_col = "__fecha_dedup_aux__"
+    # ✅ Columna auxiliar SOLO para deduplicación
+    aux_fecha = "__fecha_dedup_aux__"
 
-    df[aux_col] = pd.to_datetime(
+    df[aux_fecha] = pd.to_datetime(
         df[col_fecha],
         errors="coerce",
         dayfirst=True
     )
 
-    # Separar con y sin fecha válida
-    df_con_fecha = df[df[aux_col].notna()]
-    df_sin_fecha = df[df[aux_col].isna()]
+    # ✅ Bandera: tiene fecha válida
+    df["__tiene_fecha__"] = df[aux_fecha].notna()
 
-    # ✅ Con fecha → conservar el más reciente
-    df_con_fecha = (
-        df_con_fecha
-        .sort_values(by=aux_col, ascending=False)
-        .drop_duplicates(subset=col_id, keep="first")
+    # ✅ ORDEN CLAVE:
+    # 1. Primero los que tienen fecha
+    # 2. Luego la fecha más reciente
+    df = df.sort_values(
+        by=["__tiene_fecha__", aux_fecha],
+        ascending=[False, False]
     )
 
-    # ✅ Sin fecha → dejar uno cualquiera
-    df_sin_fecha = (
-        df_sin_fecha
-        .drop_duplicates(subset=col_id, keep="first")
-    )
+    # ✅ Ahora SÍ: un solo registro por ID
+    df = df.drop_duplicates(subset=col_id, keep="first")
 
-    # Unir resultados
-    df_final = pd.concat([df_con_fecha, df_sin_fecha], ignore_index=True)
+    # ✅ Limpiar columnas auxiliares
+    df = df.drop(columns=["__tiene_fecha__", aux_fecha])
 
-    # ✅ Eliminar columna auxiliar
-    df_final.drop(columns=[aux_col], inplace=True)
-
-    return df_final
+    return df
