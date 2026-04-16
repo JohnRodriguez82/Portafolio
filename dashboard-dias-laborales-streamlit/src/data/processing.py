@@ -237,6 +237,14 @@ def load_sidebar_data():
             ]
         )
 
+        # -------------------------------------
+        # ✅ Validación: tipo de SLA obligatorio
+        # -------------------------------------
+        if tipo_sla == "Seleccione una opción":
+            st.warning(
+                "⚠️ Debe seleccionar un tipo de SLA para poder procesar los datos."
+            )
+
         if tipo_sla == "SLA específico por ESTUDIO" and "ESTUDIO" in columnas:
             st.subheader("🎯 SLA específico por ESTUDIO")
 
@@ -280,9 +288,20 @@ def load_sidebar_data():
         # =====================================
         procesar = st.button("🚀 Procesar")
 
-    # =====================================
-    # Config final
-    # =====================================
+        # -------------------------------------
+        # ❌ Bloquear procesamiento sin SLA
+        # -------------------------------------
+        if procesar and tipo_sla == "Seleccione una opción":
+            st.error(
+                "❌ No es posible procesar.\n\n"
+                "Debe seleccionar un tipo de SLA antes de continuar."
+            )
+            procesar = False
+        
+            # =====================================
+            # Config final
+            # =====================================
+
     config = {
          # Configuración existente
         "col_inicio": col_inicio,
