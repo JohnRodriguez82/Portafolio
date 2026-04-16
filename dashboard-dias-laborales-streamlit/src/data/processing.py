@@ -170,6 +170,35 @@ def load_sidebar_data():
                 "Columna de fecha para conservar el registro más reciente",
                 columnas
             )
+
+        # -------------------------------------
+        # ✅ Validación: la columna seleccionada debe ser fecha
+        # -------------------------------------
+        if columna_fecha_dedup is not None:
+        
+            # Intentar convertir la columna seleccionada a datetime
+            fechas_parseadas = pd.to_datetime(
+                df[columna_fecha_dedup],
+                errors="coerce",
+                dayfirst=True
+            )
+        
+            porcentaje_valido = fechas_parseadas.notna().mean()
+        
+            if porcentaje_valido < 0.7:  # umbral recomendado (70%)
+                st.error(
+                    "❌ La columna seleccionada NO es una columna de fecha válida.\n\n"
+                    "📌 Requisitos:\n"
+                    "- Debe contener fechas reconocibles\n"
+                    "- No debe ser texto libre o códigos\n\n"
+                    "👉 Por favor seleccione una columna de fecha válida."
+                )
+        
+                # ❌ Bloquear procesamiento
+                aplicar_deduplicacion = False
+                columna_fecha_dedup = None
+        
+                st.stop()
         # =====================================
         # 4. Columnas de fecha
         # =====================================
