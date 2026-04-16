@@ -282,31 +282,42 @@ def load_sidebar_data():
 
     return df, config
 
-
 def process_dataframe(df: pd.DataFrame, config: dict):
     """
-    Limpia fechas y calcula días laborales
+    Calcula días laborales SIN modificar las columnas originales del archivo.
+    Usa columnas auxiliares técnicas para el cálculo.
     """
     start_time = time.time()
     df = df.copy()
 
-    df["fecha_inicio"] = limpiar_fechas(df[config["col_inicio"]])
-    df["fecha_fin"] = limpiar_fechas(df[config["col_fin"]])
+    # ✅ Columnas auxiliares (NO tocar FECHA ni FECHAVALIDO)
+    df["__fecha_inicio_calc__"] = limpiar_fechas(df[config["col_inicio"]])
+    df["__fecha_fin_calc__"] = limpiar_fechas(df[config["col_fin"]])
 
     df["Dias_Laborales_num"] = np.nan
     df["Dias_Laborales"] = "Sin dato"
 
     festivos = obtener_festivos() if config["excluir_festivos"] else []
 
+    # ✅ Máscara correcta (Python real, sin HTML)
     mask_validas = (
-        df["fecha_inicio"].notna()
-        & df["fecha_fin"].notna()
-        & (df["fecha_fin"] >= df["fecha_inicio"])
+        df["__fecha_inicio_calc__"].notna()
+        & df["__fecha_fin_calc__"].notna()
+        & (df["__fecha_fin_calc__"] >= df["__fecha_inicio_calc__"])
     )
 
     if mask_validas.any():
-        inicio_vals = df.loc[mask_validas, "fecha_inicio"].values.astype("datetime64[D]")
-        fin_vals = df.loc[mask_validas, "fecha_fin"].values.astype("datetime64[D]")
+        inicio_vals = (
+            df.loc[mask_validas, "__fecha_inicio_calc__"]
+            .values
+            .astype("datetime64[D]")
+        )
+
+        fin_vals = (
+            df.loc[mask_validas, "__fecha_fin_calc__"]
+            .values
+            .astype("datetime64[D]")
+        )
 
         dias = np.busday_count(
             inicio_vals,
