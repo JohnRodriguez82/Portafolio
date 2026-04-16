@@ -317,6 +317,7 @@ def load_sidebar_data():
         "sla_citologia": sla_citologia,
         "sla_hematopatologia": sla_hematopatologia,
         "sla_autopsia": sla_autopsia,
+        "tipo_sla": tipo_sla,
     
         # SLA por estudio
         "estudio_especial": estudio_especial,
