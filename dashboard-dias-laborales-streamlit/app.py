@@ -48,66 +48,79 @@ if df is not None:
 # =========================
 if df is not None and config["procesar"]:
 
-    col_inicio = config.get("col_inicio")
-    col_fin = config.get("col_fin")
-
-    if not col_inicio or not col_fin:
-        st.warning(
-            "⚠️ Debe seleccionar columnas válidas para Fecha inicio y Fecha fin."
+    # -------------------------------------
+    # ✅ VALIDACIÓN OBLIGATORIA: TIPO DE SLA
+    # -------------------------------------
+    if config.get("tipo_sla") == "Seleccione una opción":
+        st.error(
+            "❌ Debe seleccionar un tipo de SLA antes de procesar.\n\n"
+            "Seleccione:\n"
+            "- SLA específico por ESTUDIO, o\n"
+            "- SLA generales."
         )
         st.session_state.df_procesado = None
         st.session_state.duracion = None
 
-    elif col_inicio == col_fin:
-        st.warning(
-            "⚠️ La columna de Fecha inicio y Fecha fin no pueden ser la misma."
-        )
-        st.session_state.df_procesado = None
-        st.session_state.duracion = None
-
-    elif col_inicio not in df.columns or col_fin not in df.columns:
-        st.warning(
-            "⚠️ Las columnas seleccionadas de fecha no existen en el archivo."
-        )
-        st.session_state.df_procesado = None
-        st.session_state.duracion = None
-
-    elif (
-        limpiar_fechas(df[col_inicio]).notna().mean() < 0.7
-        or
-        limpiar_fechas(df[col_fin]).notna().mean() < 0.7
-    ):
-        st.warning(
-            "⚠️ Una o ambas columnas seleccionadas "
-            "**no contienen fechas válidas**."
-        )
-        st.session_state.df_procesado = None
-        st.session_state.duracion = None
-
+    # -------------------------------------
+    # VALIDACIONES EXISTENTES
+    # -------------------------------------
     else:
-        # limpieza previa (si el usuario lo activó)
-        df_limpio = eliminar_duplicados(df, config)
+        col_inicio = config.get("col_inicio")
+        col_fin = config.get("col_fin")
 
-        
-        # MENSAJE INFORMATIVO 
-        if config.get("aplicar_deduplicacion"):
-            st.info(
-                f"🧹 Registros originales: {len(df):,}\n"
-                f"✅ Registros después de limpieza: {len(df_limpio):,}"
+        if not col_inicio or not col_fin:
+            st.warning(
+                "⚠️ Debe seleccionar columnas válidas para Fecha inicio y Fecha fin."
             )
-    
-        # cálculo normal
-        df_procesado, duracion = process_dataframe(df_limpio, config)
-    
-        # reglas de negocio
-        df_procesado = aplicar_reglas_negocio(df_procesado, config)
-    
-        # Guardar en session_state
-        st.session_state.df_procesado = df_procesado
-        st.session_state.duracion = duracion
+            st.session_state.df_procesado = None
+            st.session_state.duracion = None
 
-        # guardaruardar cantidad de duplicados
-        st.session_state.duplicados = len(df) - len(df_limpio)
+        elif col_inicio == col_fin:
+            st.warning(
+                "⚠️ La columna de Fecha inicio y Fecha fin no pueden ser la misma."
+            )
+            st.session_state.df_procesado = None
+            st.session_state.duracion = None
+
+        elif col_inicio not in df.columns or col_fin not in df.columns:
+            st.warning(
+                "⚠️ Las columnas seleccionadas de fecha no existen en el archivo."
+            )
+            st.session_state.df_procesado = None
+            st.session_state.duracion = None
+
+        elif (
+            limpiar_fechas(df[col_inicio]).notna().mean() < 0.7
+            or
+            limpiar_fechas(df[col_fin]).notna().mean() < 0.7
+        ):
+            st.warning(
+                "⚠️ Una o ambas columnas seleccionadas "
+                "**no contienen fechas válidas**."
+            )
+            st.session_state.df_procesado = None
+            st.session_state.duracion = None
+
+        else:
+            # ✅ LIMPIEZA PREVIA (si aplica)
+            df_limpio = eliminar_duplicados(df, config)
+
+            if config.get("aplicar_deduplicacion"):
+                st.info(
+                    f"🧹 Registros originales: {len(df):,}\n"
+                    f"✅ Registros después de limpieza: {len(df_limpio):,}"
+                )
+
+            # ✅ CÁLCULO
+            df_procesado, duracion = process_dataframe(df_limpio, config)
+
+            # ✅ REGLAS DE NEGOCIO
+            df_procesado = aplicar_reglas_negocio(df_procesado, config)
+
+            # ✅ GUARDAR RESULTADOS
+            st.session_state.df_procesado = df_procesado
+            st.session_state.duracion = duracion
+            st.session_state.duplicados = len(df) - len(df_limpio)
 
 # =========================
 # MENSAJE INICIAL (SOLO SI NO HAY RESULTADOS)
