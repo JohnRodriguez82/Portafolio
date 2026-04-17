@@ -1,8 +1,3 @@
-import altair as alt
-import streamlit as st
-import pandas as pd
-
-
 def render_charts(df: pd.DataFrame):
     st.subheader("Cumplimiento por sección")
     st.caption(
@@ -21,8 +16,8 @@ def render_charts(df: pd.DataFrame):
         0: "Fuera de oportunidad",
     })
 
-    total_seccion = resumen.groupby("SECCION")["Total"].transform("sum")
-    resumen["Porcentaje"] = (resumen["Total"] / total_seccion * 100).round(1)
+    total = resumen.groupby("SECCION")["Total"].transform("sum")
+    resumen["Porcentaje"] = (resumen["Total"] / total * 100).round(1)
 
     resumen["Etiqueta"] = (
         resumen["Total"].astype(int).astype(str)
@@ -40,33 +35,13 @@ def render_charts(df: pd.DataFrame):
         alt.Chart(resumen)
         .mark_bar()
         .encode(
-            x=alt.X(
-                "SECCION:N",
-                title="Sección",
-                axis=alt.Axis(
-                    labelAngle=-90,
-                    labelColor="#374151",
-                    titleColor="#374151",
-                ),
-            ),
+            x=alt.X("SECCION:N", title="Sección"),
             xOffset="Estado:N",
-            y=alt.Y(
-                "Total:Q",
-                title="Cantidad de registros",
-                axis=alt.Axis(
-                    labelColor="#374151",
-                    titleColor="#374151",
-                    gridColor="#9ca3af",
-                ),
-            ),
+            y=alt.Y("Total:Q", title="Cantidad de registros"),
             color=alt.Color(
                 "Estado:N",
                 scale=color_scale,
-                legend=alt.Legend(
-                    title="Estado",
-                    labelColor="#374151",
-                    titleColor="#374151",
-                ),
+                legend=alt.Legend(title="Estado"),
             ),
         )
     )
@@ -74,10 +49,9 @@ def render_charts(df: pd.DataFrame):
     texto = (
         alt.Chart(resumen)
         .mark_text(
-            dy=-6,
+            dy=-5,
             fontSize=12,
             fontWeight="bold",
-            color="#111827",  # ✅ visible en claro y oscuro
         )
         .encode(
             x="SECCION:N",
@@ -87,10 +61,4 @@ def render_charts(df: pd.DataFrame):
         )
     )
 
-    grafica = (
-        barras + texto
-    ).configure_view(
-        stroke=None
-    )
-
-    st.altair_chart(grafica, use_container_width=True)
+    st.altair_chart(barras + texto, use_container_width=True)
