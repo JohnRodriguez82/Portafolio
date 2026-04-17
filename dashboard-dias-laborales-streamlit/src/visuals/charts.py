@@ -94,7 +94,7 @@ def render_charts(df: pd.DataFrame):
             xOffset="Estado:N",
             y="Total:Q",
             text="Etiqueta:N",
-            color=alt.value("#4b5563")
+            color=alt.value("#E5E7EB")
         )
     )
 
