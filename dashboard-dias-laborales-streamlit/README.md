@@ -13,10 +13,10 @@ Dashboard interactivo desarrollado en Python y Streamlit para el análisis de ti
 ## 📸 Capturas de la aplicación
 
 ### Indicadores y gráfico principal
-![KPIs con eliminación de duplicados](screenshots/04_kpis_with_deduplication.png)
+![KPIs con eliminación de duplicados](screenshots/04_kpis_with_deduplication.jpg)
 
 ### Duplicados eliminados por sección
-![Duplicados por sección](screenshots/05_deleted_duplicates_by_section.png)
+![Duplicados por sección](screenshots/05_deleted_duplicates_by_section.jpg)
 
 ## 🧪 Tests
 El proyecto incluye tests unitarios con pytest para:
