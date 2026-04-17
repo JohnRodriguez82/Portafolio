@@ -19,9 +19,9 @@ def mostrar_kpis(df: pd.DataFrame, duracion: float):
     c2.metric("Cumplimiento global", f"{cumplimiento:.1f}%")
     c3.metric("Promedio días", round(promedio, 2))
     c4.metric("Registros sin fecha final", sin_fecha)
-
+    
     if duplicados is not None:
-        c5.metric("🧹 Duplicados eliminados", f"{duplicados:,}")
+        c5.metric("🧹 Duplicados eliminados", f"{duplicados:,}"
 
 def cumplimiento_global(df: pd.DataFrame) -> float:
     """
