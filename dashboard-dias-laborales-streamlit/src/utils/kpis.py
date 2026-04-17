@@ -25,3 +25,12 @@ def mostrar_kpis(df: pd.DataFrame, duracion: float):
     c3.metric("Promedio días", round(promedio, 2))
     c4.metric("Registros sin fecha final", sin_fecha)
     c5.metric("🧹 Duplicados eliminados", f"{duplicados:,}")
+
+def cumplimiento_global(df: pd.DataFrame) -> float:
+    """
+    Calcula el cumplimiento global (% Dentro_Oportunidad)
+    """
+    if df.empty or "Dentro_Oportunidad" not in df.columns:
+        return 0.0
+
+    return df["Dentro_Oportunidad"].mean() * 100
