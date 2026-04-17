@@ -32,7 +32,6 @@ def render_charts(df: pd.DataFrame):
     total_seccion = resumen.groupby("SECCION")["Total"].transform("sum")
     resumen["Porcentaje"] = (resumen["Total"] / total_seccion * 100).round(1)
 
-    # Texto para leyenda y etiquetas
     resumen["Etiqueta"] = (
         resumen["Total"].astype(int).astype(str)
         + " / "
@@ -41,43 +40,24 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # ORDEN Y COLORES FIJOS
+    # COLORES FIJOS
     # =========================
-    estado_order = ["Dentro de oportunidad", "Fuera de opportunity"]
-
-    resumen["Estado"] = pd.Categorical(
-        resumen["Estado"],
-        categories=["Dentro de oportunidad", "Fuera de oportunidad"],
-        ordered=True,
-    )
-
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=[
-            "#1f77b4",  # Azul oscuro → Dentro
-            "#aec7e8",  # Azul claro  → Fuera
-        ],
+        range=["#1f77b4", "#aec7e8"],
     )
 
     # =========================
-    # BARRAS AGRUPADAS (NO APILADAS)
+    # BARRAS AGRUPADAS (SIN LEYENDA AUTOMÁTICA)
     # =========================
     barras = (
         alt.Chart(resumen)
         .mark_bar()
         .encode(
             x=alt.X("SECCION:N", title="Sección"),
-            xOffset=alt.XOffset("Estado:N"),
+            xOffset="Estado:N",
             y=alt.Y("Total:Q", title="Cantidad de registros"),
-            color=alt.Color(
-                "Estado:N",
-                scale=color_scale,
-                legend=alt.Legend(
-                    title="Estado (cantidad / %)",
-                    orient="right",
-                    labelExpr="datum.label"
-                ),
-            ),
+            color=alt.Color("Estado:N", scale=color_scale, legend=None),
             tooltip=[
                 alt.Tooltip("SECCION:N", title="Sección"),
                 alt.Tooltip("Estado:N", title="Estado"),
@@ -88,15 +68,11 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO SOBRE CADA BARRA
+    # TEXTO SOBRE BARRAS
     # =========================
     texto = (
         alt.Chart(resumen)
-        .mark_text(
-            dy=-5,
-            fontSize=12,
-            color="#000000"
-        )
+        .mark_text(dy=-6, color="white", fontSize=11)
         .encode(
             x="SECCION:N",
             xOffset="Estado:N",
@@ -106,21 +82,45 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # MOSTRAR
+    # LEYENDA MANUAL (ROBUSTA)
     # =========================
+    leyenda_df = pd.DataFrame({
+        "y": [1, 0],
+        "Color": ["#1f77b4", "#aec7e8"],
+        "Texto": [
+            "Dentro de oportunidad  (cantidad / %)",
+            "Fuera de oportunidad   (cantidad / %)",
+        ],
+    })
 
-    final_chart = (
-        barras + texto
-    ).configure_legend(
-        labelColor="white",
-        titleColor="white"
-    ).configure_axis(
-        labelColor="white",
-        titleColor="white",
-        gridColor="#444444"
-    ).configure_view(
-        fill="transparent",
-        strokeWidth=0
+    leyenda_color = (
+        alt.Chart(leyenda_df)
+        .mark_square(size=180)
+        .encode(
+            y=alt.Y("y:O", axis=None),
+            color=alt.Color("Color:N", scale=None),
+        )
+        .properties(width=20)
     )
-    
-    st.altair_chart(final_chart, use_container_width=True)
+
+    leyenda_texto = (
+        alt.Chart(leyenda_df)
+        .mark_text(
+            align="left",
+            dx=10,
+            fontSize=12,
+            color="white"
+        )
+        .encode(
+            y=alt.Y("y:O", axis=None),
+            text="Texto:N",
+        )
+        .properties(width=260)
+    )
+
+    grafica = (
+        (barras + texto)
+        | (leyenda_color + leyenda_texto)
+    )
+
+    st.altair_chart(grafica, use_container_width=True)
