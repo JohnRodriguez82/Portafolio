@@ -88,10 +88,7 @@ def render_charts(df: pd.DataFrame):
         .mark_text(
             dy=-5,
             fontSize=12,            
-            color="#E5E7EB",          # color claro base
-            stroke="#111827",         # borde oscuro (halo)
-            strokeWidth=1.5,
-
+            color="#e5e7eb",         
         )
         .encode(
             x="SECCION:N",
