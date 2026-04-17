@@ -118,9 +118,14 @@ def render_charts(df: pd.DataFrame):
         .properties(width=260)
     )
 
-    grafica = (
-        (barras + texto)
-        | (leyenda_color + leyenda_texto)
+    # =========================
+    # COMPOSICIÓN FINAL CORRECTA
+    # =========================
+    grafica = alt.hconcat(
+        barras + texto,
+        leyenda_color + leyenda_texto
+    ).resolve_scale(
+        color="independent"
     )
 
-    st.altair_chart(grafica, use_container_width=True)
+    st.altair_chart(grafica, use_container_width=True
