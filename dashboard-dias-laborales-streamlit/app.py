@@ -223,7 +223,26 @@ if st.session_state.df_procesado is not None:
             delta=f"{impacto_seccion['delta']:+.1f} %",
             delta_color="inverse"
         )
-
+    # -------------------------
+    # Tabla: Duplicados eliminados por sección
+    # -------------------------
+    elim_seccion = st.session_state.get("eliminados_por_seccion")
+    
+    if elim_seccion is not None and not elim_seccion.empty:
+        st.subheader("🧹 Duplicados eliminados por sección")
+        st.caption(
+            "Registros eliminados al aplicar la limpieza de duplicados, "
+            "distribuidos por sección."
+        )
+    
+        st.dataframe(
+            elim_seccion
+            .rename("Duplicados eliminados")
+            .reset_index()
+            .rename(columns={"index": "SECCION"})
+            .sort_values("Duplicados eliminados", ascending=False),
+            use_container_width=True
+        )
     # -------------------------
     # GRÁFICAS
     # -------------------------
