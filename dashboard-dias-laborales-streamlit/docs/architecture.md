@@ -47,7 +47,7 @@ src/
 ```
 ## 4. Flujo General de Datos
 
-4.1. El usuario carga un archivo Excel desde el sidebar.
+### 4.1. El usuario carga un archivo Excel desde el sidebar.
 4.2. Se aplican filtros opcionales (sede, sección, estudio).
 4.3. El usuario configura:
 - columnas de fecha,
