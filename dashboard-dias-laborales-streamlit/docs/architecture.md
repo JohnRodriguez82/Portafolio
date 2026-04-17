@@ -24,7 +24,6 @@ El sistema está diseñado con una arquitectura modular, priorizando:
 
 ## 3. Estructura del Proyecto
 
-```text
 src/
 ├── config/
 │   └── settings.py          # Configuración general de la página
