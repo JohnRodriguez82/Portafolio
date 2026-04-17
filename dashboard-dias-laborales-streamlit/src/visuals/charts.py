@@ -87,14 +87,17 @@ def render_charts(df: pd.DataFrame):
         alt.Chart(resumen)
         .mark_text(
             dy=-5,
-            fontSize=12,
+            fontSize=12,            
+            color="#E5E7EB",          # color claro base
+            stroke="#111827",         # borde oscuro (halo)
+            strokeWidth=1.5,
+
         )
         .encode(
             x="SECCION:N",
             xOffset="Estado:N",
             y="Total:Q",
             text="Etiqueta:N",
-            color=alt.value("#E5E7EB")
         )
     )
 
