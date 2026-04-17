@@ -7,24 +7,21 @@ def mostrar_kpis(df: pd.DataFrame, duracion: float):
     st.caption(f"⏱ Procesado en {duracion:.2f}s | {len(df):,} registros")
 
     total = len(df)
-
-    # Columna correcta
     cumplimiento = df["Dentro_Oportunidad"].mean() * 100
-
     promedio = df["Dias_Laborales_num"].mean()
     sin_fecha = (df["Dias_Laborales"] == "Sin dato").sum()
 
-    # Obtener duplicados desde session_state
-    duplicados = st.session_state.get("duplicados", 0)
+    duplicados = st.session_state.get("duplicados")
 
-    # Pasamos a 5 columnas
     c1, c2, c3, c4, c5 = st.columns(5)
 
     c1.metric("Filas procesadas", f"{total:,}")
     c2.metric("Cumplimiento global", f"{cumplimiento:.1f}%")
     c3.metric("Promedio días", round(promedio, 2))
     c4.metric("Registros sin fecha final", sin_fecha)
-    c5.metric("🧹 Duplicados eliminados", f"{duplicados:,}")
+
+    if duplicados is not None:
+        c5.metric("🧹 Duplicados eliminados", f"{duplicados:,}")
 
 def cumplimiento_global(df: pd.DataFrame) -> float:
     """
