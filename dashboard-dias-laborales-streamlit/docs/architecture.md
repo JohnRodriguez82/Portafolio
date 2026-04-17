@@ -48,20 +48,20 @@ src/
 ## 4. Flujo General de Datos
 
 ### 4.1. El usuario carga un archivo Excel desde el sidebar.
-4.2. Se aplican filtros opcionales (sede, sección, estudio).
-4.3. El usuario configura:
+### 4.2. Se aplican filtros opcionales (sede, sección, estudio).
+### 4.3. El usuario configura:
 - columnas de fecha,
 - reglas de días laborales,
 - tipo de SLA,
 - opción de eliminación de duplicados.
-4.4. Al presionar Procesar:
+### 4.4. Al presionar Procesar:
 - se valida la configuración,
 - se ejecuta opcionalmente la deduplicación,
 - se calculan días laborales,
 - se aplican reglas de negocio (SLA),
 - se calculan KPIs generales y condicionales.
-4.5. Los resultados se almacenan en st.session_state.
-4.6. Se presentan:
+### 4.5. Los resultados se almacenan en st.session_state.
+### 4.6. Se presentan:
 - KPIs generales,
 - KPIs relacionados con duplicados (si aplica),
 - gráficas,
