@@ -9,6 +9,7 @@ from src.visuals.charts import render_charts
 from src.utils.export import dataframe_to_excel_bytes
 from src.utils.dates import limpiar_fechas
 from src.utils.deduplicacion import eliminar_duplicados
+from src.utils.kpis import cumplimiento_global
 
 # =========================
 # SESSION STATE INICIAL
@@ -122,6 +123,27 @@ if df is not None and config["procesar"]:
             st.session_state.duracion = duracion
             st.session_state.duplicados = len(df) - len(df_limpio)
 
+
+            #=====================================
+            # KPI: Impacto de eliminar duplicados
+            # =====================================
+
+            # Escenario SIN eliminar duplicados
+            df_sin_dupl, _ = process_dataframe(df, config)
+            df_sin_dupl = aplicar_reglas_negocio(df_sin_dupl, config)
+
+            cumplimiento_sin_dupl = cumplimiento_global(df_sin_dupl)
+
+            # Escenario CON eliminación de duplicados
+            cumplimiento_con_dupl = cumplimiento_global(df_procesado)
+
+            impacto_duplicados = cumplimiento_con_dupl - cumplimiento_sin_dupl
+
+            # Guardar en session_state
+            st.session_state.impacto_duplicados = impacto_duplicados
+            st.session_state.cumplimiento_base = cumplimiento_sin_dupl
+
+
 # =========================
 # MENSAJE INICIAL (SOLO SI NO HAY RESULTADOS)
 # =========================
@@ -139,6 +161,19 @@ if st.session_state.df_procesado is not None:
     # INDICADORES (KPI)
     # -------------------------
     mostrar_kpis(df_procesado, duracion)
+
+    # -------------------------
+    # KPI: Impacto de eliminar duplicados
+    # -------------------------
+    impacto = st.session_state.get("impacto_duplicados")
+
+    if impacto is not None:
+        st.metric(
+            label="Impacto de eliminar duplicados",
+            value=" ",
+            delta=f"{impacto:+.1f} %",
+            delta_color="inverse"
+        )
 
     # -------------------------
     # GRÁFICAS
