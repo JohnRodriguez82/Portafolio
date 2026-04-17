@@ -1,1 +1,51 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
 
+# =========================
+# Virtual Environments
+# =========================
+venv/
+.venv/
+env/
+
+# =========================
+# Streamlit
+# =========================
+.streamlit/secrets.toml
+.streamlit/cache/
+
+# =========================
+# IDEs / Editors
+# =========================
+.vscode/
+
+# =========================
+# Operating Systems
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+
+# =========================
+# Data files (local / user)
+# =========================
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+
+# =========================
+# Logs & temp files
+# =========================
+*.log
+*.zip
+
+# =========================
+# Tests / coverage
+# =========================
+.coverage
+pytest_cache/
