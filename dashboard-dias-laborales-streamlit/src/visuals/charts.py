@@ -35,7 +35,7 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # COLORES
+    # COLORES DE BARRAS
     # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
@@ -55,10 +55,7 @@ def render_charts(df: pd.DataFrame):
             color=alt.Color(
                 "Estado:N",
                 scale=color_scale,
-                legend=alt.Legend(
-                    title="Estado",
-                    orient="right"
-                ),
+                legend=alt.Legend(title="Estado"),
             ),
             tooltip=[
                 alt.Tooltip("SECCION:N", title="Sección"),
@@ -70,7 +67,7 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO SOBRE BARRAS (CLAVE)
+    # TEXTO SOBRE BARRAS
     # =========================
     texto = (
         alt.Chart(resumen)
@@ -78,7 +75,7 @@ def render_charts(df: pd.DataFrame):
             dy=-5,
             fontSize=12,
             fontWeight="bold",
-            color="#000000"
+            color="#000000",
         )
         .encode(
             x="SECCION:N",
@@ -88,6 +85,22 @@ def render_charts(df: pd.DataFrame):
         )
     )
 
-    final_chart = barras + texto
+    # =========================
+    # CONFIGURACIÓN DE FONDO FIJO
+    # =========================
+    grafica = (
+        barras + texto
+    ).configure_view(
+        fill="#ffffff",
+        stroke="#dddddd",
+        strokeWidth=1,
+    ).configure_axis(
+        labelColor="#000000",
+        titleColor="#000000",
+        gridColor="#e6e6e6",
+    ).configure_legend(
+        labelColor="#000000",
+        titleColor="#000000",
+    )
 
-    st.altair_chart(final_chart, use_container_width=True)
+    st.altair_chart(grafica, use_container_width=True)
