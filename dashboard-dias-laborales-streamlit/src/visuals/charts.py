@@ -35,11 +35,11 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # COLORES DE BARRAS
+    # COLORES DE BARRAS (SE MANTIENEN)
     # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"],
+        range=["#1f77b4", "#aec7e8"],  # azul oscuro / azul claro
     )
 
     # =========================
@@ -49,7 +49,11 @@ def render_charts(df: pd.DataFrame):
         alt.Chart(resumen)
         .mark_bar()
         .encode(
-            x=alt.X("SECCION:N", title="Sección"),
+            x=alt.X(
+                "SECCION:N",
+                title="Sección",
+                axis=alt.Axis(labelAngle=-90)
+            ),
             xOffset="Estado:N",
             y=alt.Y("Total:Q", title="Cantidad de registros"),
             color=alt.Color(
@@ -67,15 +71,15 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO SOBRE BARRAS
+    # TEXTO SOBRE BARRAS (CON COLOR ADAPTABLE)
     # =========================
     texto = (
         alt.Chart(resumen)
         .mark_text(
-            dy=-5,
+            dy=-6,
             fontSize=12,
             fontWeight="bold",
-            color="#000000",
+            color="#374151"  # gris oscuro, visible en ambos temas
         )
         .encode(
             x="SECCION:N",
@@ -85,25 +89,17 @@ def render_charts(df: pd.DataFrame):
         )
     )
 
-    # =========================
-    # CONFIGURACIÓN DE FONDO FIJO
-    # =========================
-    
     grafica = (
         barras + texto
-    ).properties(
-        height=480  # ✅ ESTE es el cambio clave
-    ).configure_view(
-        fill="#ffffff",
-        stroke="#dddddd",
-        strokeWidth=1,
     ).configure_axis(
-        labelColor="#000000",
-        titleColor="#000000",
-        gridColor="#e6e6e6",
+        labelColor="#4b5563",
+        titleColor="#4b5563",
+        gridColor="#9ca3af",
     ).configure_legend(
-        labelColor="#000000",
-        titleColor="#000000",
+        labelColor="#4b5563",
+        titleColor="#4b5563",
+    ).configure_view(
+        stroke=None
     )
 
     st.altair_chart(grafica, use_container_width=True)
