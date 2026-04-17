@@ -88,13 +88,13 @@ def render_charts(df: pd.DataFrame):
         .mark_text(
             dy=-5,
             fontSize=12,
-            color="#4b5563",
         )
         .encode(
             x="SECCION:N",
             xOffset="Estado:N",
             y="Total:Q",
             text="Etiqueta:N",
+            color=alt.value("#4b5563")
         )
     )
 
