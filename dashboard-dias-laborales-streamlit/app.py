@@ -118,6 +118,21 @@ if df is not None and config["procesar"]:
             df_procesado = aplicar_reglas_negocio(df_procesado, config)
 
             # ✅ GUARDAR RESULTADOS
+
+            # =====================================
+            # Cálculo: Duplicados eliminados por SECCIÓN
+            # =====================================
+            
+            conteo_original = df.groupby("SECCION").size()
+            conteo_limpio = df_limpio.groupby("SECCION").size()
+            
+            eliminados_por_seccion = (
+                conteo_original
+                .subtract(conteo_limpio, fill_value=0)
+                .astype(int)
+            )
+            
+            st.session_state.eliminados_por_seccion = eliminados_por_seccion
             st.session_state.df_procesado = df_procesado
             st.session_state.duracion = duracion
             st.session_state.duplicados = len(df) - len(df_limpio)
