@@ -34,3 +34,11 @@ def cumplimiento_global(df: pd.DataFrame) -> float:
         return 0.0
 
     return df["Dentro_Oportunidad"].mean() * 100
+
+
+def cumplimiento_por_seccion(df):
+    return (
+        df.groupby("SECCION")["Dentro_Oportunidad"]
+        .mean()
+        * 100
+    )
