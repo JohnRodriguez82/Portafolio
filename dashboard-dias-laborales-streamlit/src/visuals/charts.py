@@ -10,9 +10,6 @@ def render_charts(df: pd.DataFrame):
         "Los valores corresponden a los datos finales del análisis."
     )
 
-    # =========================
-    # RESUMEN
-    # =========================
     resumen = (
         df.groupby(["SECCION", "Dentro_Oportunidad"], dropna=False)
         .size()
@@ -34,17 +31,11 @@ def render_charts(df: pd.DataFrame):
         + "%"
     )
 
-    # =========================
-    # COLORES DE BARRAS (SE MANTIENEN)
-    # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"],  # azul oscuro / azul claro
+        range=["#1f77b4", "#aec7e8"],
     )
 
-    # =========================
-    # BARRAS AGRUPADAS
-    # =========================
     barras = (
         alt.Chart(resumen)
         .mark_bar()
@@ -52,34 +43,41 @@ def render_charts(df: pd.DataFrame):
             x=alt.X(
                 "SECCION:N",
                 title="Sección",
-                axis=alt.Axis(labelAngle=-90)
+                axis=alt.Axis(
+                    labelAngle=-90,
+                    labelColor="#374151",
+                    titleColor="#374151",
+                ),
             ),
             xOffset="Estado:N",
-            y=alt.Y("Total:Q", title="Cantidad de registros"),
+            y=alt.Y(
+                "Total:Q",
+                title="Cantidad de registros",
+                axis=alt.Axis(
+                    labelColor="#374151",
+                    titleColor="#374151",
+                    gridColor="#9ca3af",
+                ),
+            ),
             color=alt.Color(
                 "Estado:N",
                 scale=color_scale,
-                legend=alt.Legend(title="Estado"),
+                legend=alt.Legend(
+                    title="Estado",
+                    labelColor="#374151",
+                    titleColor="#374151",
+                ),
             ),
-            tooltip=[
-                alt.Tooltip("SECCION:N", title="Sección"),
-                alt.Tooltip("Estado:N", title="Estado"),
-                alt.Tooltip("Total:Q", title="Cantidad", format=","),
-                alt.Tooltip("Porcentaje:Q", title="Porcentaje", format=".1f"),
-            ],
         )
     )
 
-    # =========================
-    # TEXTO SOBRE BARRAS (CON COLOR ADAPTABLE)
-    # =========================
     texto = (
         alt.Chart(resumen)
         .mark_text(
             dy=-6,
             fontSize=12,
             fontWeight="bold",
-            color="#374151"  # gris oscuro, visible en ambos temas
+            color="#111827",  # ✅ visible en claro y oscuro
         )
         .encode(
             x="SECCION:N",
@@ -91,13 +89,6 @@ def render_charts(df: pd.DataFrame):
 
     grafica = (
         barras + texto
-    ).configure_axis(
-        labelColor="#4b5563",
-        titleColor="#4b5563",
-        gridColor="#9ca3af",
-    ).configure_legend(
-        labelColor="#4b5563",
-        titleColor="#4b5563",
     ).configure_view(
         stroke=None
     )
