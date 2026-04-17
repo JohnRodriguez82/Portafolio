@@ -108,4 +108,19 @@ def render_charts(df: pd.DataFrame):
     # =========================
     # MOSTRAR
     # =========================
-    st.altair_chart(barras + texto, use_container_width=True)
+
+    final_chart = (
+        barras + texto
+    ).configure_legend(
+        labelColor="white",
+        titleColor="white"
+    ).configure_axis(
+        labelColor="white",
+        titleColor="white",
+        gridColor="#444444"
+    ).configure_view(
+        fill="transparent",
+        strokeWidth=0
+    )
+    
+    st.altair_chart(final_chart, use_container_width=True)
