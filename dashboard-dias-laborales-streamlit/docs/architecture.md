@@ -50,10 +50,10 @@ src/
 4.1. El usuario carga un archivo Excel desde el sidebar.
 4.2. Se aplican filtros opcionales (sede, sección, estudio).
 4.3. El usuario configura:
--columnas de fecha,
--reglas de días laborales,
--tipo de SLA,
--opción de eliminación de duplicados.
+- columnas de fecha,
+- reglas de días laborales,
+- tipo de SLA,
+- opción de eliminación de duplicados.
 4.4. Al presionar Procesar:
 - se valida la configuración,
 - se ejecuta opcionalmente la deduplicación,
