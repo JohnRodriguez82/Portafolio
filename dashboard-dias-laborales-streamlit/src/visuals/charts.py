@@ -84,28 +84,13 @@ def render_charts(df: pd.DataFrame):
     # TEXTO SOBRE LAS BARRAS
     # =========================
     # Texto base oscuro
-    texto_oscuro = (
+
+    texto = (
         alt.Chart(resumen)
         .mark_text(
             dy=-5,
             fontSize=12,
-            color="#1f2937",  # gris oscuro
-        )
-        .encode(
-            x="SECCION:N",
-            xOffset="Estado:N",
-            y="Total:Q",
-            text="Etiqueta:N",
-        )
-    )
-    
-    # Texto superior claro (como el eje que te gusta)
-    texto_claro = (
-        alt.Chart(resumen)
-        .mark_text(
-            dy=-5,
-            fontSize=12,
-            color="#e5e7eb",  # gris claro de ejes
+            color="#e5e7eb",
         )
         .encode(
             x="SECCION:N",
@@ -118,4 +103,4 @@ def render_charts(df: pd.DataFrame):
     # =========================
     # MOSTRAR GRÁFICA
     # =========================
-    st.altair_chart(barras + texto_oscuro + texto_claro, use_container_width=True)
+    st.altair_chart(barras + texto, use_container_width=True)
