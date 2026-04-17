@@ -4,12 +4,11 @@ import pandas as pd
 from src.config.settings import setup_page
 from src.data.processing import load_sidebar_data, process_dataframe
 from src.utils.business_rules import aplicar_reglas_negocio
-from src.utils.kpis import mostrar_kpis
+from src.utils.kpis import mostrar_kpis, cumplimiento_global, cumplimiento_por_seccion
 from src.visuals.charts import render_charts
 from src.utils.export import dataframe_to_excel_bytes
 from src.utils.dates import limpiar_fechas
 from src.utils.deduplicacion import eliminar_duplicados
-from src.utils.kpis import cumplimiento_global
 
 # =========================
 # SESSION STATE INICIAL
@@ -143,6 +142,43 @@ if df is not None and config["procesar"]:
             st.session_state.impacto_duplicados = impacto_duplicados
             st.session_state.cumplimiento_base = cumplimiento_sin_dupl
 
+            # =====================================
+            # KPI: Impacto de eliminar duplicados por SECCIÓN
+            # =====================================
+            
+            # Cumplimiento por sección SIN eliminar duplicados
+            cumpl_sin_seccion = (
+                df_sin_dupl
+                .groupby("SECCION")["Dentro_Oportunidad"]
+                .mean()
+                * 100
+            )
+            
+            # Cumplimiento por sección CON eliminar duplicados
+            cumpl_con_seccion = (
+                df_procesado
+                .groupby("SECCION")["Dentro_Oportunidad"]
+                .mean()
+                * 100
+            )
+            
+            # Alinear índices por seguridad
+            impacto_seccion = cumpl_con_seccion - cumpl_sin_seccion
+            
+            # Quitar secciones con NaN si alguna no existe en ambos escenarios
+            impacto_seccion = impacto_seccion.dropna()
+            
+            if not impacto_seccion.empty:
+                seccion_mayor_impacto = impacto_seccion.abs().idxmax()
+                valor_impacto_seccion = impacto_seccion.loc[seccion_mayor_impacto]
+            
+                st.session_state.impacto_seccion = {
+                    "seccion": seccion_mayor_impacto,
+                    "delta": valor_impacto_seccion,
+                }
+            else:
+                st.session_state.impacto_seccion = None
+
 
 # =========================
 # MENSAJE INICIAL (SOLO SI NO HAY RESULTADOS)
@@ -161,17 +197,30 @@ if st.session_state.df_procesado is not None:
     # INDICADORES (KPI)
     # -------------------------
     mostrar_kpis(df_procesado, duracion)
-
+    
     # -------------------------
-    # KPI: Impacto de eliminar duplicados
+    # KPI: Impacto de eliminar duplicados (GLOBAL)
     # -------------------------
-    impacto = st.session_state.get("impacto_duplicados")
-
-    if impacto is not None:
+    impacto_global = st.session_state.get("impacto_duplicados")
+    
+    if impacto_global is not None:
         st.metric(
             label="Impacto de eliminar duplicados",
             value=" ",
-            delta=f"{impacto:+.1f} %",
+            delta=f"{impacto_global:+.1f} %",
+            delta_color="inverse"
+        )
+    
+    # -------------------------
+    # KPI: Sección con mayor impacto por duplicados
+    # -------------------------
+    impacto_seccion = st.session_state.get("impacto_seccion")
+    
+    if impacto_seccion:
+        st.metric(
+            label="Sección con mayor impacto por duplicados",
+            value=impacto_seccion["seccion"],
+            delta=f"{impacto_seccion['delta']:+.1f} %",
             delta_color="inverse"
         )
 
