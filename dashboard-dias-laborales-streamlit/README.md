@@ -9,6 +9,15 @@ Dashboard interactivo desarrollado en Python y Streamlit para el análisis de ti
 - Altair
 - Excel
 
+
+## 📸 Capturas de la aplicación
+
+### Indicadores y gráfico principal
+![KPIs con eliminación de duplicados](screenshots/04_kpis_with_deduplication.png)
+
+### Duplicados eliminados por sección
+![Duplicados por sección](screenshots/05_deleted_duplicates_by_section.png)
+
 ## 🧪 Tests
 El proyecto incluye tests unitarios con pytest para:
 - Limpieza de fechas
