@@ -24,6 +24,7 @@ El sistema está diseñado con una arquitectura modular, priorizando:
 
 ## 3. Estructura del Proyecto
 
+```text
 src/
 ├── config/
 │   └── settings.py          # Configuración general de la página
@@ -43,7 +44,7 @@ src/
 │
 ├── app.py                   # Orquestación principal de la aplicación
 └── requirements.txt
-
+```
 ## 4. Flujo General de Datos
 
 4.1. El usuario carga un archivo Excel desde el sidebar.
