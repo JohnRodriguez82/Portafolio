@@ -53,18 +53,12 @@ def render_charts(df: pd.DataFrame):
             xOffset="Estado:N",
             y=alt.Y("Total:Q", title="Cantidad de registros"),
             color=alt.Color("Estado:N", scale=color_scale, legend=None),
-            tooltip=[
-                alt.Tooltip("SECCION:N", title="Sección"),
-                alt.Tooltip("Estado:N", title="Estado"),
-                alt.Tooltip("Total:Q", title="Cantidad", format=","),
-                alt.Tooltip("Porcentaje:Q", title="Porcentaje", format=".1f"),
-            ],
         )
     )
 
     texto = (
         alt.Chart(resumen)
-        .mark_text(dy=-6, fontSize=11, color="white")
+        .mark_text(dy=-6, fontSize=11, color="#000000")
         .encode(
             x="SECCION:N",
             xOffset="Estado:N",
@@ -76,7 +70,7 @@ def render_charts(df: pd.DataFrame):
     grafico_principal = barras + texto
 
     # =========================
-    # LEYENDA MANUAL (SIN PROPERTIES)
+    # LEYENDA MANUAL CON FONDO
     # =========================
     leyenda_df = pd.DataFrame({
         "y": [1, 0],
@@ -86,6 +80,18 @@ def render_charts(df: pd.DataFrame):
             "Fuera de oportunidad (cantidad / %)",
         ],
     })
+
+    # Fondo semitransparente (funciona en ambos temas)
+    fondo_leyenda = (
+        alt.Chart(pd.DataFrame({"x": [0], "y": [0]}))
+        .mark_rect(
+            fill="#f3f3f3",
+            opacity=0.85,
+            stroke="#cfcfcf",
+            cornerRadius=6
+        )
+        .properties(width=300, height=90)
+    )
 
     leyenda_color = (
         alt.Chart(leyenda_df)
@@ -102,7 +108,7 @@ def render_charts(df: pd.DataFrame):
             align="left",
             dx=10,
             fontSize=12,
-            color="white",
+            color="#1a1a1a",
         )
         .encode(
             y=alt.Y("y:O", axis=None),
@@ -111,10 +117,9 @@ def render_charts(df: pd.DataFrame):
     )
 
     leyenda = (
-        leyenda_color + leyenda_texto
-    ).properties(
-        width=260,
-        height=80
+        fondo_leyenda
+        + leyenda_color
+        + leyenda_texto
     )
 
     # =========================
