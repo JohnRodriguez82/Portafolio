@@ -208,16 +208,24 @@ if st.session_state.df_procesado is not None:
     df_procesado = st.session_state.df_procesado
     duracion = st.session_state.duracion
 
-    # -------------------------
-    # INDICADORES (KPI)
-    # -------------------------
-    mostrar_kpis(df_procesado, duracion)
-    
-    # -------------------------
+# -------------------------
+# VISTAS RELACIONADAS CON DUPLICADOS
+# (Solo si se selecciona eliminar duplicados)
+# -------------------------
+if config.get("aplicar_deduplicacion"):
+
+    # KPI: # Duplicados eliminados (GENERAL)
+    total_duplicados = st.session_state.get("duplicados")
+
+    if total_duplicados is not None:
+        st.metric(
+            label="# Duplicados eliminados",
+            value=f"{total_duplicados:,}"
+        )
+
     # KPI: Impacto de eliminar duplicados (GLOBAL)
-    # -------------------------
     impacto_global = st.session_state.get("impacto_duplicados")
-    
+
     if impacto_global is not None:
         st.metric(
             label="Impacto de eliminar duplicados",
@@ -225,12 +233,10 @@ if st.session_state.df_procesado is not None:
             delta=f"{impacto_global:+.1f} %",
             delta_color="inverse"
         )
-    
-    # -------------------------
+
     # KPI: Sección con mayor impacto por duplicados
-    # -------------------------
     impacto_seccion = st.session_state.get("impacto_seccion")
-    
+
     if impacto_seccion:
         st.metric(
             label="Sección con mayor impacto por duplicados",
@@ -238,18 +244,17 @@ if st.session_state.df_procesado is not None:
             delta=f"{impacto_seccion['delta']:+.1f} %",
             delta_color="inverse"
         )
-    # -------------------------
+
     # Tabla: Duplicados eliminados por sección
-    # -------------------------
     elim_seccion = st.session_state.get("eliminados_por_seccion")
-    
+
     if elim_seccion is not None and not elim_seccion.empty:
         st.subheader("🧹 Duplicados eliminados por sección")
         st.caption(
             "Registros eliminados al aplicar la limpieza de duplicados, "
             "distribuidos por sección."
         )
-    
+
         st.dataframe(
             elim_seccion
             .rename("Duplicados eliminados")
