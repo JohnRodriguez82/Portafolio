@@ -4,12 +4,6 @@ import pandas as pd
 
 
 def render_charts(df: pd.DataFrame):
-    """
-    Gráfico de cumplimiento por sección.
-    Muestra dos barras (Dentro / Fuera) y una leyenda manual
-    compatible con tema claro y oscuro en Streamlit.
-    """
-
     st.subheader("Cumplimiento por sección")
     st.caption(
         "ℹ️ Dos barras por sección: dentro y fuera de la oportunidad. "
@@ -17,7 +11,7 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # RESUMEN POR SECCIÓN
+    # RESUMEN
     # =========================
     resumen = (
         df.groupby(["SECCION", "Dentro_Oportunidad"], dropna=False)
@@ -30,9 +24,6 @@ def render_charts(df: pd.DataFrame):
         0: "Fuera de oportunidad",
     })
 
-    # =========================
-    # PORCENTAJES
-    # =========================
     total_seccion = resumen.groupby("SECCION")["Total"].transform("sum")
     resumen["Porcentaje"] = (resumen["Total"] / total_seccion * 100).round(1)
 
@@ -44,28 +35,24 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # ESCALA DE COLORES (FIJA)
+    # COLORES
     # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"],  # azul oscuro / azul claro
+        range=["#1f77b4", "#aec7e8"],
     )
 
     # =========================
-    # BARRAS AGRUPADAS (SIN LEYENDA AUTOMÁTICA)
+    # BARRAS
     # =========================
     barras = (
         alt.Chart(resumen)
         .mark_bar()
         .encode(
             x=alt.X("SECCION:N", title="Sección"),
-            xOffset=alt.XOffset("Estado:N"),
+            xOffset="Estado:N",
             y=alt.Y("Total:Q", title="Cantidad de registros"),
-            color=alt.Color(
-                "Estado:N",
-                scale=color_scale,
-                legend=None  # ❌ quitamos leyenda automática
-            ),
+            color=alt.Color("Estado:N", scale=color_scale, legend=None),
             tooltip=[
                 alt.Tooltip("SECCION:N", title="Sección"),
                 alt.Tooltip("Estado:N", title="Estado"),
@@ -75,16 +62,9 @@ def render_charts(df: pd.DataFrame):
         )
     )
 
-    # =========================
-    # TEXTO SOBRE CADA BARRA
-    # =========================
     texto = (
         alt.Chart(resumen)
-        .mark_text(
-            dy=-6,
-            fontSize=11,
-            color="white"
-        )
+        .mark_text(dy=-6, fontSize=11, color="white")
         .encode(
             x="SECCION:N",
             xOffset="Estado:N",
@@ -93,13 +73,15 @@ def render_charts(df: pd.DataFrame):
         )
     )
 
+    grafico_principal = barras + texto
+
     # =========================
-    # LEYENDA MANUAL (ROBUSTA)
+    # LEYENDA MANUAL (SIN PROPERTIES)
     # =========================
     leyenda_df = pd.DataFrame({
         "y": [1, 0],
-        "Color": ["#1f77b4", "#aec7e8"],
-        "Texto": [
+        "color": ["#1f77b4", "#aec7e8"],
+        "texto": [
             "Dentro de oportunidad (cantidad / %)",
             "Fuera de oportunidad (cantidad / %)",
         ],
@@ -107,12 +89,11 @@ def render_charts(df: pd.DataFrame):
 
     leyenda_color = (
         alt.Chart(leyenda_df)
-        .mark_square(size=180)
+        .mark_square(size=160)
         .encode(
             y=alt.Y("y:O", axis=None),
-            color=alt.Color("Color:N", scale=None),
+            color=alt.Color("color:N", scale=None),
         )
-        .properties(width=20)
     )
 
     leyenda_texto = (
@@ -121,21 +102,27 @@ def render_charts(df: pd.DataFrame):
             align="left",
             dx=10,
             fontSize=12,
-            color="white"
+            color="white",
         )
         .encode(
             y=alt.Y("y:O", axis=None),
-            text="Texto:N",
+            text="texto:N",
         )
-        .properties(width=260)
+    )
+
+    leyenda = (
+        leyenda_color + leyenda_texto
+    ).properties(
+        width=260,
+        height=80
     )
 
     # =========================
-    # COMPOSICIÓN FINAL (CORRECTA)
+    # COMPOSICIÓN FINAL
     # =========================
     grafica = alt.hconcat(
-        barras + texto,
-        leyenda_color + leyenda_texto
+        grafico_principal,
+        leyenda
     ).resolve_scale(
         color="independent"
     )
