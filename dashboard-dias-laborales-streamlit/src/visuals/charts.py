@@ -4,6 +4,12 @@ import pandas as pd
 
 
 def render_charts(df: pd.DataFrame):
+    """
+    Gráfico de cumplimiento por sección.
+    Muestra dos barras (Dentro / Fuera) y una leyenda manual
+    compatible con tema claro y oscuro en Streamlit.
+    """
+
     st.subheader("Cumplimiento por sección")
     st.caption(
         "ℹ️ Dos barras por sección: dentro y fuera de la oportunidad. "
@@ -19,12 +25,10 @@ def render_charts(df: pd.DataFrame):
         .reset_index(name="Total")
     )
 
-    resumen["Estado"] = resumen["Dentro_Oportunidad"].map(
-        {
-            1: "Dentro de oportunidad",
-            0: "Fuera de oportunidad",
-        }
-    )
+    resumen["Estado"] = resumen["Dentro_Oportunidad"].map({
+        1: "Dentro de oportunidad",
+        0: "Fuera de oportunidad",
+    })
 
     # =========================
     # PORCENTAJES
@@ -40,11 +44,11 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # COLORES FIJOS
+    # ESCALA DE COLORES (FIJA)
     # =========================
     color_scale = alt.Scale(
         domain=["Dentro de oportunidad", "Fuera de oportunidad"],
-        range=["#1f77b4", "#aec7e8"],
+        range=["#1f77b4", "#aec7e8"],  # azul oscuro / azul claro
     )
 
     # =========================
@@ -55,9 +59,13 @@ def render_charts(df: pd.DataFrame):
         .mark_bar()
         .encode(
             x=alt.X("SECCION:N", title="Sección"),
-            xOffset="Estado:N",
+            xOffset=alt.XOffset("Estado:N"),
             y=alt.Y("Total:Q", title="Cantidad de registros"),
-            color=alt.Color("Estado:N", scale=color_scale, legend=None),
+            color=alt.Color(
+                "Estado:N",
+                scale=color_scale,
+                legend=None  # ❌ quitamos leyenda automática
+            ),
             tooltip=[
                 alt.Tooltip("SECCION:N", title="Sección"),
                 alt.Tooltip("Estado:N", title="Estado"),
@@ -68,11 +76,15 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # TEXTO SOBRE BARRAS
+    # TEXTO SOBRE CADA BARRA
     # =========================
     texto = (
         alt.Chart(resumen)
-        .mark_text(dy=-6, color="white", fontSize=11)
+        .mark_text(
+            dy=-6,
+            fontSize=11,
+            color="white"
+        )
         .encode(
             x="SECCION:N",
             xOffset="Estado:N",
@@ -88,8 +100,8 @@ def render_charts(df: pd.DataFrame):
         "y": [1, 0],
         "Color": ["#1f77b4", "#aec7e8"],
         "Texto": [
-            "Dentro de oportunidad  (cantidad / %)",
-            "Fuera de oportunidad   (cantidad / %)",
+            "Dentro de oportunidad (cantidad / %)",
+            "Fuera de oportunidad (cantidad / %)",
         ],
     })
 
@@ -119,7 +131,7 @@ def render_charts(df: pd.DataFrame):
     )
 
     # =========================
-    # COMPOSICIÓN FINAL CORRECTA
+    # COMPOSICIÓN FINAL (CORRECTA)
     # =========================
     grafica = alt.hconcat(
         barras + texto,
@@ -128,4 +140,4 @@ def render_charts(df: pd.DataFrame):
         color="independent"
     )
 
-    st.altair_chart(grafica, use_container_width=True
+    st.altair_chart(grafica, use_container_width=True)
