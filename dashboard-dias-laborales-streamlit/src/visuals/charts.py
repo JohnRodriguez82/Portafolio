@@ -88,8 +88,11 @@ def render_charts(df: pd.DataFrame):
     # =========================
     # CONFIGURACIÓN DE FONDO FIJO
     # =========================
+    
     grafica = (
         barras + texto
+    ).properties(
+        height=480  # ✅ ESTE es el cambio clave
     ).configure_view(
         fill="#ffffff",
         stroke="#dddddd",
