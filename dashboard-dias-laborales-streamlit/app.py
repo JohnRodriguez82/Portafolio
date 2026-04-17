@@ -135,8 +135,11 @@ if df is not None and config["procesar"]:
             st.session_state.eliminados_por_seccion = eliminados_por_seccion
             st.session_state.df_procesado = df_procesado
             st.session_state.duracion = duracion
-            st.session_state.duplicados = len(df) - len(df_limpio)
-
+            
+            if config.get("aplicar_deduplicacion"):
+                st.session_state.duplicados = len(df) - len(df_limpio)
+            else:
+                st.session_state.duplicados = None
 
             #=====================================
             # KPI: Impacto de eliminar duplicados
