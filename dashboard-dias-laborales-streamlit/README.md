@@ -33,3 +33,4 @@ pytest
 pip install -r requirements.txt
 streamlit run app.py
 
+##Proyecto creado con la ayuda de la IA a cargo de John Fredy Rodriguez Moreno
