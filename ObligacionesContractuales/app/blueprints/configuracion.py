@@ -1,15 +1,18 @@
 """
-Blueprint de autenticación.
+Blueprint de configuración de la aplicación.
 
-Incluye:
-- Login tradicional
-- Registro
-- Logout
-- Inicio de sesión con Google
-- Callback de Google
+Responsabilidades:
+- Mostrar la página de configuración.
+- Guardar la API Key de Gemini.
+- Obtener la API Key configurada.
+- Eliminar la API Key.
+- Mantener la configuración independiente de autenticación.
 
-La instancia OAuth es administrada por app/__init__.py.
+La autenticación y Google OAuth pertenecen exclusivamente
+al Blueprint autenticacion.py.
 """
+
+import os
 
 from flask import (
     Blueprint,
@@ -17,345 +20,421 @@ from flask import (
     request,
     redirect,
     url_for,
-    flash,
-    session
+    flash
 )
 
 from flask_login import (
-    login_user,
-    logout_user,
-    login_required,
-    current_user
+    login_required
 )
-
-from models import (
-    db,
-    Usuario
-)
-
-from app import oauth
 
 
 # ============================================================
 # BLUEPRINT
 # ============================================================
 
-autenticacion_bp = Blueprint(
-    'autenticacion',
+configuracion_bp = Blueprint(
+    'configuracion',
     __name__
 )
 
 
 # ============================================================
-# LOGIN
+# CONFIGURACIÓN
 # ============================================================
 
-@autenticacion_bp.route(
-    '/login',
-    methods=['GET', 'POST']
+_ENV_FILE = os.path.join(
+    os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.abspath(__file__)
+            )
+        )
+    ),
+    '.env'
 )
-def login():
+
+
+# ============================================================
+# OBTENER API KEY
+# ============================================================
+
+def _obtener_api_key():
     """
-    Inicio de sesión mediante correo y contraseña.
+    Obtiene la API Key de Gemini.
+
+    Primero intenta obtenerla desde las variables de entorno.
+    Si no existe, intenta leerla desde el archivo .env.
+
+    Retorna:
+        str: API Key o cadena vacía si no está configurada.
     """
-
-    # --------------------------------------------------------
-    # Usuario ya autenticado
-    # --------------------------------------------------------
-
-    if current_user.is_authenticated:
-
-        return redirect(
-            url_for(
-                'inicio.inicio'
-            )
-        )
 
     # ========================================================
-    # POST
+    # VARIABLES DE ENTORNO
     # ========================================================
 
-    if request.method == 'POST':
+    api_key = os.environ.get(
+        'GEMINI_API_KEY',
+        ''
+    ).strip()
 
-        email = request.form.get(
-            'email',
-            ''
-        ).strip().lower()
+    if api_key:
+        return api_key
 
-        password = request.form.get(
-            'password',
-            ''
-        )
+    # ========================================================
+    # ARCHIVO .ENV
+    # ========================================================
 
-        remember = bool(
-            request.form.get(
-                'remember'
-            )
-        )
+    if not os.path.exists(
+        _ENV_FILE
+    ):
+        return ''
 
-        # ----------------------------------------------------
-        # Validar campos
-        # ----------------------------------------------------
+    try:
 
-        if not email or not password:
+        with open(
+            _ENV_FILE,
+            'r',
+            encoding='utf-8'
+        ) as archivo:
 
-            flash(
-                'Complete todos los campos.',
-                'danger'
-            )
+            for linea in archivo:
 
-            return redirect(
-                url_for(
-                    'autenticacion.login'
-                )
-            )
+                linea = linea.strip()
 
-        # ----------------------------------------------------
-        # Buscar usuario
-        # ----------------------------------------------------
+                # ------------------------------------------------
+                # Ignorar comentarios y líneas vacías
+                # ------------------------------------------------
 
-        usuario = (
-            Usuario.query
-            .filter_by(
-                email=email
-            )
-            .first()
-        )
+                if (
+                    not linea
+                    or
+                    linea.startswith('#')
+                ):
+                    continue
 
-        # ----------------------------------------------------
-        # Validar contraseña
-        # ----------------------------------------------------
+                # ------------------------------------------------
+                # Buscar GEMINI_API_KEY
+                # ------------------------------------------------
 
-        if (
-            usuario
-            and
-            usuario.check_password(
-                password
-            )
+                if linea.startswith(
+                    'GEMINI_API_KEY='
+                ):
+
+                    valor = linea.split(
+                        '=',
+                        1
+                    )[1].strip()
+
+                    # --------------------------------------------
+                    # Eliminar comillas
+                    # --------------------------------------------
+
+                    if (
+                        len(valor) >= 2
+                        and
+                        valor[0] == valor[-1]
+                        and
+                        valor[0] in (
+                            '"',
+                            "'"
+                        )
+                    ):
+
+                        valor = valor[1:-1]
+
+                    return valor.strip()
+
+    except (
+        OSError,
+        UnicodeError
+    ):
+
+        return ''
+
+    return ''
+
+
+# ============================================================
+# GUARDAR API KEY
+# ============================================================
+
+def _guardar_api_key(
+    api_key
+):
+    """
+    Guarda o actualiza la API Key de Gemini en .env.
+
+    También actualiza os.environ para que la nueva clave
+    esté disponible inmediatamente sin reiniciar la aplicación.
+
+    Parámetros:
+        api_key (str): API Key de Gemini.
+
+    Retorna:
+        bool: True si se guardó correctamente.
+    """
+
+    api_key = (
+        api_key or ''
+    ).strip()
+
+    # ========================================================
+    # VALIDACIÓN
+    # ========================================================
+
+    if not api_key:
+        return False
+
+    try:
+
+        # ====================================================
+        # LEER .ENV EXISTENTE
+        # ====================================================
+
+        lineas = []
+
+        if os.path.exists(
+            _ENV_FILE
         ):
 
-            login_user(
-                usuario,
-                remember=remember
+            with open(
+                _ENV_FILE,
+                'r',
+                encoding='utf-8'
+            ) as archivo:
+
+                lineas = archivo.readlines()
+
+        # ====================================================
+        # ACTUALIZAR VARIABLE
+        # ====================================================
+
+        encontrada = False
+
+        nuevas_lineas = []
+
+        for linea in lineas:
+
+            linea_sin_espacios = (
+                linea.strip()
             )
 
-            # -----------------------------------------------
-            # URL solicitada originalmente
-            # -----------------------------------------------
+            if linea_sin_espacios.startswith(
+                'GEMINI_API_KEY='
+            ):
 
-            next_page = request.args.get(
-                'next'
-            )
-
-            flash(
-                (
-                    'Bienvenido, '
-                    f'{usuario.nombre or usuario.email}!'
-                ),
-                'success'
-            )
-
-            return redirect(
-                next_page
-                or
-                url_for(
-                    'inicio.inicio'
+                nuevas_lineas.append(
+                    f'GEMINI_API_KEY={api_key}\n'
                 )
+
+                encontrada = True
+
+            else:
+
+                nuevas_lineas.append(
+                    linea
+                )
+
+        # ====================================================
+        # AGREGAR SI NO EXISTÍA
+        # ====================================================
+
+        if not encontrada:
+
+            nuevas_lineas.append(
+                f'GEMINI_API_KEY={api_key}\n'
             )
 
-        # ----------------------------------------------------
-        # Credenciales incorrectas
-        # ----------------------------------------------------
+        # ====================================================
+        # ESCRIBIR .ENV
+        # ====================================================
 
-        flash(
-            'Correo o contrasena incorrectos.',
-            'danger'
-        )
+        with open(
+            _ENV_FILE,
+            'w',
+            encoding='utf-8'
+        ) as archivo:
 
-        return redirect(
-            url_for(
-                'autenticacion.login'
+            archivo.writelines(
+                nuevas_lineas
             )
-        )
 
-    # ========================================================
-    # GET
-    # ========================================================
+        # ====================================================
+        # ACTUALIZAR ENTORNO
+        # ====================================================
 
-    google_configurado = _google_configurado()
+        os.environ[
+            'GEMINI_API_KEY'
+        ] = api_key
 
-    return render_template(
-        'login.html',
-        google_configurado=google_configurado
-    )
+        return True
+
+    except (
+        OSError,
+        UnicodeError
+    ):
+
+        return False
 
 
 # ============================================================
-# REGISTRO
+# ELIMINAR API KEY
 # ============================================================
 
-@autenticacion_bp.route(
-    '/registro',
+def _eliminar_api_key():
+    """
+    Elimina GEMINI_API_KEY del archivo .env y del entorno.
+
+    Retorna:
+        bool: True si la operación fue exitosa.
+    """
+
+    try:
+
+        # ====================================================
+        # LEER .ENV
+        # ====================================================
+
+        lineas = []
+
+        if os.path.exists(
+            _ENV_FILE
+        ):
+
+            with open(
+                _ENV_FILE,
+                'r',
+                encoding='utf-8'
+            ) as archivo:
+
+                lineas = archivo.readlines()
+
+        # ====================================================
+        # ELIMINAR VARIABLE
+        # ====================================================
+
+        nuevas_lineas = []
+
+        for linea in lineas:
+
+            if linea.strip().startswith(
+                'GEMINI_API_KEY='
+            ):
+
+                continue
+
+            nuevas_lineas.append(
+                linea
+            )
+
+        # ====================================================
+        # ESCRIBIR .ENV
+        # ====================================================
+
+        with open(
+            _ENV_FILE,
+            'w',
+            encoding='utf-8'
+        ) as archivo:
+
+            archivo.writelines(
+                nuevas_lineas
+            )
+
+        # ====================================================
+        # ELIMINAR DEL ENTORNO
+        # ====================================================
+
+        os.environ.pop(
+            'GEMINI_API_KEY',
+            None
+        )
+
+        return True
+
+    except (
+        OSError,
+        UnicodeError
+    ):
+
+        return False
+
+
+# ============================================================
+# PÁGINA DE CONFIGURACIÓN
+# ============================================================
+
+@configuracion_bp.route(
+    '/configuracion',
     methods=['GET', 'POST']
 )
-def registro():
+@login_required
+def configuracion():
     """
-    Registro de nuevos usuarios.
+    Página principal de configuración.
+
+    GET:
+        Muestra el estado de la API Key.
+
+    POST:
+        Guarda la API Key proporcionada.
     """
-
-    # --------------------------------------------------------
-    # Usuario ya autenticado
-    # --------------------------------------------------------
-
-    if current_user.is_authenticated:
-
-        return redirect(
-            url_for(
-                'inicio.inicio'
-            )
-        )
 
     # ========================================================
-    # POST
+    # GUARDAR CONFIGURACIÓN
     # ========================================================
 
     if request.method == 'POST':
 
-        nombre = request.form.get(
-            'nombre',
+        api_key = request.form.get(
+            'gemini_api_key',
             ''
         ).strip()
 
-        email = request.form.get(
-            'email',
-            ''
-        ).strip().lower()
-
-        password = request.form.get(
-            'password',
-            ''
-        )
-
-        confirmar = request.form.get(
-            'confirmar_password',
-            ''
-        )
-
         # ----------------------------------------------------
-        # Campos obligatorios
+        # Validar API Key
         # ----------------------------------------------------
 
-        if (
-            not nombre
-            or
-            not email
-            or
-            not password
+        if not api_key:
+
+            flash(
+                'Ingrese una API Key de Gemini.',
+                'warning'
+            )
+
+            return redirect(
+                url_for(
+                    'configuracion.configuracion'
+                )
+            )
+
+        # ----------------------------------------------------
+        # Guardar
+        # ----------------------------------------------------
+
+        if _guardar_api_key(
+            api_key
         ):
 
             flash(
-                'Complete todos los campos obligatorios.',
-                'danger'
+                'API Key de Gemini guardada correctamente.',
+                'success'
             )
 
-            return redirect(
-                url_for(
-                    'autenticacion.registro'
-                )
-            )
-
-        # ----------------------------------------------------
-        # Confirmación de contraseña
-        # ----------------------------------------------------
-
-        if password != confirmar:
-
-            flash(
-                'Las contrasenas no coinciden.',
-                'danger'
-            )
-
-            return redirect(
-                url_for(
-                    'autenticacion.registro'
-                )
-            )
-
-        # ----------------------------------------------------
-        # Longitud mínima
-        # ----------------------------------------------------
-
-        if len(password) < 6:
+        else:
 
             flash(
                 (
-                    'La contrasena debe tener '
-                    'al menos 6 caracteres.'
+                    'No fue posible guardar la API Key. '
+                    'Verifique los permisos del archivo .env.'
                 ),
                 'danger'
             )
 
-            return redirect(
-                url_for(
-                    'autenticacion.registro'
-                )
-            )
-
-        # ----------------------------------------------------
-        # Verificar correo existente
-        # ----------------------------------------------------
-
-        existente = (
-            Usuario.query
-            .filter_by(
-                email=email
-            )
-            .first()
-        )
-
-        if existente:
-
-            flash(
-                'Ya existe una cuenta con este correo.',
-                'danger'
-            )
-
-            return redirect(
-                url_for(
-                    'autenticacion.registro'
-                )
-            )
-
-        # ----------------------------------------------------
-        # Crear usuario
-        # ----------------------------------------------------
-
-        nuevo = Usuario(
-            email=email,
-            nombre=nombre
-        )
-
-        nuevo.set_password(
-            password
-        )
-
-        db.session.add(
-            nuevo
-        )
-
-        db.session.commit()
-
-        flash(
-            (
-                'Cuenta creada exitosamente. '
-                'Inicie sesion.'
-            ),
-            'success'
-        )
-
         return redirect(
             url_for(
-                'autenticacion.login'
+                'configuracion.configuracion'
             )
         )
 
@@ -363,486 +442,90 @@ def registro():
     # GET
     # ========================================================
 
-    google_configurado = _google_configurado()
+    api_key = _obtener_api_key()
 
-    return render_template(
-        'registro.html',
-        google_configurado=google_configurado
+    api_key_configurada = bool(
+        api_key
     )
 
-
-# ============================================================
-# LOGOUT
-# ============================================================
-
-@autenticacion_bp.route(
-    '/logout'
-)
-@login_required
-def logout():
-    """
-    Cierra la sesión del usuario actual.
-    """
-
-    logout_user()
-
     # --------------------------------------------------------
-    # Limpiar información de sesión
+    # No enviar la clave completa a la plantilla
     # --------------------------------------------------------
 
-    session.clear()
+    api_key_mostrable = ''
 
-    flash(
-        'Sesion cerrada.',
-        'info'
-    )
+    if api_key:
 
-    return redirect(
-        url_for(
-            'autenticacion.login'
-        )
-    )
+        if len(api_key) <= 8:
 
-
-# ============================================================
-# GOOGLE LOGIN
-# ============================================================
-
-@autenticacion_bp.route(
-    '/auth/google'
-)
-def auth_google():
-    """
-    Inicia el proceso de autenticación con Google.
-    """
-
-    # --------------------------------------------------------
-    # Verificar configuración
-    # --------------------------------------------------------
-
-    if not _google_configurado():
-
-        flash(
-            (
-                'El inicio de sesion con Google '
-                'no esta configurado.'
-            ),
-            'warning'
-        )
-
-        return redirect(
-            url_for(
-                'autenticacion.login'
+            api_key_mostrable = (
+                '*' * len(api_key)
             )
-        )
-
-    try:
-
-        # ----------------------------------------------------
-        # URL de retorno
-        # ----------------------------------------------------
-
-        redirect_uri = url_for(
-            'autenticacion.auth_google_callback',
-            _external=True
-        )
-
-        # ----------------------------------------------------
-        # Cliente Google
-        # ----------------------------------------------------
-
-        google = oauth.create_client(
-            'google'
-        )
-
-        if google is None:
-
-            flash(
-                (
-                    'No fue posible inicializar '
-                    'Google OAuth.'
-                ),
-                'danger'
-            )
-
-            return redirect(
-                url_for(
-                    'autenticacion.login'
-                )
-            )
-
-        # ----------------------------------------------------
-        # Redireccionar a Google
-        # ----------------------------------------------------
-
-        return google.authorize_redirect(
-            redirect_uri
-        )
-
-    except Exception as e:
-
-        flash(
-            (
-                'Error al iniciar la autenticacion '
-                f'con Google: {str(e)}'
-            ),
-            'danger'
-        )
-
-        return redirect(
-            url_for(
-                'autenticacion.login'
-            )
-        )
-
-
-# ============================================================
-# GOOGLE CALLBACK
-# ============================================================
-
-@autenticacion_bp.route(
-    '/auth/google/callback'
-)
-def auth_google_callback():
-    """
-    Procesa la respuesta de Google después de la
-    autenticación.
-    """
-
-    try:
-
-        # ====================================================
-        # CLIENTE GOOGLE
-        # ====================================================
-
-        google = oauth.create_client(
-            'google'
-        )
-
-        if google is None:
-
-            flash(
-                (
-                    'No fue posible inicializar '
-                    'Google OAuth.'
-                ),
-                'danger'
-            )
-
-            return redirect(
-                url_for(
-                    'autenticacion.login'
-                )
-            )
-
-        # ====================================================
-        # OBTENER TOKEN
-        # ====================================================
-
-        token = (
-            google.authorize_access_token()
-        )
-
-        # ====================================================
-        # INFORMACIÓN DEL USUARIO
-        # ====================================================
-
-        resp = google.get(
-            'https://www.googleapis.com/oauth2/v3/userinfo'
-        )
-
-        user_info = resp.json()
-
-        # ====================================================
-        # EXTRAER DATOS
-        # ====================================================
-
-        email = (
-            user_info
-            .get(
-                'email',
-                ''
-            )
-            .strip()
-            .lower()
-        )
-
-        google_id = user_info.get(
-            'sub'
-        )
-
-        nombre = user_info.get(
-            'name',
-            email
-        )
-
-        avatar = user_info.get(
-            'picture',
-            ''
-        )
-
-        # ====================================================
-        # VALIDAR EMAIL
-        # ====================================================
-
-        if not email:
-
-            flash(
-                (
-                    'No se pudo obtener el correo '
-                    'de Google.'
-                ),
-                'danger'
-            )
-
-            return redirect(
-                url_for(
-                    'autenticacion.login'
-                )
-            )
-
-        # ====================================================
-        # BUSCAR USUARIO
-        # ========================================================
-
-        usuario = (
-            Usuario.query
-            .filter_by(
-                email=email
-            )
-            .first()
-        )
-
-        # ====================================================
-        # CREAR USUARIO
-        # ====================================================
-
-        if not usuario:
-
-            usuario = Usuario(
-                email=email,
-                nombre=nombre,
-                auth_google=True,
-                google_id=google_id,
-                avatar_url=avatar
-            )
-
-            db.session.add(
-                usuario
-            )
-
-            db.session.commit()
-
-        # ====================================================
-        # ACTUALIZAR USUARIO EXISTENTE
-        # ====================================================
 
         else:
 
-            cambios = False
+            api_key_mostrable = (
+                api_key[:4]
+                +
+                '********'
+                +
+                api_key[-4:]
+            )
 
-            # ------------------------------------------------
-            # Marcar autenticación Google
-            # ------------------------------------------------
+    return render_template(
+        'config.html',
+        api_key_configurada=api_key_configurada,
+        api_key_mostrable=api_key_mostrable
+    )
 
-            if not usuario.auth_google:
 
-                usuario.auth_google = True
+# ============================================================
+# ELIMINAR API KEY
+# ============================================================
 
-                cambios = True
+@configuracion_bp.route(
+    '/configuracion/eliminar-api-key',
+    methods=['POST']
+)
+@login_required
+def eliminar_api_key():
+    """
+    Elimina la API Key de Gemini.
+    """
 
-            # ------------------------------------------------
-            # Google ID
-            # ------------------------------------------------
-
-            if (
-                google_id
-                and
-                usuario.google_id != google_id
-            ):
-
-                usuario.google_id = google_id
-
-                cambios = True
-
-            # ------------------------------------------------
-            # Avatar
-            # ------------------------------------------------
-
-            if (
-                avatar
-                and
-                usuario.avatar_url != avatar
-            ):
-
-                usuario.avatar_url = avatar
-
-                cambios = True
-
-            # ------------------------------------------------
-            # Nombre
-            # ------------------------------------------------
-
-            if (
-                nombre
-                and
-                not usuario.nombre
-            ):
-
-                usuario.nombre = nombre
-
-                cambios = True
-
-            # ------------------------------------------------
-            # Guardar
-            # ------------------------------------------------
-
-            if cambios:
-
-                db.session.commit()
-
-        # ====================================================
-        # INICIAR SESIÓN
-        # ====================================================
-
-        login_user(
-            usuario
-        )
+    if _eliminar_api_key():
 
         flash(
-            (
-                'Bienvenido, '
-                f'{usuario.nombre or usuario.email}!'
-            ),
+            'API Key eliminada correctamente.',
             'success'
         )
 
-        return redirect(
-            url_for(
-                'inicio.inicio'
-            )
+    else:
+
+        flash(
+            'No fue posible eliminar la API Key.',
+            'danger'
         )
 
-    # ========================================================
-    # ERRORES
-    # ========================================================
-
-    except Exception as e:
-
-        error_msg = str(
-            e
+    return redirect(
+        url_for(
+            'configuracion.configuracion'
         )
-
-        error_lower = (
-            error_msg.lower()
-        )
-
-        # ----------------------------------------------------
-        # invalid_client
-        # ----------------------------------------------------
-
-        if 'invalid_client' in error_lower:
-
-            flash(
-                (
-                    'Error: El Client Secret de Google '
-                    'es invalido. Verifique las credenciales '
-                    'configuradas en el archivo .env.'
-                ),
-                'danger'
-            )
-
-        # ----------------------------------------------------
-        # redirect_uri
-        # ----------------------------------------------------
-
-        elif 'redirect_uri' in error_lower:
-
-            flash(
-                (
-                    'Error: La URI de redireccionamiento '
-                    'no coincide con la configuracion '
-                    'de Google.'
-                ),
-                'danger'
-            )
-
-        # ----------------------------------------------------
-        # unauthorized_client
-        # ----------------------------------------------------
-
-        elif 'unauthorized_client' in error_lower:
-
-            flash(
-                (
-                    'Error: El Client ID no es valido '
-                    'para una aplicacion web.'
-                ),
-                'danger'
-            )
-
-        # ----------------------------------------------------
-        # access_denied
-        # ----------------------------------------------------
-
-        elif 'access_denied' in error_lower:
-
-            flash(
-                (
-                    'La autenticacion con Google '
-                    'fue cancelada.'
-                ),
-                'warning'
-            )
-
-        # ----------------------------------------------------
-        # Otro error
-        # ----------------------------------------------------
-
-        else:
-
-            flash(
-                (
-                    'Error al autenticar con Google: '
-                    f'{error_msg}'
-                ),
-                'danger'
-            )
-
-        return redirect(
-            url_for(
-                'autenticacion.login'
-            )
-        )
+    )
 
 
 # ============================================================
-# FUNCIONES AUXILIARES
+# API KEY DISPONIBLE
 # ============================================================
 
-def _google_configurado():
+def api_key_configurada():
     """
-    Verifica si las credenciales de Google OAuth
-    están disponibles.
+    Indica si existe una API Key configurada.
 
-    Se consulta el entorno en el momento de utilizar
-    la función para mantener compatibilidad con .env.
+    Retorna:
+        bool: True si existe una API Key.
     """
-
-    import os
-
-    client_id = os.environ.get(
-        'GOOGLE_CLIENT_ID',
-        ''
-    ).strip()
-
-    client_secret = os.environ.get(
-        'GOOGLE_CLIENT_SECRET',
-        ''
-    ).strip()
 
     return bool(
-        client_id
-        and
-        client_secret
+        _obtener_api_key()
     )
