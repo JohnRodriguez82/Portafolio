@@ -7,10 +7,10 @@ Responsabilidades:
 - Cierre de sesión.
 - Inicio de sesión con Google OAuth.
 - Callback de Google OAuth.
-- Carga del usuario para Flask-Login.
-"""
 
-import os
+La configuración de Flask-Login y OAuth pertenece a:
+    app/__init__.py
+"""
 
 from flask import (
     Blueprint,
@@ -18,7 +18,8 @@ from flask import (
     request,
     redirect,
     url_for,
-    flash
+    flash,
+    session
 )
 
 from flask_login import (
@@ -28,12 +29,12 @@ from flask_login import (
     current_user
 )
 
-from authlib.integrations.flask_client import OAuth
-
 from models import (
     db,
     Usuario
 )
+
+from app import oauth
 
 
 # ============================================================
@@ -44,109 +45,6 @@ autenticacion_bp = Blueprint(
     'autenticacion',
     __name__
 )
-
-
-# ============================================================
-# OAUTH GOOGLE
-# ============================================================
-
-oauth = OAuth()
-
-_GOOGLE_CLIENT_ID = os.environ.get(
-    'GOOGLE_CLIENT_ID',
-    ''
-).strip()
-
-_GOOGLE_CLIENT_SECRET = os.environ.get(
-    'GOOGLE_CLIENT_SECRET',
-    ''
-).strip()
-
-
-# ------------------------------------------------------------
-# Advertencia si faltan credenciales
-# ------------------------------------------------------------
-
-if (
-    not _GOOGLE_CLIENT_ID
-    or
-    not _GOOGLE_CLIENT_SECRET
-):
-
-    print(
-        '[ADVERTENCIA] '
-        'Credenciales de Google OAuth no configuradas.'
-    )
-
-    print(
-        '[ADVERTENCIA] '
-        'El inicio de sesion con Google NO funcionara.'
-    )
-
-    print(
-        '[ADVERTENCIA] '
-        'Configure GOOGLE_CLIENT_ID y '
-        'GOOGLE_CLIENT_SECRET en el archivo .env'
-    )
-
-
-# ============================================================
-# CONFIGURAR GOOGLE
-# ============================================================
-
-google = oauth.register(
-    name='google',
-
-    client_id=_GOOGLE_CLIENT_ID,
-
-    client_secret=_GOOGLE_CLIENT_SECRET,
-
-    server_metadata_url=(
-        'https://accounts.google.com/'
-        '.well-known/openid-configuration'
-    ),
-
-    client_kwargs={
-        'scope': 'openid email profile'
-    }
-)
-
-
-# ============================================================
-# USER LOADER
-# ============================================================
-
-@autenticacion_bp.record_once
-def registrar_user_loader(setup_state):
-    """
-    Registra el user_loader de Flask-Login una sola vez.
-
-    Se utiliza record_once porque el LoginManager pertenece
-    a la aplicación Flask y no al Blueprint.
-    """
-
-    login_manager = setup_state.app.extensions.get(
-        'login_manager'
-    )
-
-    if login_manager is None:
-        return
-
-    @login_manager.user_loader
-    def load_user(user_id):
-
-        try:
-
-            return Usuario.query.get(
-                int(user_id)
-            )
-
-        except (
-            ValueError,
-            TypeError
-        ):
-
-            return None
 
 
 # ============================================================
@@ -162,9 +60,9 @@ def login():
     Inicio de sesión mediante correo y contraseña.
     """
 
-    # --------------------------------------------------------
-    # Si ya está autenticado
-    # --------------------------------------------------------
+    # ========================================================
+    # USUARIO YA AUTENTICADO
+    # ========================================================
 
     if current_user.is_authenticated:
 
@@ -197,7 +95,7 @@ def login():
         )
 
         # ----------------------------------------------------
-        # Validar campos
+        # VALIDAR CAMPOS
         # ----------------------------------------------------
 
         if not email or not password:
@@ -214,7 +112,7 @@ def login():
             )
 
         # ----------------------------------------------------
-        # Buscar usuario
+        # BUSCAR USUARIO
         # ----------------------------------------------------
 
         usuario = (
@@ -226,7 +124,7 @@ def login():
         )
 
         # ----------------------------------------------------
-        # Validar contraseña
+        # VALIDAR CONTRASEÑA
         # ----------------------------------------------------
 
         if (
@@ -241,10 +139,6 @@ def login():
                 usuario,
                 remember=remember
             )
-
-            # -----------------------------------------------
-            # Página solicitada originalmente
-            # -----------------------------------------------
 
             next_page = request.args.get(
                 'next'
@@ -267,7 +161,7 @@ def login():
             )
 
         # ----------------------------------------------------
-        # Credenciales incorrectas
+        # CREDENCIALES INCORRECTAS
         # ----------------------------------------------------
 
         flash(
@@ -285,17 +179,11 @@ def login():
     # GET
     # ========================================================
 
-    google_configurado = bool(
-        _GOOGLE_CLIENT_ID
-        and
-        _GOOGLE_CLIENT_SECRET
-    )
+    google_configurado = _google_configurado()
 
     return render_template(
         'login.html',
-        google_configurado=(
-            google_configurado
-        )
+        google_configurado=google_configurado
     )
 
 
@@ -312,9 +200,9 @@ def registro():
     Registro de nuevos usuarios.
     """
 
-    # --------------------------------------------------------
-    # Usuario ya autenticado
-    # --------------------------------------------------------
+    # ========================================================
+    # USUARIO YA AUTENTICADO
+    # ========================================================
 
     if current_user.is_authenticated:
 
@@ -351,7 +239,7 @@ def registro():
         )
 
         # ----------------------------------------------------
-        # Campos obligatorios
+        # CAMPOS OBLIGATORIOS
         # ----------------------------------------------------
 
         if (
@@ -374,7 +262,7 @@ def registro():
             )
 
         # ----------------------------------------------------
-        # Confirmación
+        # CONFIRMAR CONTRASEÑA
         # ----------------------------------------------------
 
         if password != confirmar:
@@ -391,7 +279,7 @@ def registro():
             )
 
         # ----------------------------------------------------
-        # Longitud mínima
+        # LONGITUD MÍNIMA
         # ----------------------------------------------------
 
         if len(password) < 6:
@@ -411,7 +299,7 @@ def registro():
             )
 
         # ----------------------------------------------------
-        # Verificar correo existente
+        # VERIFICAR USUARIO EXISTENTE
         # ----------------------------------------------------
 
         existente = (
@@ -436,7 +324,7 @@ def registro():
             )
 
         # ----------------------------------------------------
-        # Crear usuario
+        # CREAR USUARIO
         # ----------------------------------------------------
 
         nuevo = Usuario(
@@ -472,18 +360,11 @@ def registro():
     # GET
     # ========================================================
 
-    google_configurado = bool(
-        _GOOGLE_CLIENT_ID
-        and
-        _GOOGLE_CLIENT_SECRET
-    )
+    google_configurado = _google_configurado()
 
     return render_template(
         'registro.html',
-
-        google_configurado=(
-            google_configurado
-        )
+        google_configurado=google_configurado
     )
 
 
@@ -501,6 +382,8 @@ def logout():
     """
 
     logout_user()
+
+    session.clear()
 
     flash(
         'Sesion cerrada.',
@@ -523,18 +406,18 @@ def logout():
 )
 def auth_google():
     """
-    Inicia el flujo de autenticación con Google.
+    Inicia el proceso de autenticación con Google.
     """
 
-    # --------------------------------------------------------
-    # Verificar configuración
-    # --------------------------------------------------------
+    # ========================================================
+    # OBTENER CLIENTE GOOGLE
+    # ========================================================
 
-    if (
-        not _GOOGLE_CLIENT_ID
-        or
-        not _GOOGLE_CLIENT_SECRET
-    ):
+    google = oauth.create_client(
+        'google'
+    )
+
+    if google is None:
 
         flash(
             (
@@ -550,9 +433,9 @@ def auth_google():
             )
         )
 
-    # --------------------------------------------------------
-    # URI callback
-    # --------------------------------------------------------
+    # ========================================================
+    # CALLBACK
+    # ========================================================
 
     redirect_uri = url_for(
         'autenticacion.auth_google_callback',
@@ -573,19 +456,56 @@ def auth_google():
 )
 def auth_google_callback():
     """
-    Procesa la respuesta enviada por Google después
-    de la autenticación.
+    Procesa la respuesta de Google después de la autenticación.
     """
+
+    # ========================================================
+    # OBTENER CLIENTE GOOGLE
+    # ========================================================
+
+    google = oauth.create_client(
+        'google'
+    )
+
+    if google is None:
+
+        flash(
+            (
+                'El inicio de sesion con Google '
+                'no esta configurado.'
+            ),
+            'danger'
+        )
+
+        return redirect(
+            url_for(
+                'autenticacion.login'
+            )
+        )
+
+    # ========================================================
+    # PROCESAR AUTENTICACIÓN
+    # ========================================================
 
     try:
 
-        # ====================================================
-        # OBTENER TOKEN
-        # ====================================================
+        token = google.authorize_access_token()
 
-        token = (
-            google.authorize_access_token()
-        )
+        if not token:
+
+            flash(
+                (
+                    'No fue posible obtener el token '
+                    'de autenticacion de Google.'
+                ),
+                'danger'
+            )
+
+            return redirect(
+                url_for(
+                    'autenticacion.login'
+                )
+            )
 
         # ====================================================
         # INFORMACIÓN DEL USUARIO
@@ -607,6 +527,7 @@ def auth_google_callback():
                 'email',
                 ''
             )
+            .strip()
             .lower()
         )
 
@@ -682,7 +603,7 @@ def auth_google_callback():
             cambios = False
 
             # ------------------------------------------------
-            # Activar Google
+            # ACTIVAR GOOGLE
             # ------------------------------------------------
 
             if not usuario.auth_google:
@@ -692,7 +613,7 @@ def auth_google_callback():
                 cambios = True
 
             # ------------------------------------------------
-            # Google ID
+            # GOOGLE ID
             # ------------------------------------------------
 
             if (
@@ -706,7 +627,7 @@ def auth_google_callback():
                 cambios = True
 
             # ------------------------------------------------
-            # Avatar
+            # AVATAR
             # ------------------------------------------------
 
             if (
@@ -720,7 +641,7 @@ def auth_google_callback():
                 cambios = True
 
             # ------------------------------------------------
-            # Nombre
+            # NOMBRE
             # ------------------------------------------------
 
             if (
@@ -734,7 +655,7 @@ def auth_google_callback():
                 cambios = True
 
             # ------------------------------------------------
-            # Guardar cambios
+            # GUARDAR CAMBIOS
             # ------------------------------------------------
 
             if cambios:
@@ -767,81 +688,60 @@ def auth_google_callback():
     # ERRORES
     # ========================================================
 
-    except Exception as e:
+    except Exception as exc:
 
         error_msg = str(
-            e
+            exc
         )
 
         error_lower = (
-            error_msg
-            .lower()
+            error_msg.lower()
         )
 
         # ----------------------------------------------------
-        # invalid_client
+        # INVALID CLIENT
         # ----------------------------------------------------
 
-        if (
-            'invalid_client'
-            in error_lower
-        ):
+        if 'invalid_client' in error_lower:
 
             flash(
                 (
                     'Error: El Client Secret de Google '
-                    'es invalido. '
-                    'Verifique que haya copiado el valor '
-                    'correcto de "Secreto de cliente" '
-                    '(no el ID de cliente). '
-                    'Ejecute: '
-                    'python diagnostico_google.py'
+                    'es invalido. Verifique las credenciales.'
                 ),
                 'danger'
             )
 
         # ----------------------------------------------------
-        # redirect_uri
+        # REDIRECT URI
         # ----------------------------------------------------
 
-        elif (
-            'redirect_uri'
-            in error_lower
-        ):
+        elif 'redirect_uri' in error_lower:
 
             flash(
                 (
                     'Error: La URI de redireccionamiento '
-                    'no coincide. '
-                    'Verifique en Google Cloud Console '
-                    'que la URI configurada sea exactamente '
-                    'la utilizada por la aplicacion.'
+                    'no coincide con la configuracion de Google.'
                 ),
                 'danger'
             )
 
         # ----------------------------------------------------
-        # unauthorized_client
+        # UNAUTHORIZED CLIENT
         # ----------------------------------------------------
 
-        elif (
-            'unauthorized_client'
-            in error_lower
-        ):
+        elif 'unauthorized_client' in error_lower:
 
             flash(
                 (
                     'Error: El Client ID no es valido '
-                    'para aplicaciones web. '
-                    'Cree un ID de cliente OAuth 2.0 '
-                    'de tipo "Aplicacion web" '
-                    'en Google Cloud Console.'
+                    'para aplicaciones web.'
                 ),
                 'danger'
             )
 
         # ----------------------------------------------------
-        # Otro error
+        # OTRO ERROR
         # ----------------------------------------------------
 
         else:
@@ -859,3 +759,29 @@ def auth_google_callback():
                 'autenticacion.login'
             )
         )
+
+
+# ============================================================
+# FUNCIONES AUXILIARES
+# ============================================================
+
+def _google_configurado():
+    """
+    Determina si el cliente de Google fue registrado
+    correctamente por app/__init__.py.
+
+    Retorna:
+        bool: True si Google OAuth está disponible.
+    """
+
+    try:
+
+        google = oauth.create_client(
+            'google'
+        )
+
+        return google is not None
+
+    except Exception:
+
+        return False
