@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+
+{% block title %}Reporte {{ reporte.nombre_mes }} {{ reporte.anio }} - Obligacion {{ obligacion.numero }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="section-title">Detalle del Reporte Mensual</h2>
+    </div>
+</div>
+
+<!-- Informacion del reporte -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card card-custom">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1 text-muted">Contratista</p>
+                        <h5 class="mb-3">{{ contrato.contratista or 'No especificado' }}</h5>
+
+                        <p class="mb-1 text-muted">Numero de contrato</p>
+                        <h5 class="mb-3">{{ contrato.numero_contrato or 'No especificado' }}</h5>
+
+                        <p class="mb-1 text-muted">Mes reportado</p>
+                        <h4 class="mb-3">{{ reporte.nombre_mes }} {{ reporte.anio }}</h4>
+
+                        <p class="mb-1 text-muted">Obligacion No.</p>
+                        <h5 class="mb-3"><span class="badge bg-primary">{{ obligacion.numero }}</span></h5>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1 text-muted">Periodo del reporte</p>
+                        <p class="mb-3">
+                            <i class="bi bi-calendar-event me-2 text-primary"></i>
+                            {{ reporte.fecha_inicio_reporte.strftime('%d/%m/%Y') }} - {{ reporte.fecha_fin_reporte.strftime('%d/%m/%Y') }}
+                        </p>
+
+                        <p class="mb-1 text-muted">Fecha de creacion</p>
+                        <p>{{ reporte.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</p>
+                    </div>
+                </div>
+                <hr>
+                <p class="mb-1 text-muted">Descripcion de la obligacion</p>
+                <p class="mb-0">{{ obligacion.descripcion }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-custom h-100">
+            <div class="card-body d-flex flex-column justify-content-center">
+                <div class="text-center mb-3">
+                    <i class="bi bi-file-earmark-pdf fs-1 text-danger"></i>
+                </div>
+                <h5 class="text-center mb-3">Generar PDF</h5>
+                <p class="text-muted text-center small mb-3">Descargue el reporte en formato PDF con todas las evidencias cargadas.</p>
+                <a href="{{ url_for('generar_pdf', id=reporte.id) }}" class="btn pdf-btn w-100 mb-2">
+                    <i class="bi bi-download me-2"></i>Descargar PDF
+                </a>
+                <a href="{{ url_for('carga_masiva_evidencias', id=reporte.id) }}" class="btn btn-outline-success w-100">
+                    <i class="bi bi-file-earmark-excel me-2"></i>Carga Masiva Excel
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alerta si contrato cerrado -->
+{% if contrato.etapa == 'Reporte Cerrado' %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-warning d-flex align-items-center">
+            <i class="bi bi-lock-fill fs-4 me-3"></i>
+            <div>
+                <strong>Contrato finalizado.</strong> Este contrato se encuentra en etapa "Reporte Cerrado". 
+                No se pueden agregar ni editar evidencias. Solo puede descargar los reportes generados.
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Estado de IA -->
+{% if not api_key_configurada %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-secondary d-flex align-items-center">
+            <i class="bi bi-robot fs-4 me-3"></i>
+            <div>
+                <strong>Analisis visual con IA desactivado.</strong> 
+                Configure una API key de Gemini en la <a href="{{ url_for('config') }}">Configuracion</a>.
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-success d-flex align-items-center">
+            <i class="bi bi-robot fs-4 me-3"></i>
+            <div>
+                <strong>Analisis visual con IA activo.</strong> 
+                Cada imagen sera analizada automaticamente por Google Gemini.
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Cargar evidencia individual -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card card-custom {% if contrato.etapa == 'Reporte Cerrado' %}opacity-50{% endif %}">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="mb-0"><i class="bi bi-cloud-upload me-2"></i>Cargar Nueva Evidencia (Actividad)</h5>
+            </div>
+            <div class="card-body px-4 pb-4">
+                {% if contrato.etapa == 'Reporte Cerrado' %}
+                <div class="alert alert-secondary">
+                    <i class="bi bi-lock me-2"></i>La carga de evidencias esta deshabilitada porque el contrato esta finalizado.
+                </div>
+                {% else %}
+                <form method="POST" action="{{ url_for('subir_evidencia', id=reporte.id) }}" enctype="multipart/form-data">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">Anuncio / Contexto <span class="text-muted">(solo para el sistema)</span></label>
+                            <textarea name="anuncio_usuario" class="form-control" rows="3"
+                                      placeholder="Ej: Presentacion del estado de avance..." 
+                                      required>{{ form_data.anuncio_usuario }}</textarea>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Fecha de la actividad</label>
+                            <input type="date" name="fecha_actividad" class="form-control" 
+                                   value="{{ form_data.fecha_actividad }}"
+                                   required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Imagen de evidencia</label>
+                            <input type="file" name="imagen" class="form-control" accept="image/*" required>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary-custom w-100">
+                                <i class="bi bi-cloud-upload me-2"></i>Subir
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cuadricula de actividades/evidencias -->
+<div class="row">
+    <div class="col-12">
+        <div class="card card-custom">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="mb-0"><i class="bi bi-grid-3x3 me-2"></i>Actividades y Evidencias</h5>
+            </div>
+            <div class="card-body px-4 pb-4">
+                {% if not evidencias %}
+                <div class="empty-state py-5">
+                    <i class="bi bi-images"></i>
+                    <h5 class="mt-3">No hay actividades registradas</h5>
+                    <p class="text-muted">Use el formulario superior o la carga masiva para registrar actividades.</p>
+                </div>
+                {% else %}
+
+                <div class="table-responsive mb-4">
+                    <table class="table table-hover table-custom">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;">#</th>
+                                <th>Actividad realizada</th>
+                                <th style="width: 120px;">Fecha</th>
+                                <th style="width: 220px;">Evidencia</th>
+                                <th style="width: 100px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ev in evidencias %}
+                            <tr>
+                                <td class="align-middle text-center">
+                                    <span class="badge bg-primary fs-6">{{ ev.numero_actividad }}</span>
+                                </td>
+                                <td class="align-middle">
+                                    <div id="ev-desc-{{ ev.id }}">
+                                        <p class="mb-0 small text-justify">{{ ev.descripcion_actividad }}</p>
+                                        {% if ev.descripcion_visual_ia %}
+                                        <div class="mt-2 p-2 bg-light rounded">
+                                            <small class="text-muted">
+                                                <i class="bi bi-robot me-1 text-success"></i>
+                                                <strong>IA vio:</strong> {{ ev.descripcion_visual_ia }}
+                                            </small>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+
+                                    <form method="POST" action="{{ url_for('editar_evidencia', id=reporte.id, evidencia_id=ev.id) }}" 
+                                          class="mt-2 d-none" id="ev-form-{{ ev.id }}">
+                                        <div class="mb-2">
+                                            <label class="form-label small text-muted">Fecha de la actividad</label>
+                                            <input type="date" name="fecha_actividad" class="form-control form-control-sm" 
+                                                   value="{{ ev.fecha_actividad.strftime('%Y-%m-%d') if ev.fecha_actividad else '' }}" required>
+                                        </div>
+                                        <textarea name="descripcion_actividad" class="form-control form-control-sm" rows="4" required>{{ ev.descripcion_actividad }}</textarea>
+                                        <div class="mt-2">
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="bi bi-check-lg me-1"></i>Guardar
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm ms-1" 
+                                                    onclick="toggleEditEv({{ ev.id }})">
+                                                <i class="bi bi-x-lg me-1"></i>Cancelar
+                                            </button>
+                                        </div>
+                                    </form>
+                                </td>
+                                <td class="align-middle text-center">
+                                    {% if ev.fecha_actividad %}
+                                        {{ ev.fecha_actividad.strftime('%d-%m-%Y') }}
+                                    {% else %}
+                                        {{ ev.fecha_carga.strftime('%d-%m-%Y') }}
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle">
+                                    {% if ev.imagen_path %}
+                                        {% set filename = ev.imagen_path.split('/')[-1] %}
+                                        <a href="{{ url_for('uploaded_file', filename=filename) }}" target="_blank">
+                                            <img src="{{ url_for('uploaded_file', filename=filename) }}" 
+                                                 alt="Evidencia" 
+                                                 class="evidence-img"
+                                                 style="max-height: 100px; width: auto;">
+                                        </a>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">Sin imagen</span>
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle text-center">
+                                    <button type="button" class="btn btn-outline-primary btn-sm mb-1" 
+                                            onclick="toggleEditEv({{ ev.id }})" id="ev-btn-{{ ev.id }}">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <form method="POST" action="{{ url_for('eliminar_evidencia', id=reporte.id, evidencia_id=ev.id) }}" 
+                                          class="d-inline" data-confirm="Eliminar esta actividad?">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <hr class="my-4">
+                <h6 class="mb-3 text-muted"><i class="bi bi-grid me-2"></i>Vista en Cuadricula de Evidencias</h6>
+                <div class="row g-3">
+                    {% for ev in evidencias %}
+                    <div class="col-md-4 col-lg-3">
+                        <div class="card h-100 border-0 shadow-sm">
+                            {% if ev.imagen_path %}
+                                {% set filename = ev.imagen_path.split('/')[-1] %}
+                                <a href="{{ url_for('uploaded_file', filename=filename) }}" target="_blank">
+                                    <img src="{{ url_for('uploaded_file', filename=filename) }}" 
+                                         class="card-img-top" 
+                                         alt="Evidencia"
+                                         style="height: 160px; object-fit: cover;">
+                                </a>
+                            {% else %}
+                                <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 160px;">
+                                    <i class="bi bi-image text-muted fs-1"></i>
+                                </div>
+                            {% endif %}
+                            <div class="card-body">
+                                <span class="badge bg-primary mb-2">Actividad {{ ev.numero_actividad }}</span>
+                                <p class="card-text small text-muted mb-1">
+                                    {% if ev.fecha_actividad %}{{ ev.fecha_actividad.strftime('%d-%m-%Y') }}{% else %}{{ ev.fecha_carga.strftime('%d-%m-%Y') }}{% endif %}
+                                </p>
+                                <p class="card-text small text-secondary">{{ ev.descripcion_actividad[:60] }}{% if ev.descripcion_actividad|length > 60 %}...{% endif %}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <a href="{{ url_for('reportes') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Volver a Reportes
+        </a>
+    </div>
+</div>
+
+<script>
+function toggleEditEv(id) {
+    const desc = document.getElementById('ev-desc-' + id);
+    const form = document.getElementById('ev-form-' + id);
+    const btn = document.getElementById('ev-btn-' + id);
+
+    if (form.classList.contains('d-none')) {
+        desc.classList.add('d-none');
+        form.classList.remove('d-none');
+        btn.classList.add('d-none');
+    } else {
+        desc.classList.remove('d-none');
+        form.classList.add('d-none');
+        btn.classList.remove('d-none');
+    }
+}
+</script>
+{% endblock %}
