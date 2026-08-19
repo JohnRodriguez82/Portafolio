@@ -36,6 +36,11 @@ from models import (
 
 from vision_analyzer import analizar_imagen
 
+from app.services.evidencia_service import (
+    obtener_imagen_temporal,
+    guardar_imagen_evidencia,
+    analizar_evidencia_con_ia
+)
 
 # ============================================================
 # RATE LIMITER GEMINI
