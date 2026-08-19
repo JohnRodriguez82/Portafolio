@@ -10,11 +10,12 @@ Responsabilidades:
 - Actualizar el progreso.
 - Limpiar archivos temporales.
 
+La gestión de ReporteMensual está delegada a ReporteService.
+
 Este módulo no define rutas Flask.
 """
 
 import os
-import calendar
 import time
 import threading
 
@@ -29,11 +30,14 @@ from openpyxl import load_workbook
 from models import (
     db,
     Obligacion,
-    ReporteMensual,
     Evidencia
 )
 
 from vision_analyzer import analizar_imagen
+
+from app.services.reporte_service import (
+    ReporteService
+)
 
 
 # ============================================================
@@ -43,6 +47,7 @@ from vision_analyzer import analizar_imagen
 GEMINI_MIN_INTERVAL = 4.1
 
 _gemini_last_call = 0.0
+
 _gemini_lock = threading.Lock()
 
 
@@ -98,13 +103,14 @@ def procesar_carga_masiva_job(
     """
     Procesa una carga masiva mensual en segundo plano.
 
-    El blueprint se encarga de:
+    El Blueprint se encarga de:
+
     - recibir archivos,
     - crear el job,
     - iniciar el hilo,
     - enviar progreso mediante SSE.
 
-    Este servicio se encarga exclusivamente de la lógica
+    Este servicio se encarga de la lógica
     de procesamiento.
     """
 
@@ -146,6 +152,11 @@ def procesar_carga_masiva_job(
         import traceback
 
         traceback.print_exc()
+
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
         actualizar_progreso(
             job_id,
@@ -211,18 +222,45 @@ def _procesar_excel(
 
     exitosos = 0
 
+    # ========================================================
+    # CACHE DE REPORTES
+    # ========================================================
+
     reportes_cache = {}
+
+    # ========================================================
+    # CONTADOR DE ACTIVIDADES
+    # ========================================================
 
     evidencias_por_reporte = {}
 
-    fechas_mes = _obtener_fechas_mes(
-        mes,
-        anio
+    # ========================================================
+    # FECHAS DEL MES
+    # ========================================================
+
+    fecha_inicio, fecha_fin = (
+        ReporteService.obtener_fechas_mes(
+            mes,
+            anio
+        )
     )
+
+    fechas_mes = {
+        'inicio': fecha_inicio,
+        'fin': fecha_fin
+    }
+
+    # ========================================================
+    # IMÁGENES
+    # ========================================================
 
     imagenes_disponibles = dict(
         imagenes_subidas
     )
+
+    # ========================================================
+    # PROCESAR FILAS
+    # ========================================================
 
     for posicion, (
         fila_excel,
@@ -274,7 +312,15 @@ def _procesar_excel(
             resultado_fila['errores']
         )
 
+    # ========================================================
+    # GUARDAR TRANSACCIÓN
+    # ========================================================
+
     db.session.commit()
+
+    # ========================================================
+    # LIMPIAR IMÁGENES
+    # ========================================================
 
     _limpiar_archivos_temporales(
         imagenes_disponibles.values()
@@ -290,7 +336,9 @@ def _procesar_excel(
 # VALIDAR ENCABEZADOS
 # ============================================================
 
-def _validar_encabezados(ws):
+def _validar_encabezados(
+    ws
+):
     """
     Valida los encabezados obligatorios del Excel.
     """
@@ -320,7 +368,9 @@ def _validar_encabezados(ws):
 # OBTENER FILAS VÁLIDAS
 # ============================================================
 
-def _obtener_filas_validas(ws):
+def _obtener_filas_validas(
+    ws
+):
     """
     Obtiene las filas que contienen información.
     """
@@ -340,6 +390,7 @@ def _obtener_filas_validas(ws):
             and
             not row[2]
         ):
+
             continue
 
         filas.append(
@@ -376,6 +427,10 @@ def _procesar_fila(
 
     errores = []
 
+    # ========================================================
+    # DATOS DE LA FILA
+    # ========================================================
+
     obl_num = row[0]
 
     anuncio = str(
@@ -390,9 +445,9 @@ def _procesar_fila(
         row[4] or ''
     ).strip()
 
-    # --------------------------------------------------------
+    # ========================================================
     # OBLIGACIÓN
-    # --------------------------------------------------------
+    # ========================================================
 
     try:
 
@@ -439,9 +494,9 @@ def _procesar_fila(
             'errores': errores
         }
 
-    # --------------------------------------------------------
+    # ========================================================
     # ANUNCIO
-    # --------------------------------------------------------
+    # ========================================================
 
     if not anuncio:
 
@@ -455,9 +510,9 @@ def _procesar_fila(
             'errores': errores
         }
 
-    # --------------------------------------------------------
+    # ========================================================
     # FECHA
-    # --------------------------------------------------------
+    # ========================================================
 
     fecha_actividad = _parsear_fecha(
         fecha_str
@@ -505,22 +560,21 @@ def _procesar_fila(
             15
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # REPORTE
-    # --------------------------------------------------------
+    # ========================================================
 
     reporte = _obtener_reporte(
         obligacion=obligacion,
         mes=mes,
         anio=anio,
-        fechas_mes=fechas_mes,
         reportes_cache=reportes_cache,
         evidencias_por_reporte=evidencias_por_reporte
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # IMAGEN
-    # --------------------------------------------------------
+    # ========================================================
 
     imagen_path = ''
 
@@ -551,9 +605,9 @@ def _procesar_fila(
                 'no encontrada.'
             )
 
-    # --------------------------------------------------------
+    # ========================================================
     # NÚMERO DE ACTIVIDAD
-    # --------------------------------------------------------
+    # ========================================================
 
     evidencias_por_reporte[
         reporte.id
@@ -565,9 +619,9 @@ def _procesar_fila(
         ]
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # CREAR EVIDENCIA
-    # --------------------------------------------------------
+    # ========================================================
 
     evidencia = Evidencia(
         numero_actividad=numero_actividad,
@@ -579,9 +633,9 @@ def _procesar_fila(
         reporte_id=reporte.id
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # GEMINI
-    # --------------------------------------------------------
+    # ========================================================
 
     if (
         imagen_path
@@ -630,15 +684,19 @@ def _procesar_fila(
                 f'con IA ({str(exc)[:60]}).'
             )
 
-    # --------------------------------------------------------
+    # ========================================================
     # DESCRIPCIÓN AUTOMÁTICA
-    # --------------------------------------------------------
+    # ========================================================
 
     evidencia.descripcion_actividad = (
         evidencia.generar_descripcion_automatica(
             obligacion
         )
     )
+
+    # ========================================================
+    # AGREGAR A LA SESIÓN
+    # ========================================================
 
     db.session.add(
         evidencia
@@ -658,12 +716,14 @@ def _obtener_reporte(
     obligacion,
     mes,
     anio,
-    fechas_mes,
     reportes_cache,
     evidencias_por_reporte
 ):
     """
     Obtiene un reporte existente o crea uno nuevo.
+
+    La lógica de ReporteMensual está delegada a
+    ReporteService.
     """
 
     cache_key = (
@@ -672,66 +732,49 @@ def _obtener_reporte(
         anio
     )
 
+    # ========================================================
+    # CACHE
+    # ========================================================
+
     if cache_key in reportes_cache:
 
         return reportes_cache[
             cache_key
         ]
 
-    reporte = (
-        ReporteMensual.query
-        .filter_by(
+    # ========================================================
+    # OBTENER O CREAR
+    # ========================================================
+
+    reporte, creado = (
+        ReporteService.obtener_o_crear_reporte(
+            obligacion_id=obligacion.id,
             mes=mes,
-            anio=anio,
-            obligacion_id=obligacion.id
+            anio=anio
         )
-        .first()
     )
 
-    if not reporte:
-
-        reporte = ReporteMensual(
-            mes=mes,
-            anio=anio,
-            fecha_inicio_reporte=(
-                fechas_mes['inicio']
-            ),
-            fecha_fin_reporte=(
-                fechas_mes['fin']
-            ),
-            obligacion_id=obligacion.id
-        )
-
-        db.session.add(
-            reporte
-        )
-
-        db.session.flush()
+    # ========================================================
+    # GUARDAR EN CACHE
+    # ========================================================
 
     reportes_cache[
         cache_key
     ] = reporte
 
-    ultima = (
-        Evidencia.query
-        .filter_by(
-            reporte_id=reporte.id
+    # ========================================================
+    # ÚLTIMA ACTIVIDAD
+    # ========================================================
+
+    ultima_actividad = (
+        ReporteService.obtener_ultima_actividad(
+            reporte.id
         )
-        .order_by(
-            Evidencia
-            .numero_actividad
-            .desc()
-        )
-        .first()
     )
 
     evidencias_por_reporte[
         reporte.id
-    ] = (
-        ultima.numero_actividad
-        if ultima
-        else 0
-    )
+    ] = ultima_actividad
 
     return reporte
 
@@ -752,9 +795,9 @@ def _procesar_imagen(
 
     tmp_src = None
 
-    # --------------------------------------------------------
+    # ========================================================
     # NOMBRE EXACTO
-    # --------------------------------------------------------
+    # ========================================================
 
     if nombre_imagen in imagenes_disponibles:
 
@@ -764,9 +807,9 @@ def _procesar_imagen(
             )
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # NOMBRE SEGURO
-    # --------------------------------------------------------
+    # ========================================================
 
     else:
 
@@ -786,9 +829,9 @@ def _procesar_imagen(
 
         return ''
 
-    # --------------------------------------------------------
+    # ========================================================
     # NOMBRE FINAL
-    # --------------------------------------------------------
+    # ========================================================
 
     final_name = secure_filename(
         (
@@ -806,9 +849,9 @@ def _procesar_imagen(
         final_name
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # MOVER ARCHIVO
-    # --------------------------------------------------------
+    # ========================================================
 
     os.rename(
         tmp_src,
@@ -816,37 +859,6 @@ def _procesar_imagen(
     )
 
     return final_path
-
-
-# ============================================================
-# FECHAS DEL MES
-# ============================================================
-
-def _obtener_fechas_mes(
-    mes,
-    anio
-):
-    """
-    Retorna las fechas inicial y final del mes.
-    """
-
-    _, last_day = calendar.monthrange(
-        anio,
-        mes
-    )
-
-    return {
-        'inicio': date(
-            anio,
-            mes,
-            1
-        ),
-        'fin': date(
-            anio,
-            mes,
-            last_day
-        )
-    }
 
 
 # ============================================================
@@ -860,6 +872,7 @@ def _parsear_fecha(
     Convierte una fecha a datetime.date.
 
     Formatos soportados:
+
     - YYYY-MM-DD
     - DD/MM/YYYY
     - DD-MM-YYYY
@@ -869,9 +882,9 @@ def _parsear_fecha(
 
         return None
 
-    # --------------------------------------------------------
-    # SI OPENPYXL YA ENTREGA DATE
-    # --------------------------------------------------------
+    # ========================================================
+    # OPENPYXL ENTREGA DATETIME
+    # ========================================================
 
     if isinstance(
         fecha,
@@ -879,6 +892,10 @@ def _parsear_fecha(
     ):
 
         return fecha.date()
+
+    # ========================================================
+    # OPENPYXL ENTREGA DATE
+    # ========================================================
 
     if isinstance(
         fecha,
@@ -890,6 +907,10 @@ def _parsear_fecha(
     fecha = str(
         fecha
     ).strip()
+
+    # ========================================================
+    # FORMATOS
+    # ========================================================
 
     formatos = (
         '%Y-%m-%d',
@@ -951,8 +972,8 @@ def _limpiar_archivos_temporales(
     archivos
 ):
     """
-    Elimina las imágenes temporales
-    que no fueron utilizadas.
+    Elimina las imágenes temporales que no
+    fueron utilizadas.
     """
 
     for archivo_path in archivos:
