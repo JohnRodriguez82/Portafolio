@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('mes', mes);
             formData.append('anio', anio);
 
-            const response = await fetch('{{ url_for("cargas.carga_masiva_mes") }}', {
+            const response = await fetch('{{ url_for("reportes.descargar_masivo_mes") }}', {
                 method: 'POST',
                 body: formData,
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
