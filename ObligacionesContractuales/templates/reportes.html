@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+
+{% block title %}Reportes - Reportes Contractuales{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="section-title">Reportes Mensuales Generados</h2>
+    </div>
+</div>
+
+{% if contrato %}
+<!-- Descarga Masiva por Mes -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card card-custom">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="mb-0"><i class="bi bi-file-zip me-2"></i>Descarga Masiva de PDFs por Mes</h5>
+            </div>
+            <div class="card-body px-4 pb-4">
+                <form id="formDescargaZip" class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Mes</label>
+                        <select name="mes" id="zipMes" class="form-select" required>
+                            <option value="">Seleccione...</option>
+                            <option value="1">Enero</option>
+                            <option value="2">Febrero</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Mayo</option>
+                            <option value="6">Junio</option>
+                            <option value="7">Julio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Anio</label>
+                        <input type="number" name="anio" id="zipAnio" class="form-control" placeholder="2026" min="2020" max="2050" required>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" id="btnDescargarZip" class="btn btn-danger w-100">
+                            <i class="bi bi-file-earmark-zip me-2"></i>Descargar ZIP de PDFs
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Progreso Descarga ZIP -->
+<div class="modal fade" id="modalProgresoZip" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-gear-wide-connected me-2"></i>Generando ZIP de PDFs</h5>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <div class="spinner-border text-danger mb-3" role="status" id="spinnerZip" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Procesando...</span>
+                </div>
+                <h5 id="tituloZip" class="mb-2">Procesando...</h5>
+                <p class="text-muted mb-3" id="mensajeZip">Validando obligaciones y generando PDFs. Por favor espere...</p>
+                <div class="progress" style="height: 20px;">
+                    <div id="barraZip" class="progress-bar progress-bar-striped progress-bar-animated bg-danger"
+                         role="progressbar" style="width: 100%"></div>
+                </div>
+                <div id="errorZip" class="alert alert-danger mt-3 d-none">
+                    <i class="bi bi-x-circle-fill me-2"></i>
+                    <span id="textoErrorZip"></span>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-center" id="footerZip">
+                <span class="text-muted small">Por favor no cierre esta ventana.</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('formDescargaZip');
+    const btn = document.getElementById('btnDescargarZip');
+    const modalProgresoEl = document.getElementById('modalProgresoZip');
+    const spinner = document.getElementById('spinnerZip');
+    const titulo = document.getElementById('tituloZip');
+    const mensaje = document.getElementById('mensajeZip');
+    const barra = document.getElementById('barraZip');
+    const errorDiv = document.getElementById('errorZip');
+    const textoError = document.getElementById('textoErrorZip');
+    const footer = document.getElementById('footerZip');
+
+    if (!form) return;
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const mes = document.getElementById('zipMes').value;
+        const anio = document.getElementById('zipAnio').value;
+
+        if (!mes || !anio) {
+            alert('Seleccione mes y año.');
+            return;
+        }
+
+        // Limpiar backdrops residuales
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+
+        await new Promise(r => setTimeout(r, 150));
+
+        const modalProgreso = new bootstrap.Modal(modalProgresoEl, { backdrop: 'static', keyboard: false });
+        modalProgreso.show();
+
+        // Resetear estado
+        spinner.className = 'spinner-border text-danger mb-3';
+        spinner.style.cssText = 'width: 3rem; height: 3rem;';
+        spinner.innerHTML = '<span class="visually-hidden">Procesando...</span>';
+        titulo.textContent = 'Procesando...';
+        titulo.className = 'mb-2';
+        mensaje.textContent = 'Validando obligaciones y generando PDFs. Por favor espere...';
+        barra.className = 'progress-bar progress-bar-striped progress-bar-animated bg-danger';
+        barra.style.width = '100%';
+        errorDiv.classList.add('d-none');
+        footer.innerHTML = '<span class="text-muted small">Por favor no cierre esta ventana.</span>';
+        btn.disabled = true;
+
+        try {
+            const formData = new FormData();
+            formData.append('mes', mes);
+            formData.append('anio', anio);
+
+            const response = await fetch('{{ url_for("cargas.carga_masiva_mes") }}', {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+
+            const contentType = response.headers.get('content-type') || '';
+
+            if (!response.ok) {
+                let errorMsg = 'Error del servidor (' + response.status + ')';
+                try {
+                    if (contentType.includes('application/json')) {
+                        const data = await response.json();
+                        if (data.error) errorMsg = data.error;
+                    } else {
+                        const text = await response.text();
+                        if (text.trim().startsWith('<')) {
+                            errorMsg = 'Error del servidor. Revise la consola para mas detalles.';
+                        } else {
+                            errorMsg = text.substring(0, 200);
+                        }
+                    }
+                } catch (e) {}
+                throw new Error(errorMsg);
+            }
+
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+            }
+
+            // Descargar ZIP
+            const blob = await response.blob();
+            const disposition = response.headers.get('content-disposition');
+            let filename = 'Reportes_' + mes + '_' + anio + '.zip';
+            if (disposition) {
+                const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (match) filename = match[1].replace(/['"]/g, '');
+            }
+
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+
+            // Exito
+            spinner.className = 'bi bi-check-circle-fill text-success fs-1 mb-3';
+            spinner.innerHTML = '';
+            titulo.textContent = 'Descarga completada!';
+            titulo.classList.add('text-success');
+            mensaje.textContent = 'El ZIP con los PDFs se ha descargado exitosamente.';
+            barra.classList.remove('progress-bar-animated');
+            footer.innerHTML = '<button type="button" class="btn btn-success" data-bs-dismiss="modal"><i class="bi bi-check-lg me-2"></i>Aceptar</button>';
+
+        } catch (error) {
+            spinner.className = 'bi bi-x-circle-fill text-danger fs-1 mb-3';
+            spinner.innerHTML = '';
+            titulo.textContent = 'No se pudo generar el ZIP';
+            titulo.classList.add('text-danger');
+            mensaje.textContent = 'Revise los detalles del error:';
+            barra.className = 'progress-bar bg-danger';
+            barra.style.width = '100%';
+            errorDiv.classList.remove('d-none');
+            textoError.innerHTML = error.message;
+            footer.innerHTML = '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-2"></i>Cerrar</button>';
+        }
+
+        btn.disabled = false;
+    });
+});
+</script>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card card-custom">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-folder me-2"></i>Historial de Reportes</h5>
+                    {% if contrato %}
+                    <a href="{{ url_for('cargas.carga_masiva_mes') }}" class="btn btn-warning btn-sm me-2">
+                        <i class="bi bi-cloud-upload me-1"></i>Carga Masiva por Mes
+                    </a>
+                    <a href="{{ url_for('inicio.index') }}" class="btn btn-primary-custom btn-sm">
+                        <i class="bi bi-plus-lg me-1"></i>Nuevo Reporte
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body px-4 pb-4">
+                <!-- Filtros -->
+                <div class="card bg-light border-0 mb-3">
+                    <div class="card-body">
+                        <form method="GET" action="{{ url_for('reportes.reportes') }}">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-3">
+                                    <label class="form-label small fw-bold text-muted">Buscar</label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                        <input type="text" name="search" class="form-control" placeholder="Número o descripción..." value="{{ search }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold text-muted">Mes</label>
+                                    <select name="filtro_mes" class="form-select form-select-sm">
+                                        <option value="">Todos</option>
+                                        <option value="1" {% if filtro_mes == '1' %}selected{% endif %}>Enero</option>
+                                        <option value="2" {% if filtro_mes == '2' %}selected{% endif %}>Febrero</option>
+                                        <option value="3" {% if filtro_mes == '3' %}selected{% endif %}>Marzo</option>
+                                        <option value="4" {% if filtro_mes == '4' %}selected{% endif %}>Abril</option>
+                                        <option value="5" {% if filtro_mes == '5' %}selected{% endif %}>Mayo</option>
+                                        <option value="6" {% if filtro_mes == '6' %}selected{% endif %}>Junio</option>
+                                        <option value="7" {% if filtro_mes == '7' %}selected{% endif %}>Julio</option>
+                                        <option value="8" {% if filtro_mes == '8' %}selected{% endif %}>Agosto</option>
+                                        <option value="9" {% if filtro_mes == '9' %}selected{% endif %}>Septiembre</option>
+                                        <option value="10" {% if filtro_mes == '10' %}selected{% endif %}>Octubre</option>
+                                        <option value="11" {% if filtro_mes == '11' %}selected{% endif %}>Noviembre</option>
+                                        <option value="12" {% if filtro_mes == '12' %}selected{% endif %}>Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small fw-bold text-muted">Año</label>
+                                    <select name="filtro_anio" class="form-select form-select-sm">
+                                        <option value="">Todos</option>
+                                        {% set years = [] %}
+                                        {% if contrato %}
+                                            {% for y in range(contrato.fecha_inicio.year, contrato.fecha_fin.year + 1) %}
+                                                <option value="{{ y }}" {% if filtro_anio == y|string %}selected{% endif %}>{{ y }}</option>
+                                            {% endfor %}
+                                        {% endif %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small fw-bold text-muted">Obligación</label>
+                                    <select name="filtro_obligacion" class="form-select form-select-sm">
+                                        <option value="">Todas</option>
+                                        {% for obl in obligaciones_list %}
+                                        <option value="{{ obl.id }}" {% if filtro_obligacion == obl.id|string %}selected{% endif %}>No. {{ obl.numero }} - {{ obl.descripcion[:40] }}{% if obl.descripcion|length > 40 %}...{% endif %}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <div class="d-flex gap-1">
+                                        <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+                                        <a href="{{ url_for('reportes.reportes') }}" class="btn btn-outline-secondary btn-sm" title="Limpiar filtros"><i class="bi bi-x-lg"></i></a>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Contador de resultados -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted small">
+                        {% if reportes_pag %}
+                        Mostrando <strong>{{ (reportes_pag.page - 1) * reportes_pag.per_page + 1 }} - {{ (reportes_pag.page - 1) * reportes_pag.per_page + reportes|length }}</strong>
+                        de <strong>{{ reportes_pag.total }}</strong> reportes
+                        {% endif %}
+                    </span>
+                    <div class="btn-group btn-group-sm">
+                        <span class="btn btn-outline-secondary disabled">Mostrar:</span>
+                        <a href="{{ url_for('reportes.reportes', per_page=10, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}" class="btn btn-outline-secondary {% if per_page == 10 %}active{% endif %}">10</a>
+                        <a href="{{ url_for('reportes.reportes', per_page=25, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}" class="btn btn-outline-secondary {% if per_page == 25 %}active{% endif %}">25</a>
+                        <a href="{{ url_for('reportes.reportes', per_page=50, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}" class="btn btn-outline-secondary {% if per_page == 50 %}active{% endif %}">50</a>
+                    </div>
+                </div>
+
+                {% if not reportes %}
+                <div class="empty-state py-5">
+                    <i class="bi bi-folder-x"></i>
+                    <h5 class="mt-3">No hay reportes generados</h5>
+                    <p class="text-muted">
+                        {% if search or filtro_mes or filtro_anio or filtro_obligacion %}
+                        No se encontraron reportes con los filtros aplicados.
+                        {% else %}
+                        Vaya al Dashboard y seleccione una obligacion para crear un reporte mensual.
+                        {% endif %}
+                    </p>
+                    <a href="{{ url_for('inicio.index') }}" class="btn btn-primary-custom">Ir a Obligaciones</a>
+                </div>
+                {% else %}
+                <div class="table-responsive">
+                    <table class="table table-hover table-custom">
+                        <thead>
+                            <tr>
+                                <th>Mes</th>
+                                <th>Anio</th>
+                                <th>Obligacion No.</th>
+                                <th>Periodo Reportado</th>
+                                <th>Actividades</th>
+                                <th style="width: 250px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rep in reportes %}
+                            <tr>
+                                <td><span class="badge bg-info">{{ rep.nombre_mes }}</span></td>
+                                <td>{{ rep.anio }}</td>
+                                <td><span class="badge bg-primary">{{ rep.obligacion.numero }}</span></td>
+                                <td>{{ rep.fecha_inicio_reporte.strftime('%d/%m/%Y') }} - {{ rep.fecha_fin_reporte.strftime('%d/%m/%Y') }}</td>
+                                <td><span class="badge bg-secondary">{{ rep.evidencias|length }} actividades</span></td>
+                                <td>
+                                    <a href="{{ url_for('reportes.ver_reporte', id=rep.id) }}" class="btn btn-outline-primary btn-sm me-1">
+                                        <i class="bi bi-eye me-1"></i>Ver
+                                    </a>
+                                    <a href="{{ url_for('reportes.generar_pdf', id=rep.id) }}" class="btn pdf-btn btn-sm me-1">
+                                        <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+                                    </a>
+                                    <form method="POST" action="{{ url_for('reportes.eliminar_reporte', id=rep.id) }}" class="d-inline" data-confirm="Eliminar este reporte y todas sus evidencias?">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Paginación -->
+                {% if reportes_pag and reportes_pag.pages > 1 %}
+                <nav aria-label="Paginación reportes">
+                    <ul class="pagination justify-content-center mt-3">
+                        {% if reportes_pag.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.prev_num, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion, per_page=per_page) }}"><i class="bi bi-chevron-left"></i></a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left"></i></span></li>
+                        {% endif %}
+
+                        {% for p in reportes_pag.iter_pages(left_edge=1, left_current=2, right_current=2, right_edge=1) %}
+                            {% if p %}
+                                {% if p == reportes_pag.page %}
+                                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                                {% else %}
+                                <li class="page-item"><a class="page-link" href="{{ url_for('reportes.reportes', page=p, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion, per_page=per_page) }}">{{ p }}</a></li>
+                                {% endif %}
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">…</span></li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if reportes_pag.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.next_num, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion, per_page=per_page) }}"><i class="bi bi-chevron-right"></i></a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-right"></i></span></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
