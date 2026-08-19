@@ -33,7 +33,7 @@ from app.services.excel_service import (
 )
 
 from app.services.evidencia_service import (
-    procesar_evidencia
+    EvidenciaService
 )
 
 from app.services.reporte_service import (
