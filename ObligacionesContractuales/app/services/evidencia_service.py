@@ -1,18 +1,14 @@
 """
-Servicio para gestionar evidencias contractuales.
+Servicio para la gestión de evidencias.
 
 Responsabilidades:
 
-- Buscar imágenes temporales.
-- Guardar/mover imágenes.
+- Crear evidencias asociadas a reportes.
 - Obtener el siguiente número de actividad.
-- Crear registros Evidencia.
-- Generar la descripción de la actividad.
+- Guardar imágenes.
+- Recuperar imágenes temporales.
+- Generar descripciones automáticas.
 - Consultar evidencias.
-
-El análisis mediante Gemini pertenece a GeminiService.
-
-Este servicio no contiene rutas Flask.
 """
 
 import os
@@ -23,10 +19,9 @@ from flask import current_app
 
 from werkzeug.utils import secure_filename
 
-from models import (
-    db,
-    Evidencia
-)
+from app import db
+
+from app.models.evidencia import Evidencia
 
 
 class EvidenciaService:
@@ -52,8 +47,16 @@ class EvidenciaService:
         La imagen puede ser:
 
         - una ruta temporal;
-        - un FileStorage;
+        - un Flask FileStorage;
         - None.
+
+        IMPORTANTE:
+        Este método se encarga de guardar la imagen cuando
+        se proporciona una.
+
+        Por lo tanto, quien utilice este método NO debe llamar
+        posteriormente a guardar_imagen_evidencia() para la
+        misma imagen.
 
         Args:
             reporte:
@@ -166,6 +169,16 @@ class EvidenciaService:
         """
         Obtiene el siguiente número consecutivo
         de actividad dentro del reporte.
+
+        Ejemplo:
+
+            Evidencias existentes:
+                1
+                2
+                3
+
+            Retorna:
+                4
         """
 
         ultima = (
@@ -211,6 +224,9 @@ class EvidenciaService:
         Returns:
             str:
                 Ruta final de la imagen.
+
+        Si imagen es None:
+            retorna ''.
         """
 
         if imagen is None:
@@ -268,6 +284,10 @@ class EvidenciaService:
                 'No fue posible determinar '
                 'el nombre de la imagen.'
             )
+
+        # ----------------------------------------------------
+        # EXTENSIÓN
+        # ----------------------------------------------------
 
         extension = (
             os.path.splitext(
@@ -335,6 +355,22 @@ class EvidenciaService:
                 f'{imagen}'
             )
 
+        # ----------------------------------------------------
+        # EVITAR COLISIÓN
+        # ----------------------------------------------------
+
+        if os.path.abspath(
+            ruta_origen
+        ) == os.path.abspath(
+            ruta_final
+        ):
+
+            return ruta_final
+
+        # ----------------------------------------------------
+        # MOVER ARCHIVO
+        # ----------------------------------------------------
+
         os.replace(
             ruta_origen,
             ruta_final
@@ -356,6 +392,12 @@ class EvidenciaService:
 
         La imagen encontrada se elimina del diccionario
         para impedir que sea utilizada nuevamente.
+
+        Acepta coincidencia:
+
+        1. Exacta.
+        2. Nombre seguro.
+        3. Normalizada.
         """
 
         if not nombre_imagen:
@@ -443,8 +485,11 @@ class EvidenciaService:
         """
         Genera la descripción automática de la actividad.
 
-        Se utiliza el método existente del modelo Evidencia
+        Utiliza el método existente del modelo Evidencia
         para conservar la lógica actual de la aplicación.
+
+        Si la generación falla, utiliza el anuncio como
+        descripción alternativa.
         """
 
         try:
@@ -488,17 +533,26 @@ class EvidenciaService:
         self,
         imagen_temporal,
         reporte_id,
-        nombre_imagen
+        nombre_imagen=None
     ):
         """
-        Método de compatibilidad.
+        Método de compatibilidad con código antiguo.
 
         IMPORTANTE:
-        Este método se mantiene para código antiguo.
 
-        La carga masiva nueva debe utilizar
-        crear_evidencia() directamente para que
-        el número de actividad sea correcto.
+        La implementación nueva debe utilizar:
+
+            crear_evidencia()
+
+        directamente.
+
+        Este método permanece únicamente para código
+        anterior que todavía necesite guardar una imagen
+        independientemente de la creación de la evidencia.
+
+        Returns:
+            str:
+                Ruta final de la imagen.
         """
 
         if not imagen_temporal:
@@ -506,7 +560,7 @@ class EvidenciaService:
             return ''
 
         # ----------------------------------------------------
-        # Obtener siguiente actividad
+        # OBTENER SIGUIENTE ACTIVIDAD
         # ----------------------------------------------------
 
         numero_actividad = (
@@ -533,6 +587,10 @@ class EvidenciaService:
         Obtiene una evidencia por ID.
         """
 
+        if not evidencia_id:
+
+            return None
+
         return (
             Evidencia.query
             .filter_by(
@@ -550,8 +608,13 @@ class EvidenciaService:
         reporte_id
     ):
         """
-        Obtiene todas las evidencias de un reporte.
+        Obtiene todas las evidencias de un reporte,
+        ordenadas por número de actividad.
         """
+
+        if not reporte_id:
+
+            return []
 
         return (
             Evidencia.query
@@ -578,6 +641,10 @@ class EvidenciaService:
         Cuenta las evidencias de un reporte.
         """
 
+        if not reporte_id:
+
+            return 0
+
         return (
             Evidencia.query
             .filter_by(
@@ -585,12 +652,3 @@ class EvidenciaService:
             )
             .count()
         )
-
-
-# ============================================================
-# INSTANCIA
-# ============================================================
-
-evidencia_service = (
-    EvidenciaService()
-)
