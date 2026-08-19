@@ -2,16 +2,15 @@
 Servicio para procesamiento de cargas masivas mensuales.
 
 Responsabilidades:
-- Leer y validar el Excel.
-- Procesar las filas de obligaciones.
+- Procesar una carga masiva mensual.
+- Validar las filas del Excel.
 - Crear o reutilizar reportes mensuales.
-- Procesar las imágenes.
-- Analizar imágenes con Gemini.
 - Crear evidencias.
-- Actualizar el progreso del proceso.
+- Procesar imágenes y Gemini.
+- Actualizar el progreso.
 - Limpiar archivos temporales.
 
-Este módulo contiene lógica de negocio y no define rutas Flask.
+Este módulo no define rutas Flask.
 """
 
 import os
@@ -36,28 +35,24 @@ from models import (
 
 from vision_analyzer import analizar_imagen
 
-from app.services.evidencia_service import (
-    obtener_imagen_temporal,
-    guardar_imagen_evidencia,
-    analizar_evidencia_con_ia
-)
+
+# ============================================================
+# CONFIGURACIÓN GEMINI
+# ============================================================
+
+GEMINI_MIN_INTERVAL = 4.1
+
+_gemini_last_call = 0.0
+_gemini_lock = threading.Lock()
+
 
 # ============================================================
 # RATE LIMITER GEMINI
 # ============================================================
 
-_gemini_last_call = 0.0
-
-_gemini_lock = threading.Lock()
-
-# Aproximadamente 15 solicitudes por minuto.
-# Se deja margen de seguridad.
-GEMINI_MIN_INTERVAL = 4.1
-
-
 def esperar_rate_limit_gemini():
     """
-    Espera el tiempo necesario entre llamadas a Gemini.
+    Respeta el intervalo mínimo entre llamadas a Gemini.
     """
 
     global _gemini_last_call
@@ -67,14 +62,10 @@ def esperar_rate_limit_gemini():
         ahora = time.time()
 
         transcurrido = (
-            ahora
-            - _gemini_last_call
+            ahora - _gemini_last_call
         )
 
-        if (
-            transcurrido
-            < GEMINI_MIN_INTERVAL
-        ):
+        if transcurrido < GEMINI_MIN_INTERVAL:
 
             esperar = (
                 GEMINI_MIN_INTERVAL
@@ -107,639 +98,47 @@ def procesar_carga_masiva_job(
     """
     Procesa una carga masiva mensual en segundo plano.
 
-    Parámetros:
-        app:
-            Instancia de Flask.
+    El blueprint se encarga de:
+    - recibir archivos,
+    - crear el job,
+    - iniciar el hilo,
+    - enviar progreso mediante SSE.
 
-        job_id:
-            Identificador único del proceso.
-
-        contrato:
-            Contrato activo.
-
-        obligaciones:
-            Obligaciones del contrato.
-
-        mes:
-            Mes del reporte.
-
-        anio:
-            Año del reporte.
-
-        excel_path:
-            Ruta temporal del archivo Excel.
-
-        imagenes_subidas:
-            Diccionario:
-                nombre_archivo -> ruta_temporal
-
-        api_key:
-            API key de Gemini, si está configurada.
-
-        actualizar_progreso:
-            Función callback proporcionada por el blueprint
-            para actualizar el progreso SSE.
+    Este servicio se encarga exclusivamente de la lógica
+    de procesamiento.
     """
 
     try:
 
         with app.app_context():
 
-            # =================================================
-            # CARGAR EXCEL
-            # =================================================
-
-            wb = load_workbook(
-                excel_path
+            resultado = _procesar_excel(
+                job_id=job_id,
+                contrato=contrato,
+                obligaciones=obligaciones,
+                mes=mes,
+                anio=anio,
+                excel_path=excel_path,
+                imagenes_subidas=imagenes_subidas,
+                api_key=api_key,
+                actualizar_progreso=actualizar_progreso
             )
-
-            ws = wb.active
-
-            # =================================================
-            # VALIDAR ENCABEZADOS
-            # =================================================
-
-            headers = [
-                cell.value
-                for cell in ws[1]
-            ]
-
-            expected = [
-                'Obligacion No.',
-                'Descripcion Obligacion',
-                'Anuncio / Contexto',
-                'Fecha de la actividad',
-                'Nombre Imagen'
-            ]
-
-            if headers[:5] != expected:
-
-                actualizar_progreso(
-                    job_id,
-                    'error',
-                    0,
-                    (
-                        'Encabezados incorrectos. '
-                        f'Esperado: {expected}'
-                    )
-                )
-
-                return
-
-            # =================================================
-            # FILAS VÁLIDAS
-            # =================================================
-
-            filas_validas = []
-
-            for idx, row in enumerate(
-                ws.iter_rows(
-                    min_row=2,
-                    values_only=True
-                ),
-                start=2
-            ):
-
-                if (
-                    not row[0]
-                    and
-                    not row[2]
-                ):
-                    continue
-
-                filas_validas.append(
-                    (
-                        idx,
-                        row
-                    )
-                )
-
-            total_filas = len(
-                filas_validas
-            )
-
-            if total_filas == 0:
-
-                actualizar_progreso(
-                    job_id,
-                    'error',
-                    0,
-                    'No se encontraron filas válidas en el Excel.'
-                )
-
-                return
-
-            # =================================================
-            # CONTADORES
-            # =================================================
-
-            exitosos = 0
-
-            errores = []
-
-            # =================================================
-            # CACHE DE REPORTES
-            # =================================================
-
-            reportes_cache = {}
-
-            evidencias_por_reporte = {}
-
-            # =================================================
-            # FECHAS DEL MES
-            # =================================================
-
-            _, last_day = calendar.monthrange(
-                anio,
-                mes
-            )
-
-            fecha_inicio_mes = date(
-                anio,
-                mes,
-                1
-            )
-
-            fecha_fin_mes = date(
-                anio,
-                mes,
-                last_day
-            )
-
-            # =================================================
-            # IMÁGENES DISPONIBLES
-            # =================================================
-
-            imagenes_disponibles = dict(
-                imagenes_subidas
-            )
-
-            # =================================================
-            # PROCESAR FILAS
-            # =================================================
-
-            for i, (
-                idx,
-                row
-            ) in enumerate(
-                filas_validas
-            ):
-
-                porcentaje = int(
-                    (
-                        i
-                        /
-                        total_filas
-                    )
-                    * 100
-                )
-
-                actualizar_progreso(
-                    job_id,
-                    'procesando',
-                    porcentaje,
-                    (
-                        f'Procesando fila '
-                        f'{idx} '
-                        f'({i + 1}/{total_filas})...'
-                    )
-                )
-
-                # =================================================
-                # DATOS DEL EXCEL
-                # =================================================
-
-                obl_num = row[0]
-
-                anuncio = str(
-                    row[2] or ''
-                ).strip()
-
-                fecha_str = str(
-                    row[3] or ''
-                ).strip()
-
-                nombre_imagen = str(
-                    row[4] or ''
-                ).strip()
-
-                # =================================================
-                # OBLIGACIÓN
-                # =================================================
-
-                try:
-
-                    obl_num_int = int(
-                        obl_num
-                    )
-
-                except (
-                    ValueError,
-                    TypeError
-                ):
-
-                    errores.append(
-                        f'Fila {idx}: '
-                        f'Numero de obligacion '
-                        f'invalido ({obl_num}).'
-                    )
-
-                    continue
-
-                obligacion = (
-                    Obligacion.query
-                    .filter_by(
-                        numero=obl_num_int,
-                        contrato_id=contrato.id
-                    )
-                    .first()
-                )
-
-                if not obligacion:
-
-                    errores.append(
-                        f'Fila {idx}: '
-                        f'Obligacion No. '
-                        f'{obl_num_int} '
-                        f'no encontrada.'
-                    )
-
-                    continue
-
-                # =================================================
-                # ANUNCIO
-                # =================================================
-
-                if not anuncio:
-
-                    errores.append(
-                        f'Fila {idx}: '
-                        f'Anuncio vacio.'
-                    )
-
-                    continue
-
-                # =================================================
-                # FECHA
-                # =================================================
-
-                fecha_actividad = (
-                    _parsear_fecha(
-                        fecha_str
-                    )
-                )
-
-                if fecha_str and not fecha_actividad:
-
-                    errores.append(
-                        f'Fila {idx}: '
-                        f'Fecha invalida '
-                        f'({fecha_str}).'
-                    )
-
-                    continue
-
-                if fecha_actividad:
-
-                    if (
-                        fecha_actividad
-                        < fecha_inicio_mes
-                        or
-                        fecha_actividad
-                        > fecha_fin_mes
-                    ):
-
-                        errores.append(
-                            f'Fila {idx}: '
-                            f'Fecha {fecha_str} '
-                            f'fuera del mes '
-                            f'{mes}/{anio}.'
-                        )
-
-                        continue
-
-                else:
-
-                    fecha_actividad = date(
-                        anio,
-                        mes,
-                        15
-                    )
-
-                # =================================================
-                # REPORTE
-                # =================================================
-
-                cache_key = (
-                    obligacion.id,
-                    mes,
-                    anio
-                )
-
-                if cache_key not in reportes_cache:
-
-                    reporte = (
-                        ReporteMensual.query
-                        .filter_by(
-                            mes=mes,
-                            anio=anio,
-                            obligacion_id=(
-                                obligacion.id
-                            )
-                        )
-                        .first()
-                    )
-
-                    if not reporte:
-
-                        reporte = ReporteMensual(
-                            mes=mes,
-                            anio=anio,
-                            fecha_inicio_reporte=(
-                                fecha_inicio_mes
-                            ),
-                            fecha_fin_reporte=(
-                                fecha_fin_mes
-                            ),
-                            obligacion_id=(
-                                obligacion.id
-                            )
-                        )
-
-                        db.session.add(
-                            reporte
-                        )
-
-                        db.session.commit()
-
-                    reportes_cache[
-                        cache_key
-                    ] = reporte
-
-                    ultima = (
-                        Evidencia.query
-                        .filter_by(
-                            reporte_id=reporte.id
-                        )
-                        .order_by(
-                            Evidencia
-                            .numero_actividad
-                            .desc()
-                        )
-                        .first()
-                    )
-
-                    evidencias_por_reporte[
-                        reporte.id
-                    ] = (
-                        ultima.numero_actividad
-                        if ultima
-                        else 0
-                    )
-
-                else:
-
-                    reporte = reportes_cache[
-                        cache_key
-                    ]
-
-                # =================================================
-                # IMAGEN
-                # =================================================
-
-                imagen_path = ''
-
-                if nombre_imagen:
-
-                    actualizar_progreso(
-                        job_id,
-                        'procesando',
-                        porcentaje,
-                        (
-                            f'Fila {idx}: '
-                            f'Buscando imagen '
-                            f'"{nombre_imagen}"...'
-                        )
-                    )
-
-                    tmp_src = None
-
-                    if (
-                        nombre_imagen
-                        in imagenes_disponibles
-                    ):
-
-                        tmp_src = (
-                            imagenes_disponibles.pop(
-                                nombre_imagen
-                            )
-                        )
-
-                    else:
-
-                        safe_name = (
-                            secure_filename(
-                                nombre_imagen
-                            )
-                        )
-
-                        if (
-                            safe_name
-                            in imagenes_disponibles
-                        ):
-
-                            tmp_src = (
-                                imagenes_disponibles.pop(
-                                    safe_name
-                                )
-                            )
-
-                    if tmp_src:
-
-                        final_name = secure_filename(
-                            (
-                                f'evidencia_'
-                                f'{reporte.id}_'
-                                f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_'
-                                f'{nombre_imagen}'
-                            )
-                        )
-
-                        final_path = os.path.join(
-                            current_app.config[
-                                'UPLOAD_FOLDER'
-                            ],
-                            final_name
-                        )
-
-                        os.rename(
-                            tmp_src,
-                            final_path
-                        )
-
-                        imagen_path = (
-                            final_path
-                        )
-
-                    else:
-
-                        errores.append(
-                            f'Fila {idx}: '
-                            f'Imagen "{nombre_imagen}" '
-                            f'no encontrada.'
-                        )
-
-                # =================================================
-                # NÚMERO DE ACTIVIDAD
-                # =================================================
-
-                evidencias_por_reporte[
-                    reporte.id
-                ] += 1
-
-                numero_actividad = (
-                    evidencias_por_reporte[
-                        reporte.id
-                    ]
-                )
-
-                # =================================================
-                # CREAR EVIDENCIA
-                # =================================================
-
-                evidencia = Evidencia(
-                    numero_actividad=(
-                        numero_actividad
-                    ),
-                    imagen_path=(
-                        imagen_path
-                    ),
-                    anuncio_usuario=(
-                        anuncio
-                    ),
-                    descripcion_visual_ia=None,
-                    descripcion_actividad='',
-                    fecha_actividad=(
-                        fecha_actividad
-                    ),
-                    reporte_id=(
-                        reporte.id
-                    )
-                )
-
-                # =================================================
-                # GEMINI
-                # =================================================
-
-                if (
-                    imagen_path
-                    and
-                    api_key
-                ):
-
-                    actualizar_progreso(
-                        job_id,
-                        'procesando',
-                        porcentaje,
-                        (
-                            f'Fila {idx}: '
-                            f'Analizando con Gemini...'
-                        )
-                    )
-
-                    esperar_rate_limit_gemini()
-
-                    try:
-
-                        descripcion_visual = (
-                            analizar_imagen(
-                                imagen_path,
-                                api_key
-                            )
-                        )
-
-                        if descripcion_visual:
-
-                            evidencia.descripcion_visual_ia = (
-                                descripcion_visual
-                            )
-
-                    except Exception as exc:
-
-                        print(
-                            '[CargaMasiva] '
-                            f'Error IA fila {idx}: '
-                            f'{exc}'
-                        )
-
-                        errores.append(
-                            f'Fila {idx}: '
-                            f'Error al analizar imagen '
-                            f'con IA '
-                            f'({str(exc)[:60]}).'
-                        )
-
-                # =================================================
-                # DESCRIPCIÓN AUTOMÁTICA
-                # =================================================
-
-                evidencia.descripcion_actividad = (
-                    evidencia
-                    .generar_descripcion_automatica(
-                        obligacion
-                    )
-                )
-
-                # =================================================
-                # AGREGAR
-                # =================================================
-
-                db.session.add(
-                    evidencia
-                )
-
-                exitosos += 1
-
-            # =================================================
-            # COMMIT FINAL
-            # =================================================
-
-            db.session.commit()
-
-            # =================================================
-            # LIMPIAR IMÁGENES
-            # =================================================
-
-            _limpiar_archivos_temporales(
-                imagenes_disponibles.values()
-            )
-
-            # =================================================
-            # LIMPIAR EXCEL
-            # =================================================
-
-            _limpiar_archivo(
-                excel_path
-            )
-
-            # =================================================
-            # COMPLETADO
-            # =================================================
 
             actualizar_progreso(
                 job_id,
                 'completado',
                 100,
                 (
-                    f'Proceso finalizado. '
-                    f'{exitosos} evidencias cargadas.'
+                    'Proceso finalizado. '
+                    f"{resultado['exitosos']} "
+                    'evidencias cargadas.'
                 ),
                 resultado={
-                    'exitosos': exitosos,
+                    'exitosos': resultado['exitosos'],
                     'mes': mes,
                     'anio': anio
                 },
-                errores=errores
+                errores=resultado['errores']
             )
 
     except Exception as exc:
@@ -758,14 +157,707 @@ def procesar_carga_masiva_job(
             )
         )
 
+    finally:
+
+        _limpiar_archivo(
+            excel_path
+        )
+
 
 # ============================================================
-# FECHAS
+# PROCESAR EXCEL
 # ============================================================
 
-def _parsear_fecha(fecha_str):
+def _procesar_excel(
+    job_id,
+    contrato,
+    obligaciones,
+    mes,
+    anio,
+    excel_path,
+    imagenes_subidas,
+    api_key,
+    actualizar_progreso
+):
     """
-    Convierte una fecha del Excel a date.
+    Lee el Excel y procesa todas sus filas.
+    """
+
+    wb = load_workbook(
+        excel_path
+    )
+
+    ws = wb.active
+
+    _validar_encabezados(
+        ws
+    )
+
+    filas_validas = _obtener_filas_validas(
+        ws
+    )
+
+    if not filas_validas:
+
+        raise ValueError(
+            'No se encontraron filas válidas en el Excel.'
+        )
+
+    total_filas = len(
+        filas_validas
+    )
+
+    errores = []
+
+    exitosos = 0
+
+    reportes_cache = {}
+
+    evidencias_por_reporte = {}
+
+    fechas_mes = _obtener_fechas_mes(
+        mes,
+        anio
+    )
+
+    imagenes_disponibles = dict(
+        imagenes_subidas
+    )
+
+    for posicion, (
+        fila_excel,
+        row
+    ) in enumerate(
+        filas_validas,
+        start=1
+    ):
+
+        porcentaje = int(
+            (
+                (posicion - 1)
+                / total_filas
+            )
+            * 100
+        )
+
+        actualizar_progreso(
+            job_id,
+            'procesando',
+            porcentaje,
+            (
+                f'Procesando fila '
+                f'{fila_excel} '
+                f'({posicion}/{total_filas})...'
+            )
+        )
+
+        resultado_fila = _procesar_fila(
+            job_id=job_id,
+            fila_excel=fila_excel,
+            row=row,
+            contrato=contrato,
+            mes=mes,
+            anio=anio,
+            fechas_mes=fechas_mes,
+            api_key=api_key,
+            imagenes_disponibles=imagenes_disponibles,
+            reportes_cache=reportes_cache,
+            evidencias_por_reporte=evidencias_por_reporte,
+            actualizar_progreso=actualizar_progreso
+        )
+
+        if resultado_fila['exitoso']:
+
+            exitosos += 1
+
+        errores.extend(
+            resultado_fila['errores']
+        )
+
+    db.session.commit()
+
+    _limpiar_archivos_temporales(
+        imagenes_disponibles.values()
+    )
+
+    return {
+        'exitosos': exitosos,
+        'errores': errores
+    }
+
+
+# ============================================================
+# VALIDAR ENCABEZADOS
+# ============================================================
+
+def _validar_encabezados(ws):
+    """
+    Valida los encabezados obligatorios del Excel.
+    """
+
+    headers = [
+        cell.value
+        for cell in ws[1]
+    ]
+
+    expected = [
+        'Obligacion No.',
+        'Descripcion Obligacion',
+        'Anuncio / Contexto',
+        'Fecha de la actividad',
+        'Nombre Imagen'
+    ]
+
+    if headers[:5] != expected:
+
+        raise ValueError(
+            'Encabezados incorrectos. '
+            f'Esperado: {expected}'
+        )
+
+
+# ============================================================
+# OBTENER FILAS VÁLIDAS
+# ============================================================
+
+def _obtener_filas_validas(ws):
+    """
+    Obtiene las filas que contienen información.
+    """
+
+    filas = []
+
+    for idx, row in enumerate(
+        ws.iter_rows(
+            min_row=2,
+            values_only=True
+        ),
+        start=2
+    ):
+
+        if (
+            not row[0]
+            and
+            not row[2]
+        ):
+            continue
+
+        filas.append(
+            (
+                idx,
+                row
+            )
+        )
+
+    return filas
+
+
+# ============================================================
+# PROCESAR FILA
+# ============================================================
+
+def _procesar_fila(
+    job_id,
+    fila_excel,
+    row,
+    contrato,
+    mes,
+    anio,
+    fechas_mes,
+    api_key,
+    imagenes_disponibles,
+    reportes_cache,
+    evidencias_por_reporte,
+    actualizar_progreso
+):
+    """
+    Procesa una única fila del Excel.
+    """
+
+    errores = []
+
+    obl_num = row[0]
+
+    anuncio = str(
+        row[2] or ''
+    ).strip()
+
+    fecha_str = str(
+        row[3] or ''
+    ).strip()
+
+    nombre_imagen = str(
+        row[4] or ''
+    ).strip()
+
+    # --------------------------------------------------------
+    # OBLIGACIÓN
+    # --------------------------------------------------------
+
+    try:
+
+        obl_num_int = int(
+            obl_num
+        )
+
+    except (
+        ValueError,
+        TypeError
+    ):
+
+        errores.append(
+            f'Fila {fila_excel}: '
+            f'Número de obligación inválido '
+            f'({obl_num}).'
+        )
+
+        return {
+            'exitoso': False,
+            'errores': errores
+        }
+
+    obligacion = (
+        Obligacion.query
+        .filter_by(
+            numero=obl_num_int,
+            contrato_id=contrato.id
+        )
+        .first()
+    )
+
+    if not obligacion:
+
+        errores.append(
+            f'Fila {fila_excel}: '
+            f'Obligación No. '
+            f'{obl_num_int} '
+            'no encontrada.'
+        )
+
+        return {
+            'exitoso': False,
+            'errores': errores
+        }
+
+    # --------------------------------------------------------
+    # ANUNCIO
+    # --------------------------------------------------------
+
+    if not anuncio:
+
+        errores.append(
+            f'Fila {fila_excel}: '
+            'Anuncio vacío.'
+        )
+
+        return {
+            'exitoso': False,
+            'errores': errores
+        }
+
+    # --------------------------------------------------------
+    # FECHA
+    # --------------------------------------------------------
+
+    fecha_actividad = _parsear_fecha(
+        fecha_str
+    )
+
+    if fecha_str and not fecha_actividad:
+
+        errores.append(
+            f'Fila {fila_excel}: '
+            f'Fecha inválida ({fecha_str}).'
+        )
+
+        return {
+            'exitoso': False,
+            'errores': errores
+        }
+
+    if fecha_actividad:
+
+        if (
+            fecha_actividad
+            < fechas_mes['inicio']
+            or
+            fecha_actividad
+            > fechas_mes['fin']
+        ):
+
+            errores.append(
+                f'Fila {fila_excel}: '
+                f'Fecha {fecha_str} '
+                f'fuera del mes '
+                f'{mes}/{anio}.'
+            )
+
+            return {
+                'exitoso': False,
+                'errores': errores
+            }
+
+    else:
+
+        fecha_actividad = date(
+            anio,
+            mes,
+            15
+        )
+
+    # --------------------------------------------------------
+    # REPORTE
+    # --------------------------------------------------------
+
+    reporte = _obtener_reporte(
+        obligacion=obligacion,
+        mes=mes,
+        anio=anio,
+        fechas_mes=fechas_mes,
+        reportes_cache=reportes_cache,
+        evidencias_por_reporte=evidencias_por_reporte
+    )
+
+    # --------------------------------------------------------
+    # IMAGEN
+    # --------------------------------------------------------
+
+    imagen_path = ''
+
+    if nombre_imagen:
+
+        actualizar_progreso(
+            job_id,
+            'procesando',
+            0,
+            (
+                f'Fila {fila_excel}: '
+                f'Buscando imagen '
+                f'"{nombre_imagen}"...'
+            )
+        )
+
+        imagen_path = _procesar_imagen(
+            nombre_imagen=nombre_imagen,
+            reporte=reporte,
+            imagenes_disponibles=imagenes_disponibles
+        )
+
+        if not imagen_path:
+
+            errores.append(
+                f'Fila {fila_excel}: '
+                f'Imagen "{nombre_imagen}" '
+                'no encontrada.'
+            )
+
+    # --------------------------------------------------------
+    # NÚMERO DE ACTIVIDAD
+    # --------------------------------------------------------
+
+    evidencias_por_reporte[
+        reporte.id
+    ] += 1
+
+    numero_actividad = (
+        evidencias_por_reporte[
+            reporte.id
+        ]
+    )
+
+    # --------------------------------------------------------
+    # CREAR EVIDENCIA
+    # --------------------------------------------------------
+
+    evidencia = Evidencia(
+        numero_actividad=numero_actividad,
+        imagen_path=imagen_path,
+        anuncio_usuario=anuncio,
+        descripcion_visual_ia=None,
+        descripcion_actividad='',
+        fecha_actividad=fecha_actividad,
+        reporte_id=reporte.id
+    )
+
+    # --------------------------------------------------------
+    # GEMINI
+    # --------------------------------------------------------
+
+    if (
+        imagen_path
+        and
+        api_key
+    ):
+
+        actualizar_progreso(
+            job_id,
+            'procesando',
+            0,
+            (
+                f'Fila {fila_excel}: '
+                'Analizando con Gemini...'
+            )
+        )
+
+        try:
+
+            esperar_rate_limit_gemini()
+
+            descripcion_visual = (
+                analizar_imagen(
+                    imagen_path,
+                    api_key
+                )
+            )
+
+            if descripcion_visual:
+
+                evidencia.descripcion_visual_ia = (
+                    descripcion_visual
+                )
+
+        except Exception as exc:
+
+            print(
+                '[CargaMasiva] '
+                f'Error IA fila {fila_excel}: '
+                f'{exc}'
+            )
+
+            errores.append(
+                f'Fila {fila_excel}: '
+                'Error al analizar imagen '
+                f'con IA ({str(exc)[:60]}).'
+            )
+
+    # --------------------------------------------------------
+    # DESCRIPCIÓN AUTOMÁTICA
+    # --------------------------------------------------------
+
+    evidencia.descripcion_actividad = (
+        evidencia.generar_descripcion_automatica(
+            obligacion
+        )
+    )
+
+    db.session.add(
+        evidencia
+    )
+
+    return {
+        'exitoso': True,
+        'errores': errores
+    }
+
+
+# ============================================================
+# OBTENER REPORTE
+# ============================================================
+
+def _obtener_reporte(
+    obligacion,
+    mes,
+    anio,
+    fechas_mes,
+    reportes_cache,
+    evidencias_por_reporte
+):
+    """
+    Obtiene un reporte existente o crea uno nuevo.
+    """
+
+    cache_key = (
+        obligacion.id,
+        mes,
+        anio
+    )
+
+    if cache_key in reportes_cache:
+
+        return reportes_cache[
+            cache_key
+        ]
+
+    reporte = (
+        ReporteMensual.query
+        .filter_by(
+            mes=mes,
+            anio=anio,
+            obligacion_id=obligacion.id
+        )
+        .first()
+    )
+
+    if not reporte:
+
+        reporte = ReporteMensual(
+            mes=mes,
+            anio=anio,
+            fecha_inicio_reporte=(
+                fechas_mes['inicio']
+            ),
+            fecha_fin_reporte=(
+                fechas_mes['fin']
+            ),
+            obligacion_id=obligacion.id
+        )
+
+        db.session.add(
+            reporte
+        )
+
+        db.session.flush()
+
+    reportes_cache[
+        cache_key
+    ] = reporte
+
+    ultima = (
+        Evidencia.query
+        .filter_by(
+            reporte_id=reporte.id
+        )
+        .order_by(
+            Evidencia
+            .numero_actividad
+            .desc()
+        )
+        .first()
+    )
+
+    evidencias_por_reporte[
+        reporte.id
+    ] = (
+        ultima.numero_actividad
+        if ultima
+        else 0
+    )
+
+    return reporte
+
+
+# ============================================================
+# PROCESAR IMAGEN
+# ============================================================
+
+def _procesar_imagen(
+    nombre_imagen,
+    reporte,
+    imagenes_disponibles
+):
+    """
+    Busca una imagen subida y la mueve al directorio
+    definitivo de evidencias.
+    """
+
+    tmp_src = None
+
+    # --------------------------------------------------------
+    # NOMBRE EXACTO
+    # --------------------------------------------------------
+
+    if nombre_imagen in imagenes_disponibles:
+
+        tmp_src = (
+            imagenes_disponibles.pop(
+                nombre_imagen
+            )
+        )
+
+    # --------------------------------------------------------
+    # NOMBRE SEGURO
+    # --------------------------------------------------------
+
+    else:
+
+        safe_name = secure_filename(
+            nombre_imagen
+        )
+
+        if safe_name in imagenes_disponibles:
+
+            tmp_src = (
+                imagenes_disponibles.pop(
+                    safe_name
+                )
+            )
+
+    if not tmp_src:
+
+        return ''
+
+    # --------------------------------------------------------
+    # NOMBRE FINAL
+    # --------------------------------------------------------
+
+    final_name = secure_filename(
+        (
+            f'evidencia_'
+            f'{reporte.id}_'
+            f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_'
+            f'{nombre_imagen}'
+        )
+    )
+
+    final_path = os.path.join(
+        current_app.config[
+            'UPLOAD_FOLDER'
+        ],
+        final_name
+    )
+
+    # --------------------------------------------------------
+    # MOVER ARCHIVO
+    # --------------------------------------------------------
+
+    os.rename(
+        tmp_src,
+        final_path
+    )
+
+    return final_path
+
+
+# ============================================================
+# FECHAS DEL MES
+# ============================================================
+
+def _obtener_fechas_mes(
+    mes,
+    anio
+):
+    """
+    Retorna las fechas inicial y final del mes.
+    """
+
+    _, last_day = calendar.monthrange(
+        anio,
+        mes
+    )
+
+    return {
+        'inicio': date(
+            anio,
+            mes,
+            1
+        ),
+        'fin': date(
+            anio,
+            mes,
+            last_day
+        )
+    }
+
+
+# ============================================================
+# PARSEAR FECHA
+# ============================================================
+
+def _parsear_fecha(
+    fecha
+):
+    """
+    Convierte una fecha a datetime.date.
 
     Formatos soportados:
     - YYYY-MM-DD
@@ -773,8 +865,31 @@ def _parsear_fecha(fecha_str):
     - DD-MM-YYYY
     """
 
-    if not fecha_str:
+    if not fecha:
+
         return None
+
+    # --------------------------------------------------------
+    # SI OPENPYXL YA ENTREGA DATE
+    # --------------------------------------------------------
+
+    if isinstance(
+        fecha,
+        datetime
+    ):
+
+        return fecha.date()
+
+    if isinstance(
+        fecha,
+        date
+    ):
+
+        return fecha
+
+    fecha = str(
+        fecha
+    ).strip()
 
     formatos = (
         '%Y-%m-%d',
@@ -787,7 +902,7 @@ def _parsear_fecha(fecha_str):
         try:
 
             return datetime.strptime(
-                fecha_str,
+                fecha,
                 formato
             ).date()
 
@@ -799,7 +914,7 @@ def _parsear_fecha(fecha_str):
 
 
 # ============================================================
-# LIMPIEZA DE ARCHIVOS
+# LIMPIEZA DE ARCHIVO
 # ============================================================
 
 def _limpiar_archivo(
@@ -828,12 +943,16 @@ def _limpiar_archivo(
         pass
 
 
+# ============================================================
+# LIMPIEZA DE IMÁGENES
+# ============================================================
+
 def _limpiar_archivos_temporales(
     archivos
 ):
     """
-    Elimina archivos temporales
-    que no fueron utilizados.
+    Elimina las imágenes temporales
+    que no fueron utilizadas.
     """
 
     for archivo_path in archivos:
