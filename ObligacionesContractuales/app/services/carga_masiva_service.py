@@ -1,517 +1,944 @@
 """
-Servicio de procesamiento de carga masiva de evidencias.
+Servicio para procesamiento de cargas masivas mensuales.
 
 Responsabilidades:
-- Coordinar el procesamiento de un archivo Excel.
-- Procesar las evidencias asociadas.
-- Utilizar Gemini cuando esté disponible.
-- Coordinar la creación/actualización de reportes.
-- Centralizar errores y resultados del procesamiento.
+- Procesar una carga masiva mensual.
+- Validar las filas del Excel.
+- Crear o reutilizar reportes mensuales.
+- Crear evidencias.
+- Procesar imágenes.
+- Delegar el análisis de imágenes a GeminiService.
+- Actualizar el progreso.
+- Limpiar archivos temporales.
 
-Este servicio NO contiene rutas Flask.
+Este módulo no define rutas Flask.
 """
 
-from pathlib import Path
+import os
+import calendar
 
+from datetime import datetime, date
 
-from app.services.excel_service import (
-    ExcelService
-)
+from flask import current_app
+from werkzeug.utils import secure_filename
 
-from app.services.evidencia_service import (
-    EvidenciaService
-)
+from openpyxl import load_workbook
 
-from app.services.contrato_service import (
-    ContratoService
-)
-
-from app.services.reporte_service import (
-    ReporteService
+from models import (
+    db,
+    Obligacion,
+    ReporteMensual,
+    Evidencia
 )
 
 from app.services.gemini_service import (
-    GeminiService,
-    gemini_service
+    GeminiService
 )
 
 
 # ============================================================
-# SERVICIO DE CARGA MASIVA
+# SERVICIO GEMINI
 # ============================================================
 
-class CargaMasivaService:
+def _crear_gemini_service(api_key):
     """
-    Servicio principal para coordinar una carga masiva.
+    Crea una instancia del servicio Gemini.
+
+    Si no existe API Key, el servicio queda desactivado.
     """
 
-    def __init__(
-        self,
-        excel_service=None,
-        evidencia_service=None,
-        contrato_service=None,
-        reporte_service=None,
-        gemini=None
-    ):
-        """
-        Inicializa los servicios utilizados por la carga masiva.
+    return GeminiService(
+        api_key=api_key
+    )
 
-        Se permite inyectar los servicios para facilitar
-        pruebas y mantener bajo acoplamiento.
-        """
 
-        self.excel_service = (
-            excel_service
-            or ExcelService()
+# ============================================================
+# PROCESAMIENTO PRINCIPAL
+# ============================================================
+
+def procesar_carga_masiva_job(
+    app,
+    job_id,
+    contrato,
+    obligaciones,
+    mes,
+    anio,
+    excel_path,
+    imagenes_subidas,
+    api_key,
+    actualizar_progreso
+):
+    """
+    Procesa una carga masiva mensual en segundo plano.
+
+    El blueprint se encarga de:
+
+    - recibir archivos,
+    - crear el job,
+    - iniciar el hilo,
+    - enviar progreso mediante SSE.
+
+    Este servicio se encarga exclusivamente de la lógica
+    de procesamiento.
+    """
+
+    try:
+
+        with app.app_context():
+
+            resultado = _procesar_excel(
+                job_id=job_id,
+                contrato=contrato,
+                obligaciones=obligaciones,
+                mes=mes,
+                anio=anio,
+                excel_path=excel_path,
+                imagenes_subidas=imagenes_subidas,
+                api_key=api_key,
+                actualizar_progreso=actualizar_progreso
+            )
+
+            actualizar_progreso(
+                job_id,
+                'completado',
+                100,
+                (
+                    'Proceso finalizado. '
+                    f"{resultado['exitosos']} "
+                    'evidencias cargadas.'
+                ),
+                resultado={
+                    'exitosos': resultado['exitosos'],
+                    'mes': mes,
+                    'anio': anio
+                },
+                errores=resultado['errores']
+            )
+
+    except Exception as exc:
+
+        import traceback
+
+        traceback.print_exc()
+
+        actualizar_progreso(
+            job_id,
+            'error',
+            0,
+            (
+                'Error inesperado: '
+                f'{str(exc)}'
+            )
         )
 
-        self.evidencia_service = (
-            evidencia_service
-            or EvidenciaService()
+    finally:
+
+        _limpiar_archivo(
+            excel_path
         )
 
-        self.contrato_service = (
-            contrato_service
-            or ContratoService()
+
+# ============================================================
+# PROCESAR EXCEL
+# ============================================================
+
+def _procesar_excel(
+    job_id,
+    contrato,
+    obligaciones,
+    mes,
+    anio,
+    excel_path,
+    imagenes_subidas,
+    api_key,
+    actualizar_progreso
+):
+    """
+    Lee el Excel y procesa todas sus filas.
+    """
+
+    wb = load_workbook(
+        excel_path
+    )
+
+    ws = wb.active
+
+    _validar_encabezados(
+        ws
+    )
+
+    filas_validas = _obtener_filas_validas(
+        ws
+    )
+
+    if not filas_validas:
+
+        raise ValueError(
+            'No se encontraron filas válidas en el Excel.'
         )
 
-        self.reporte_service = (
-            reporte_service
-            or ReporteService()
-        )
+    total_filas = len(
+        filas_validas
+    )
 
-        self.gemini = (
-            gemini
-            or gemini_service
-        )
+    errores = []
+    exitosos = 0
 
-    # ========================================================
-    # PROCESAR CARGA
-    # ========================================================
+    reportes_cache = {}
 
-    def procesar(
-        self,
-        archivo_excel,
-        imagenes,
+    evidencias_por_reporte = {}
+
+    fechas_mes = _obtener_fechas_mes(
         mes,
-        anio,
-        usuario=None,
-        contrato=None
+        anio
+    )
+
+    imagenes_disponibles = dict(
+        imagenes_subidas
+    )
+
+    # --------------------------------------------------------
+    # GEMINI
+    # --------------------------------------------------------
+
+    gemini = _crear_gemini_service(
+        api_key
+    )
+
+    for posicion, (
+        fila_excel,
+        row
+    ) in enumerate(
+        filas_validas,
+        start=1
     ):
-        """
-        Procesa una carga masiva completa.
 
-        Args:
-            archivo_excel:
-                Archivo Excel recibido.
+        porcentaje = int(
+            (
+                (posicion - 1)
+                / total_filas
+            )
+            * 100
+        )
 
-            imagenes:
-                Lista de imágenes recibidas.
+        actualizar_progreso(
+            job_id,
+            'procesando',
+            porcentaje,
+            (
+                f'Procesando fila '
+                f'{fila_excel} '
+                f'({posicion}/{total_filas})...'
+            )
+        )
 
-            mes:
-                Mes del reporte.
+        resultado_fila = _procesar_fila(
+            job_id=job_id,
+            fila_excel=fila_excel,
+            row=row,
+            contrato=contrato,
+            mes=mes,
+            anio=anio,
+            fechas_mes=fechas_mes,
+            gemini=gemini,
+            imagenes_disponibles=imagenes_disponibles,
+            reportes_cache=reportes_cache,
+            evidencias_por_reporte=evidencias_por_reporte,
+            actualizar_progreso=actualizar_progreso
+        )
 
-            anio:
-                Año del reporte.
+        if resultado_fila['exitoso']:
 
-            usuario:
-                Usuario que realiza la carga.
+            exitosos += 1
 
-            contrato:
-                Contrato asociado, si ya fue identificado.
+        errores.extend(
+            resultado_fila['errores']
+        )
 
-        Returns:
-            dict:
-                Resultado del procesamiento.
-        """
+    db.session.commit()
 
-        resultado = {
-            "exitosos": 0,
-            "errores": [],
-            "advertencias": [],
-            "mes": mes,
-            "anio": anio
+    _limpiar_archivos_temporales(
+        imagenes_disponibles.values()
+    )
+
+    return {
+        'exitosos': exitosos,
+        'errores': errores
+    }
+
+
+# ============================================================
+# VALIDAR ENCABEZADOS
+# ============================================================
+
+def _validar_encabezados(ws):
+    """
+    Valida los encabezados obligatorios del Excel.
+    """
+
+    headers = [
+        cell.value
+        for cell in ws[1]
+    ]
+
+    expected = [
+        'Obligacion No.',
+        'Descripcion Obligacion',
+        'Anuncio / Contexto',
+        'Fecha de la actividad',
+        'Nombre Imagen'
+    ]
+
+    if headers[:5] != expected:
+
+        raise ValueError(
+            'Encabezados incorrectos. '
+            f'Esperado: {expected}'
+        )
+
+
+# ============================================================
+# OBTENER FILAS VÁLIDAS
+# ============================================================
+
+def _obtener_filas_validas(ws):
+    """
+    Obtiene las filas que contienen información.
+    """
+
+    filas = []
+
+    for idx, row in enumerate(
+        ws.iter_rows(
+            min_row=2,
+            values_only=True
+        ),
+        start=2
+    ):
+
+        if (
+            not row[0]
+            and
+            not row[2]
+        ):
+            continue
+
+        filas.append(
+            (
+                idx,
+                row
+            )
+        )
+
+    return filas
+
+
+# ============================================================
+# PROCESAR FILA
+# ============================================================
+
+def _procesar_fila(
+    job_id,
+    fila_excel,
+    row,
+    contrato,
+    mes,
+    anio,
+    fechas_mes,
+    gemini,
+    imagenes_disponibles,
+    reportes_cache,
+    evidencias_por_reporte,
+    actualizar_progreso
+):
+    """
+    Procesa una única fila del Excel.
+    """
+
+    errores = []
+
+    obl_num = row[0]
+
+    anuncio = str(
+        row[2] or ''
+    ).strip()
+
+    fecha_str = str(
+        row[3] or ''
+    ).strip()
+
+    nombre_imagen = str(
+        row[4] or ''
+    ).strip()
+
+    # --------------------------------------------------------
+    # OBLIGACIÓN
+    # --------------------------------------------------------
+
+    try:
+
+        obl_num_int = int(
+            obl_num
+        )
+
+    except (
+        ValueError,
+        TypeError
+    ):
+
+        errores.append(
+            f'Fila {fila_excel}: '
+            f'Número de obligación inválido '
+            f'({obl_num}).'
+        )
+
+        return {
+            'exitoso': False,
+            'errores': errores
         }
 
-        # ----------------------------------------------------
-        # Validaciones iniciales
-        # ----------------------------------------------------
+    obligacion = (
+        Obligacion.query
+        .filter_by(
+            numero=obl_num_int,
+            contrato_id=contrato.id
+        )
+        .first()
+    )
 
-        if not archivo_excel:
+    if not obligacion:
 
-            raise ValueError(
-                "No se recibió el archivo Excel."
+        errores.append(
+            f'Fila {fila_excel}: '
+            f'Obligación No. '
+            f'{obl_num_int} '
+            'no encontrada.'
+        )
+
+        return {
+            'exitoso': False,
+            'errores': errores
+        }
+
+    # --------------------------------------------------------
+    # ANUNCIO
+    # --------------------------------------------------------
+
+    if not anuncio:
+
+        errores.append(
+            f'Fila {fila_excel}: '
+            'Anuncio vacío.'
+        )
+
+        return {
+            'exitoso': False,
+            'errores': errores
+        }
+
+    # --------------------------------------------------------
+    # FECHA
+    # --------------------------------------------------------
+
+    fecha_actividad = _parsear_fecha(
+        fecha_str
+    )
+
+    if fecha_str and not fecha_actividad:
+
+        errores.append(
+            f'Fila {fila_excel}: '
+            f'Fecha inválida ({fecha_str}).'
+        )
+
+        return {
+            'exitoso': False,
+            'errores': errores
+        }
+
+    if fecha_actividad:
+
+        if (
+            fecha_actividad
+            < fechas_mes['inicio']
+            or
+            fecha_actividad
+            > fechas_mes['fin']
+        ):
+
+            errores.append(
+                f'Fila {fila_excel}: '
+                f'Fecha {fecha_str} '
+                f'fuera del mes '
+                f'{mes}/{anio}.'
             )
 
-        if not mes:
+            return {
+                'exitoso': False,
+                'errores': errores
+            }
 
-            raise ValueError(
-                "Debe indicar el mes."
+    else:
+
+        fecha_actividad = date(
+            anio,
+            mes,
+            15
+        )
+
+    # --------------------------------------------------------
+    # REPORTE
+    # --------------------------------------------------------
+
+    reporte = _obtener_reporte(
+        obligacion=obligacion,
+        mes=mes,
+        anio=anio,
+        fechas_mes=fechas_mes,
+        reportes_cache=reportes_cache,
+        evidencias_por_reporte=evidencias_por_reporte
+    )
+
+    # --------------------------------------------------------
+    # IMAGEN
+    # --------------------------------------------------------
+
+    imagen_path = ''
+
+    if nombre_imagen:
+
+        actualizar_progreso(
+            job_id,
+            'procesando',
+            0,
+            (
+                f'Fila {fila_excel}: '
+                f'Buscando imagen '
+                f'"{nombre_imagen}"...'
+            )
+        )
+
+        imagen_path = _procesar_imagen(
+            nombre_imagen=nombre_imagen,
+            reporte=reporte,
+            imagenes_disponibles=imagenes_disponibles
+        )
+
+        if not imagen_path:
+
+            errores.append(
+                f'Fila {fila_excel}: '
+                f'Imagen "{nombre_imagen}" '
+                'no encontrada.'
             )
 
-        if not anio:
+    # --------------------------------------------------------
+    # NÚMERO DE ACTIVIDAD
+    # --------------------------------------------------------
 
-            raise ValueError(
-                "Debe indicar el año."
+    evidencias_por_reporte[
+        reporte.id
+    ] += 1
+
+    numero_actividad = (
+        evidencias_por_reporte[
+            reporte.id
+        ]
+    )
+
+    # --------------------------------------------------------
+    # CREAR EVIDENCIA
+    # --------------------------------------------------------
+
+    evidencia = Evidencia(
+        numero_actividad=numero_actividad,
+        imagen_path=imagen_path,
+        anuncio_usuario=anuncio,
+        descripcion_visual_ia=None,
+        descripcion_actividad='',
+        fecha_actividad=fecha_actividad,
+        reporte_id=reporte.id
+    )
+
+    # --------------------------------------------------------
+    # GEMINI
+    # --------------------------------------------------------
+
+    if (
+        imagen_path
+        and
+        gemini.activo
+    ):
+
+        actualizar_progreso(
+            job_id,
+            'procesando',
+            0,
+            (
+                f'Fila {fila_excel}: '
+                'Analizando con Gemini...'
             )
-
-        # ----------------------------------------------------
-        # Guardar/leer Excel
-        # ----------------------------------------------------
+        )
 
         try:
 
-            datos = (
-                self.excel_service.leer_excel(
-                    archivo_excel
+            gemini.esperar_rate_limit()
+
+            descripcion_visual = (
+                gemini.analizar_imagen(
+                    ruta_imagen=imagen_path,
+                    contexto=anuncio
                 )
             )
+
+            if descripcion_visual:
+
+                evidencia.descripcion_visual_ia = (
+                    descripcion_visual
+                )
 
         except Exception as exc:
 
-            raise RuntimeError(
-                "No fue posible procesar el archivo Excel: "
-                f"{exc}"
-            ) from exc
-
-        if not datos:
-
-            resultado["advertencias"].append(
-                "El archivo Excel no contiene registros "
-                "para procesar."
+            print(
+                '[CargaMasiva] '
+                f'Error IA fila {fila_excel}: '
+                f'{exc}'
             )
 
-            return resultado
-
-        # ----------------------------------------------------
-        # Preparar imágenes
-        # ----------------------------------------------------
-
-        imagenes_por_nombre = (
-            self._indexar_imagenes(
-                imagenes
+            errores.append(
+                f'Fila {fila_excel}: '
+                'Error al analizar imagen '
+                f'con IA ({str(exc)[:60]}).'
             )
+
+    # --------------------------------------------------------
+    # DESCRIPCIÓN AUTOMÁTICA
+    # --------------------------------------------------------
+
+    evidencia.descripcion_actividad = (
+        evidencia.generar_descripcion_automatica(
+            obligacion
         )
+    )
 
-        # ----------------------------------------------------
-        # Procesar registros
-        # ----------------------------------------------------
+    db.session.add(
+        evidencia
+    )
 
-        for indice, registro in enumerate(
-            datos,
-            start=1
-        ):
+    return {
+        'exitoso': True,
+        'errores': errores
+    }
 
-            try:
 
-                resultado_registro = (
-                    self._procesar_registro(
-                        registro=registro,
-                        imagenes_por_nombre=(
-                            imagenes_por_nombre
-                        ),
-                        mes=mes,
-                        anio=anio,
-                        usuario=usuario,
-                        contrato=contrato
-                    )
-                )
+# ============================================================
+# OBTENER REPORTE
+# ============================================================
 
-                if resultado_registro:
+def _obtener_reporte(
+    obligacion,
+    mes,
+    anio,
+    fechas_mes,
+    reportes_cache,
+    evidencias_por_reporte
+):
+    """
+    Obtiene un reporte existente o crea uno nuevo.
+    """
 
-                    resultado["exitosos"] += 1
-
-            except Exception as exc:
-
-                resultado["errores"].append(
-                    {
-                        "fila": indice,
-                        "error": str(exc)
-                    }
-                )
-
-        return resultado
-
-    # ========================================================
-    # PROCESAR REGISTRO
-    # ========================================================
-
-    def _procesar_registro(
-        self,
-        registro,
-        imagenes_por_nombre,
+    cache_key = (
+        obligacion.id,
         mes,
+        anio
+    )
+
+    if cache_key in reportes_cache:
+
+        return reportes_cache[
+            cache_key
+        ]
+
+    reporte = (
+        ReporteMensual.query
+        .filter_by(
+            mes=mes,
+            anio=anio,
+            obligacion_id=obligacion.id
+        )
+        .first()
+    )
+
+    if not reporte:
+
+        reporte = ReporteMensual(
+            mes=mes,
+            anio=anio,
+            fecha_inicio_reporte=(
+                fechas_mes['inicio']
+            ),
+            fecha_fin_reporte=(
+                fechas_mes['fin']
+            ),
+            obligacion_id=obligacion.id
+        )
+
+        db.session.add(
+            reporte
+        )
+
+        db.session.flush()
+
+    reportes_cache[
+        cache_key
+    ] = reporte
+
+    ultima = (
+        Evidencia.query
+        .filter_by(
+            reporte_id=reporte.id
+        )
+        .order_by(
+            Evidencia
+            .numero_actividad
+            .desc()
+        )
+        .first()
+    )
+
+    evidencias_por_reporte[
+        reporte.id
+    ] = (
+        ultima.numero_actividad
+        if ultima
+        else 0
+    )
+
+    return reporte
+
+
+# ============================================================
+# PROCESAR IMAGEN
+# ============================================================
+
+def _procesar_imagen(
+    nombre_imagen,
+    reporte,
+    imagenes_disponibles
+):
+    """
+    Busca una imagen subida y la mueve al directorio
+    definitivo de evidencias.
+    """
+
+    tmp_src = None
+
+    # --------------------------------------------------------
+    # NOMBRE EXACTO
+    # --------------------------------------------------------
+
+    if nombre_imagen in imagenes_disponibles:
+
+        tmp_src = (
+            imagenes_disponibles.pop(
+                nombre_imagen
+            )
+        )
+
+    # --------------------------------------------------------
+    # NOMBRE SEGURO
+    # --------------------------------------------------------
+
+    else:
+
+        safe_name = secure_filename(
+            nombre_imagen
+        )
+
+        if safe_name in imagenes_disponibles:
+
+            tmp_src = (
+                imagenes_disponibles.pop(
+                    safe_name
+                )
+            )
+
+    if not tmp_src:
+
+        return ''
+
+    # --------------------------------------------------------
+    # NOMBRE FINAL
+    # --------------------------------------------------------
+
+    final_name = secure_filename(
+        (
+            f'evidencia_'
+            f'{reporte.id}_'
+            f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_'
+            f'{nombre_imagen}'
+        )
+    )
+
+    final_path = os.path.join(
+        current_app.config[
+            'UPLOAD_FOLDER'
+        ],
+        final_name
+    )
+
+    # --------------------------------------------------------
+    # MOVER ARCHIVO
+    # --------------------------------------------------------
+
+    os.rename(
+        tmp_src,
+        final_path
+    )
+
+    return final_path
+
+
+# ============================================================
+# FECHAS DEL MES
+# ============================================================
+
+def _obtener_fechas_mes(
+    mes,
+    anio
+):
+    """
+    Retorna las fechas inicial y final del mes.
+    """
+
+    _, last_day = calendar.monthrange(
         anio,
-        usuario=None,
-        contrato=None
+        mes
+    )
+
+    return {
+        'inicio': date(
+            anio,
+            mes,
+            1
+        ),
+        'fin': date(
+            anio,
+            mes,
+            last_day
+        )
+    }
+
+
+# ============================================================
+# PARSEAR FECHA
+# ============================================================
+
+def _parsear_fecha(
+    fecha
+):
+    """
+    Convierte una fecha a datetime.date.
+
+    Formatos soportados:
+
+    - YYYY-MM-DD
+    - DD/MM/YYYY
+    - DD-MM-YYYY
+    """
+
+    if not fecha:
+
+        return None
+
+    # --------------------------------------------------------
+    # SI OPENPYXL YA ENTREGA DATE
+    # --------------------------------------------------------
+
+    if isinstance(
+        fecha,
+        datetime
     ):
-        """
-        Procesa una fila del Excel.
-        """
 
-        obligacion = (
-            registro.get(
-                "obligacion"
-            )
-        )
+        return fecha.date()
 
-        anuncio = (
-            registro.get(
-                "anuncio"
-            )
-        )
-
-        fecha = (
-            registro.get(
-                "fecha"
-            )
-        )
-
-        nombre_imagen = (
-            registro.get(
-                "nombre_imagen"
-            )
-        )
-
-        # ----------------------------------------------------
-        # Validar obligación
-        # ----------------------------------------------------
-
-        if not obligacion:
-
-            raise ValueError(
-                "La fila no contiene obligación."
-            )
-
-        # ----------------------------------------------------
-        # Buscar contrato
-        # ----------------------------------------------------
-
-        contrato_actual = contrato
-
-        if contrato_actual is None:
-
-            contrato_actual = (
-                self.contrato_service.obtener_contrato(
-                    usuario=usuario
-                )
-            )
-
-        if contrato_actual is None:
-
-            raise ValueError(
-                "No fue posible identificar el contrato."
-            )
-
-        # ----------------------------------------------------
-        # Buscar/crear reporte
-        # ----------------------------------------------------
-
-        reporte = (
-            self.reporte_service.obtener_o_crear_reporte(
-                contrato=contrato_actual,
-                obligacion=obligacion,
-                mes=mes,
-                anio=anio
-            )
-        )
-
-        # ----------------------------------------------------
-        # Preparar evidencia
-        # ----------------------------------------------------
-
-        imagen = None
-
-        if nombre_imagen:
-
-            imagen = (
-                imagenes_por_nombre.get(
-                    self._normalizar_nombre_archivo(
-                        nombre_imagen
-                    )
-                )
-            )
-
-            if imagen is None:
-
-                raise FileNotFoundError(
-                    "No se encontró la imagen "
-                    f"'{nombre_imagen}'."
-                )
-
-        # ----------------------------------------------------
-        # Analizar imagen con Gemini
-        # ----------------------------------------------------
-
-        descripcion_ia = None
-
-        if imagen and self.gemini.activo:
-
-            ruta_imagen = (
-                self._obtener_ruta_imagen(
-                    imagen
-                )
-            )
-
-            contexto = (
-                anuncio
-                or
-                obligacion
-            )
-
-            descripcion_ia = (
-                self.gemini.analizar_imagen_con_reintentos(
-                    ruta_imagen=ruta_imagen,
-                    contexto=contexto
-                )
-            )
-
-        # ----------------------------------------------------
-        # Crear evidencia
-        # ----------------------------------------------------
-
-        evidencia = (
-            self.evidencia_service.crear_evidencia(
-                reporte=reporte,
-                imagen=imagen,
-                anuncio=anuncio,
-                fecha=fecha,
-                descripcion=descripcion_ia
-            )
-        )
-
-        return evidencia
-
-    # ========================================================
-    # INDEXAR IMÁGENES
-    # ========================================================
-
-    def _indexar_imagenes(
-        self,
-        imagenes
+    if isinstance(
+        fecha,
+        date
     ):
-        """
-        Crea un diccionario:
 
-            nombre_archivo -> archivo
+        return fecha
 
-        para localizar rápidamente las imágenes
-        indicadas en el Excel.
-        """
+    fecha = str(
+        fecha
+    ).strip()
 
-        resultado = {}
+    formatos = (
+        '%Y-%m-%d',
+        '%d/%m/%Y',
+        '%d-%m-%Y'
+    )
 
-        if not imagenes:
-            return resultado
+    for formato in formatos:
 
-        for imagen in imagenes:
+        try:
 
-            nombre = getattr(
-                imagen,
-                "filename",
-                None
+            return datetime.strptime(
+                fecha,
+                formato
+            ).date()
+
+        except ValueError:
+
+            continue
+
+    return None
+
+
+# ============================================================
+# LIMPIEZA DE ARCHIVO
+# ============================================================
+
+def _limpiar_archivo(
+    archivo_path
+):
+    """
+    Elimina un archivo temporal.
+    """
+
+    try:
+
+        if (
+            archivo_path
+            and
+            os.path.exists(
+                archivo_path
             )
-
-            if not nombre:
-                continue
-
-            nombre_normalizado = (
-                self._normalizar_nombre_archivo(
-                    nombre
-                )
-            )
-
-            resultado[
-                nombre_normalizado
-            ] = imagen
-
-        return resultado
-
-    # ========================================================
-    # NORMALIZAR NOMBRE
-    # ========================================================
-
-    @staticmethod
-    def _normalizar_nombre_archivo(
-        nombre
-    ):
-        """
-        Normaliza el nombre de una imagen para realizar
-        comparaciones seguras.
-        """
-
-        if nombre is None:
-            return ""
-
-        return Path(
-            str(nombre).strip()
-        ).name.lower()
-
-    # ========================================================
-    # OBTENER RUTA DE IMAGEN
-    # ========================================================
-
-    @staticmethod
-    def _obtener_ruta_imagen(
-        imagen
-    ):
-        """
-        Obtiene la ruta física de una imagen.
-
-        Dependiendo de cómo se haya guardado el archivo,
-        puede tratarse de un objeto Werkzeug FileStorage
-        o directamente de una ruta.
-        """
-
-        if isinstance(
-            imagen,
-            (str, Path)
         ):
 
-            return Path(
-                imagen
+            os.remove(
+                archivo_path
             )
 
-        ruta = getattr(
-            imagen,
-            "ruta",
-            None
-        )
+    except Exception:
 
-        if ruta:
-            return Path(ruta)
-
-        ruta = getattr(
-            imagen,
-            "path",
-            None
-        )
-
-        if ruta:
-            return Path(ruta)
-
-        nombre = getattr(
-            imagen,
-            "filename",
-            None
-        )
-
-        if nombre:
-
-            return Path(
-                nombre
-            )
-
-        raise ValueError(
-            "No fue posible determinar la ruta "
-            "de la imagen."
-        )
+        pass
 
 
 # ============================================================
-# INSTANCIA DEL SERVICIO
+# LIMPIEZA DE IMÁGENES
 # ============================================================
 
-carga_masiva_service = (
-    CargaMasivaService()
-)
+def _limpiar_archivos_temporales(
+    archivos
+):
+    """
+    Elimina las imágenes temporales
+    que no fueron utilizadas.
+    """
+
+    for archivo_path in archivos:
+
+        _limpiar_archivo(
+            archivo_path
+        )
