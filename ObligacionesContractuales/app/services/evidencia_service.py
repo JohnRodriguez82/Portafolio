@@ -88,3 +88,22 @@ ef guardar_imagen_evidencia(
     )
 
     return final_path
+
+def analizar_evidencia_con_ia(
+    imagen_path,
+    api_key
+):
+    """
+    Analiza una imagen utilizando Gemini.
+
+    Retorna:
+        str | None: descripción generada por IA.
+    """
+
+    if not imagen_path or not api_key:
+        return None
+
+    return analizar_imagen(
+        imagen_path,
+        api_key
+    )
