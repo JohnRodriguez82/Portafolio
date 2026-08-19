@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+
+{% block title %}Carga Masiva por Mes - Reportes Contractuales{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-10 mx-auto">
+        <h2 class="section-title"><i class="bi bi-cloud-upload me-2"></i>Carga Masiva de Evidencias por Mes</h2>
+
+        <div class="alert alert-info mb-4 d-flex align-items-start">
+            <i class="bi bi-info-circle fs-4 me-3"></i>
+            <div>
+                <strong>Flujo de trabajo en 3 pasos:</strong>
+                <ol class="mb-0 mt-1">
+                    <li>Seleccione el <strong>mes y año</strong> y descargue la plantilla Excel con las obligaciones del contrato.</li>
+                    <li>Complete para cada obligación: <em>Anuncio/Contexto</em>, <em>Fecha</em> y <em>Nombre de imagen</em>. Puede agregar varias filas por obligación.</li>
+                    <li>Suba el <strong>Excel + las imágenes</strong> juntas. El sistema creará los reportes y evidencias automáticamente.</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Paso 1: Descargar plantilla -->
+        <div class="card card-custom mb-4 border-start border-4 border-primary">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="mb-0 text-primary"><i class="bi bi-1-circle me-2"></i>Paso 1: Descargar Plantilla del Mes</h5>
+            </div>
+            <div class="card-body px-4 pb-4">
+                <form method="POST" action="{{ url_for('cargas.carga_masiva_mes') }}">
+                    <input type="hidden" name="action" value="descargar_plantilla">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Mes <span class="text-danger">*</span></label>
+                            <select name="mes" class="form-select" required>
+                                <option value="">Seleccione mes...</option>
+                                {% for mes_num, anio, nombre in meses %}
+                                <option value="{{ mes_num }}">{{ nombre }} {{ anio }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Año <span class="text-danger">*</span></label>
+                            <select name="anio" class="form-select" required>
+                                <option value="">Seleccione año...</option>
+                                {% set years = [] %}
+                                {% for mes_num, anio, nombre in meses %}
+                                    {% if anio not in years %}
+                                        {% set _ = years.append(anio) %}
+                                        <option value="{{ anio }}">{{ anio }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-outline-primary w-100">
+                                <i class="bi bi-file-earmark-excel me-2"></i>Descargar Plantilla Excel
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                <hr class="my-3">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-dark"><i class="bi bi-check2-square me-1"></i>La plantilla incluye:</h6>
+                        <ul class="small text-muted mb-0">
+                            <li>Todas las obligaciones del contrato con número y descripción</li>
+                            <li>Columnas para completar: Anuncio, Fecha, Nombre Imagen</li>
+                            <li>Puede duplicar filas para múltiples evidencias por obligación</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-dark"><i class="bi bi-lightbulb me-1"></i>Consejos:</h6>
+                        <ul class="small text-muted mb-0">
+                            <li>Use nombres de imagen cortos y sin espacios (ej: <code>obl3_act1.jpg</code>)</li>
+                            <li>La fecha debe pertenecer al mes que seleccionó</li>
+                            <li>Si una obligación no tiene evidencias, simplemente elimine su fila</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Paso 2: Cargar archivos -->
+        <div class="card card-custom mb-4 border-start border-4 border-success">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="mb-0 text-success"><i class="bi bi-2-circle me-2"></i>Paso 2: Cargar Excel e Imágenes</h5>
+            </div>
+            <div class="card-body px-4 pb-4">
+                <form id="formCargaMasiva" method="POST" action="{{ url_for('cargas.carga_masiva_mes') }}" enctype="multipart/form-data">
+                    <input type="hidden" name="action" value="cargar_masivo">
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Mes del reporte <span class="text-danger">*</span></label>
+                            <select name="mes" class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                {% for mes_num, anio, nombre in meses %}
+                                <option value="{{ mes_num }}">{{ nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Año del reporte <span class="text-danger">*</span></label>
+                            <select name="anio" class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                {% set years = [] %}
+                                {% for mes_num, anio, nombre in meses %}
+                                    {% if anio not in years %}
+                                        {% set _ = years.append(anio) %}
+                                        <option value="{{ anio }}">{{ anio }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Imágenes a procesar</label>
+                            <div class="form-control-plaintext small text-muted" id="contador-imagenes">
+                                <i class="bi bi-images me-1"></i><span id="num-imagenes">0</span> seleccionadas
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Archivo Excel <span class="text-danger">*</span></label>
+                        <input type="file" name="archivo_excel" class="form-control" accept=".xlsx,.xls" required>
+                        <div class="form-text">Use la plantilla descargada en el Paso 1. No modifique los encabezados.</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Imágenes de evidencia <span class="text-danger">*</span></label>
+                        <input type="file" name="imagenes" id="inputImagenes" class="form-control" accept="image/*" multiple required>
+                        <div class="form-text">
+                            <i class="bi bi-images me-1"></i>Seleccione <strong>todas las imágenes a la vez</strong> (Ctrl+Click o arrastre).
+                            El nombre de cada archivo debe coincidir <strong>exactamente</strong> con la columna "Nombre Imagen" del Excel.
+                            {% if api_key_configurada %}
+                            <br><span class="text-warning"><i class="bi bi-robot me-1"></i><strong>IA activa:</strong> Se analizará cada imagen con Gemini. Máximo 15 imágenes/minuto. El sistema aplicará pausas automáticas.</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex">
+                        <button type="submit" id="btnProcesar" class="btn btn-primary-custom btn-lg">
+                            <i class="bi bi-lightning-charge me-2"></i>Procesar Carga Masiva
+                        </button>
+                        <a href="{{ url_for('inicio.index') }}" class="btn btn-outline-secondary btn-lg">
+                            <i class="bi bi-arrow-left me-2"></i>Volver al Dashboard
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Instrucciones detalladas -->
+        <div class="card card-custom">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Guía Detallada y Notas Importantes</h5>
+            </div>
+            <div class="card-body px-4 pb-4">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3 h-100">
+                            <h6 class="text-primary"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Reglas del Excel</h6>
+                            <ul class="small text-muted mb-0">
+                                <li><strong>No</strong> modifique los encabezados ni las columnas A y B</li>
+                                <li>Inserte tantas filas como evidencias necesite por obligación</li>
+                                <li>Elimine las filas de obligaciones sin evidencias este mes</li>
+                                <li>Fecha: <code>YYYY-MM-DD</code> o <code>DD/MM/YYYY</code></li>
+                                <li>Nombre imagen: con extensión exacta (ej: <code>foto.jpg</code>)</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3 h-100">
+                            <h6 class="text-success"><i class="bi bi-images me-2"></i>Reglas de las Imágenes</h6>
+                            <ul class="small text-muted mb-0">
+                                <li>El nombre en Excel debe ser <strong>idéntico</strong> al archivo</li>
+                                <li>Puede subir todas las imágenes en un solo lote</li>
+                                <li>Tamaño máximo por archivo: 16 MB</li>
+                                <li>Si omite el nombre de imagen, se crea la actividad sin evidencia visual</li>
+                                <li>Cada imagen se usa una sola vez; no se reutiliza</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-3 bg-light rounded-3 h-100">
+                            <h6 class="text-info"><i class="bi bi-magic me-2"></i>Procesamiento Automático</h6>
+                            <ul class="small text-muted mb-0">
+                                <li>Crea automáticamente los reportes mensuales por obligación</li>
+                                <li>Si el reporte ya existe, agrega las nuevas evidencias</li>
+                                <li>Con API key Gemini: analiza cada imagen con IA</li>
+                                <li>Genera párrafos descriptivos automáticos</li>
+                                <li>Enumera actividades consecutivamente por reporte</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-warning mt-4 mb-0">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Importante:</strong> Este proceso puede tardar varios minutos si carga muchas imágenes y tiene activado el análisis con IA (Gemini). No cierre la página hasta ver el mensaje de confirmación.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Progreso -->
+<div class="modal fade" id="modalProgreso" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-gear-wide-connected me-2"></i>Procesando Carga Masiva</h5>
+            </div>
+            <div class="modal-body p-4">
+                <div class="text-center mb-3">
+                    <div class="spinner-border text-primary mb-2" role="status" id="spinnerGeneral">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <h5 id="tituloProgreso" class="mb-1">Iniciando...</h5>
+                    <p class="text-muted small mb-0" id="mensajeProgreso">Preparando archivos...</p>
+                </div>
+
+                <div class="progress mb-3" style="height: 24px;">
+                    <div id="barraProgreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        0%
+                    </div>
+                </div>
+
+                <div class="alert alert-info small mb-0" id="infoRateLimit">
+                    <i class="bi bi-clock-history me-1"></i>
+                    <span id="textoRateLimit">Análisis con IA activo. Se aplican pausas automáticas para respetar los límites de Gemini (15 imágenes/minuto).</span>
+                </div>
+
+                <div id="erroresContainer" class="mt-3 d-none">
+                    <h6 class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Advertencias:</h6>
+                    <ul class="small text-muted mb-0" id="listaErrores"></ul>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-center" id="modalFooter">
+                <span class="text-muted small">Por favor no cierre esta ventana.</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('formCargaMasiva');
+    const btnProcesar = document.getElementById('btnProcesar');
+    const inputImagenes = document.getElementById('inputImagenes');
+    const numImagenes = document.getElementById('num-imagenes');
+    const modal = new bootstrap.Modal(document.getElementById('modalProgreso'));
+    const barra = document.getElementById('barraProgreso');
+    const titulo = document.getElementById('tituloProgreso');
+    const mensaje = document.getElementById('mensajeProgreso');
+    const spinner = document.getElementById('spinnerGeneral');
+    const footer = document.getElementById('modalFooter');
+    const erroresContainer = document.getElementById('erroresContainer');
+    const listaErrores = document.getElementById('listaErrores');
+    const infoRateLimit = document.getElementById('infoRateLimit');
+
+    // Contador de imágenes
+    inputImagenes.addEventListener('change', function() {
+        numImagenes.textContent = this.files.length;
+    });
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const imagenesCount = inputImagenes.files.length;
+        if (imagenesCount === 0) {
+            alert('Seleccione al menos una imagen.');
+            return;
+        }
+
+        // Deshabilitar botón
+        btnProcesar.disabled = true;
+        btnProcesar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+
+        // Mostrar modal
+        modal.show();
+        actualizarProgreso(0, 'Enviando archivos al servidor...', 'Subiendo Excel e imágenes, por favor espere...');
+
+        try {
+            const formData = new FormData(form);
+            const response = await fetch('{{ url_for("cargas.carga_masiva_mes") }}', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error || 'Error al iniciar procesamiento');
+            }
+
+            const data = await response.json();
+            const jobId = data.job_id;
+
+            // Iniciar SSE
+            iniciarSSE(jobId, imagenesCount);
+
+        } catch (error) {
+            modal.hide();
+            btnProcesar.disabled = false;
+            btnProcesar.innerHTML = '<i class="bi bi-lightning-charge me-2"></i>Procesar Carga Masiva';
+            alert('Error: ' + error.message);
+        }
+    });
+
+    function iniciarSSE(jobId, imagenesCount) {
+        const evtSource = new EventSource(`/carga-masiva-mes/progreso/${jobId}`);
+        let erroresAcumulados = [];
+
+        // Calcular tiempo estimado
+        const tieneIA = {{ 'true' if api_key_configurada else 'false' }};
+        const segundosPorImagen = tieneIA ? 4.5 : 0.5;
+        const tiempoEstimado = Math.ceil(imagenesCount * segundosPorImagen);
+
+        if (!tieneIA) {
+            infoRateLimit.classList.add('d-none');
+        } else {
+            document.getElementById('textoRateLimit').textContent =
+                `Análisis con IA activo (${imagenesCount} imágenes). Tiempo estimado: ~${tiempoEstimado} segundos. Se aplican pausas automáticas para respetar los límites de Gemini (15 imágenes/minuto).`;
+        }
+
+        evtSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            actualizarProgreso(
+                data.porcentaje,
+                data.estado === 'completado' ? '¡Completado!' :
+                data.estado === 'error' ? 'Error' :
+                data.estado === 'procesando' ? 'Procesando...' : 'Iniciando...',
+                data.mensaje
+            );
+
+            // Mostrar errores acumulados
+            if (data.errores && data.errores.length > 0) {
+                erroresAcumulados = data.errores;
+                mostrarErrores(erroresAcumulados);
+            }
+
+            if (data.estado === 'completado') {
+                evtSource.close();
+                spinner.classList.remove('spinner-border');
+                spinner.classList.add('bi', 'bi-check-circle-fill', 'text-success', 'fs-1');
+                spinner.innerHTML = '';
+                barra.classList.remove('progress-bar-animated');
+                barra.classList.add('bg-success');
+                titulo.textContent = '¡Carga completada!';
+                titulo.classList.add('text-success');
+
+                const exitosos = data.resultado ? data.resultado.exitosos : 0;
+                const mes = data.resultado ? data.resultado.mes : '';
+                const anio = data.resultado ? data.resultado.anio : '';
+
+                mensaje.innerHTML = `<strong>${exitosos}</strong> evidencias cargadas exitosamente para <strong>${mes}/${anio}</strong>.`;
+
+                footer.innerHTML = `
+                    <a href="{{ url_for('reportes.reportes') }}" class="btn btn-success">
+                        <i class="bi bi-check-lg me-2"></i>Ver Reportes
+                    </a>
+                    <a href="{{ url_for('cargas.carga_masiva_mes') }}" class="btn btn-outline-secondary ms-2">
+                        <i class="bi bi-arrow-repeat me-2"></i>Nueva Carga
+                    </a>
+                `;
+
+                if (erroresAcumulados.length > 0) {
+                    mensaje.innerHTML += `<br><span class="text-warning small">Con ${erroresAcumulados.length} advertencias.</span>`;
+                }
+
+            } else if (data.estado === 'error') {
+                evtSource.close();
+                spinner.classList.remove('spinner-border');
+                spinner.classList.add('bi', 'bi-x-circle-fill', 'text-danger', 'fs-1');
+                spinner.innerHTML = '';
+                barra.classList.remove('progress-bar-animated');
+                barra.classList.add('bg-danger');
+                titulo.textContent = 'Error en el procesamiento';
+                titulo.classList.add('text-danger');
+
+                footer.innerHTML = `
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg me-2"></i>Cerrar
+                    </button>
+                    <a href="{{ url_for('cargas.carga_masiva_mes') }}" class="btn btn-primary ms-2">
+                        <i class="bi bi-arrow-repeat me-2"></i>Intentar de nuevo
+                    </a>
+                `;
+            }
+        };
+
+        evtSource.onerror = function() {
+            console.error('Error en conexión SSE');
+            evtSource.close();
+        };
+    }
+
+    function actualizarProgreso(porcentaje, tituloTexto, mensajeTexto) {
+        barra.style.width = porcentaje + '%';
+        barra.setAttribute('aria-valuenow', porcentaje);
+        barra.textContent = porcentaje + '%';
+        titulo.textContent = tituloTexto;
+        mensaje.textContent = mensajeTexto;
+    }
+
+    function mostrarErrores(errores) {
+        erroresContainer.classList.remove('d-none');
+        listaErrores.innerHTML = errores.map(e => `<li>${e}</li>`).join('');
+    }
+});
+</script>
+{% endblock %}

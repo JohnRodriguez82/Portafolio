@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio - Reporte de Cumplimiento de Obligaciones Contractuales{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <!-- Hero Section -->
+        <div class="card card-custom border-0 overflow-hidden mb-4">
+            <div class="card-body p-5 text-center" style="background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);">
+                <i class="bi bi-file-earmark-text-fill text-white" style="font-size: 4rem;"></i>
+                <h1 class="text-white mt-3 mb-2 fw-bold">Reporte de Cumplimiento de Obligaciones Contractuales</h1>
+                <p class="text-white-50 mb-0 fs-5">Sistema integral de gestión y seguimiento de reportes mensuales</p>
+            </div>
+        </div>
+
+        <!-- Descripción general -->
+        <div class="card card-custom mb-4">
+            <div class="card-body p-4">
+                <h4 class="section-title mb-3"><i class="bi bi-info-circle me-2"></i>¿Qué es esta herramienta?</h4>
+                <p class="text-muted mb-0" style="font-size: 1.05rem; line-height: 1.7;">
+                    Esta aplicación web permite a los contratistas y supervisores gestionar de manera centralizada
+                    el cumplimiento de las obligaciones contractuales a lo largo de la vigencia de cada contrato.
+                    El sistema automatiza la creación de reportes mensuales, la carga de evidencias fotográficas,
+                    el análisis visual mediante inteligencia artificial y la generación de documentos PDF oficiales,
+                    garantizando trazabilidad, orden y profesionalismo en cada entrega.
+                </p>
+            </div>
+        </div>
+
+        <!-- Capacidades del sistema -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-6">
+                <div class="card card-custom h-100 border-start border-4 border-primary">
+                    <div class="card-body p-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="flex-shrink-0 bg-primary bg-opacity-10 rounded-circle p-3">
+                                <i class="bi bi-briefcase text-primary fs-3"></i>
+                            </div>
+                            <h5 class="ms-3 mb-0 fw-bold">Gestión de Contratos y Obligaciones</h5>
+                        </div>
+                        <p class="text-muted mb-0">
+                            Administre múltiples contratos con sus respectivas fechas de vigencia, contratistas
+                            y obligaciones contractuales. Cada contrato puede contener tantas obligaciones como
+                            requiera el objeto contractual, y el sistema le permite activar, editar, finalizar
+                            o eliminar contratos con validaciones de seguridad en cascada.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card card-custom h-100 border-start border-4 border-success">
+                    <div class="card-body p-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="flex-shrink-0 bg-success bg-opacity-10 rounded-circle p-3">
+                                <i class="bi bi-file-earmark-pdf text-success fs-3"></i>
+                            </div>
+                            <h5 class="ms-3 mb-0 fw-bold">Reportes, Evidencias y Exportación</h5>
+                        </div>
+                        <p class="text-muted mb-0">
+                            Genere reportes mensuales por obligación, cargue evidencias fotográficas individuales
+                            o masivas mediante Excel, y deje que la inteligencia artificial de Gemini describa
+                            automáticamente cada imagen. Exporte sus reportes en PDF con formato oficial o descargue
+                            consolidados por mes en archivos ZIP, todo desde un panel centralizado.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acciones rápidas -->
+        <div class="card card-custom">
+            <div class="card-body p-4">
+                <h5 class="mb-3 fw-bold"><i class="bi bi-lightning-charge me-2 text-warning"></i>Acciones rápidas</h5>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <a href="{{ url_for('contratos.contratos') }}" class="btn btn-outline-primary w-100 py-3">
+                            <i class="bi bi-briefcase fs-4 d-block mb-2"></i>
+                            <span class="fw-bold">Gestionar Contratos</span>
+                        </a>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="{{ url_for('inicio.index') }}" class="btn btn-outline-success w-100 py-3">
+                            <i class="bi bi-list-check fs-4 d-block mb-2"></i>
+                            <span class="fw-bold">Ver Obligaciones</span>
+                        </a>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="{{ url_for('reportes.reportes') }}" class="btn btn-outline-danger w-100 py-3">
+                            <i class="bi bi-file-earmark-pdf fs-4 d-block mb-2"></i>
+                            <span class="fw-bold">Ver Reportes</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

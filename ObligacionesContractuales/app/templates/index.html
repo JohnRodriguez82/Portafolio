@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Reportes Contractuales{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="section-title">Panel de Control</h2>
+    </div>
+</div>
+
+{% if not contrato %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card card-custom">
+            <div class="card-body empty-state">
+                <i class="bi bi-calendar-range"></i>
+                <h4 class="mb-3">No hay contrato configurado</h4>
+                <p class="mb-4">Para comenzar a generar reportes mensuales, primero debe configurar el contrato con sus fechas de inicio y fin, obligaciones y actividades.</p>
+                <a href="{{ url_for('contratos.contratos') }}" class="btn btn-primary-custom btn-lg">
+                    <i class="bi bi-briefcase me-2"></i>Configurar Contrato
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card card-custom h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-building fs-1 text-info"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1">Contratista</h6>
+                        <h5 class="mb-0">{{ contrato.contratista or 'No especificado' }}</h5>
+                        <small class="text-muted">N° {{ contrato.numero_contrato or 'N/A' }}</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-custom h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-calendar-check fs-1 text-primary"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1">Período del Contrato</h6>
+                        <h5 class="mb-0">{{ contrato.fecha_inicio.strftime('%d/%m/%Y') }} - {{ contrato.fecha_fin.strftime('%d/%m/%Y') }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-custom h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-list-check fs-1 text-success"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1">Obligaciones</h6>
+                        <h5 class="mb-0">{{ obligaciones|length }} registradas</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-custom h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-file-earmark-pdf fs-1 text-danger"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1">Reportes Generados</h6>
+                        <h5 class="mb-0">{{ reportes_count }} reportes</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card card-custom">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-list-task me-2"></i>Obligaciones Contractuales</h5>
+                    <div>
+                        <a href="{{ url_for('cargas.carga_masiva_mes') }}" class="btn btn-warning btn-sm me-2">
+                            <i class="bi bi-cloud-upload me-1"></i>Carga Masiva por Mes
+                        </a>
+                        <button type="button" class="btn btn-success btn-sm me-2" data-bs-toggle="modal" data-bs-target="#modalConsolidado">
+                            <i class="bi bi-file-earmark-excel me-1"></i>Descargar Excel Consolidado
+                        </button>
+                        <a href="{{ url_for('configuracion.config') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-pencil me-1"></i>Editar Configuración
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body px-4 pb-4">
+                <!-- Filtros y paginación -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <form method="GET" action="{{ url_for('inicio.index') }}" class="d-flex gap-2">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                <input type="text" name="search" class="form-control" placeholder="Buscar por número o descripción..." value="{{ search }}">
+                                <button type="submit" class="btn btn-outline-primary">Buscar</button>
+                                {% if search %}
+                                <a href="{{ url_for('inicio.index') }}" class="btn btn-outline-secondary"><i class="bi bi-x-lg"></i></a>
+                                {% endif %}
+                            </div>
+                        </form>
+                    </div>
+                    <div class="col-md-6 text-md-end">
+                        {% if obligaciones_pag %}
+                        <span class="text-muted small">
+                            Mostrando <strong>{{ (obligaciones_pag.page - 1) * obligaciones_pag.per_page + 1 }} - {{ (obligaciones_pag.page - 1) * obligaciones_pag.per_page + obligaciones|length }}</strong>
+                            de <strong>{{ obligaciones_pag.total }}</strong> obligaciones
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if not obligaciones %}
+                <div class="empty-state py-5">
+                    <i class="bi bi-clipboard-x"></i>
+                    <p class="mb-3">{% if search %}No se encontraron obligaciones con "{{ search }}".{% else %}No hay obligaciones configuradas.{% endif %}</p>
+                    <a href="{{ url_for('configuracion.config') }}" class="btn btn-primary-custom">Agregar Obligaciones</a>
+                </div>
+                {% else %}
+                <div class="table-responsive">
+                    <table class="table table-hover table-custom">
+                        <thead>
+                            <tr>
+                                <th style="width: 80px;">No.</th>
+                                <th>Descripción</th>
+                                <th style="width: 180px;">Reportes creados</th>
+                                <th style="width: 200px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for obl in obligaciones %}
+                            {% set reportes_obl = reportes_por_obligacion_mes.get(obl.id, {}) %}
+                            <tr>
+                                <td><span class="badge bg-primary fs-6">{{ obl.numero }}</span></td>
+                                <td>{{ obl.descripcion[:100] }}{% if obl.descripcion|length > 100 %}...{% endif %}</td>
+                                <td>
+                                    {% if reportes_obl %}
+                                        <span class="badge bg-success">{{ reportes_obl|length }} meses</span>
+                                        <div class="small text-muted mt-1">
+                                            {% for (m, a), rid in reportes_obl.items() %}
+                                                {% set mes_nombres = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'] %}
+                                                <a href="{{ url_for('reportes.ver_reporte', id=rid) }}" class="text-decoration-none">
+                                                    <span class="badge bg-light text-dark border">{{ mes_nombres[m] }} {{ a }}</span>
+                                                </a>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Sin reportes</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('reportes.nuevo_reporte', obligacion_id=obl.id) }}" class="btn btn-primary-custom btn-sm">
+                                        <i class="bi bi-plus-lg me-1"></i>Nuevo Reporte
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Paginación -->
+                {% if obligaciones_pag and obligaciones_pag.pages > 1 %}
+                <nav aria-label="Paginación obligaciones">
+                    <ul class="pagination justify-content-center mt-3">
+                        {% if obligaciones_pag.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('inicio.index', page=obligaciones_pag.prev_num, search=search, per_page=per_page) }}"><i class="bi bi-chevron-left"></i></a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left"></i></span></li>
+                        {% endif %}
+
+                        {% for p in obligaciones_pag.iter_pages(left_edge=1, left_current=2, right_current=2, right_edge=1) %}
+                            {% if p %}
+                                {% if p == obligaciones_pag.page %}
+                                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                                {% else %}
+                                <li class="page-item"><a class="page-link" href="{{ url_for('inicio.index', page=p, search=search, per_page=per_page) }}">{{ p }}</a></li>
+                                {% endif %}
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">…</span></li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if obligaciones_pag.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('inicio.index', page=obligaciones_pag.next_num, search=search, per_page=per_page) }}"><i class="bi bi-chevron-right"></i></a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-right"></i></span></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if meses %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card card-custom">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="mb-0"><i class="bi bi-calendar3 me-2"></i>Meses del Contrato</h5>
+            </div>
+            <div class="card-body px-4 pb-4">
+                <div class="row g-3">
+                    {% for mes_num, anio, nombre in meses %}
+                    {% set tiene_reporte = (mes_num, anio) in meses_con_reporte %}
+                    <div class="col-md-3 col-sm-6">
+                        <div class="d-flex align-items-center p-3 rounded-3 {% if tiene_reporte %}bg-success bg-opacity-10 border border-success{% else %}bg-light{% endif %}">
+                            <i class="bi bi-calendar-month {% if tiene_reporte %}text-success{% else %}text-primary{% endif %} fs-4 me-3"></i>
+                            <div>
+                                <strong>{{ nombre }} {{ anio }}</strong>
+                                <div class="small {% if tiene_reporte %}text-success{% else %}text-muted{% endif %}">
+                                    {% if tiene_reporte %}
+                                        <i class="bi bi-check-circle-fill me-1"></i>Con reportes
+                                    {% else %}
+                                        Mes {{ mes_num }}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- Modal Consolidado por Mes -->
+<div class="modal fade" id="modalConsolidado" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-file-earmark-excel me-2"></i>Descargar Excel Consolidado</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formConsolidado">
+                <div class="modal-body">
+                    <p class="text-muted small">Seleccione el mes y año del consolidado. El sistema validará que todas las obligaciones tengan al menos una evidencia para ese período.</p>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Mes <span class="text-danger">*</span></label>
+                            <select name="mes" id="consolidadoMes" class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                {% for mes_num, anio, nombre in meses %}
+                                <option value="{{ mes_num }}">{{ nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Año <span class="text-danger">*</span></label>
+                            <select name="anio" id="consolidadoAnio" class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                {% set years = [] %}
+                                {% for mes_num, anio, nombre in meses %}
+                                    {% if anio not in years %}
+                                        {% set _ = years.append(anio) %}
+                                        <option value="{{ anio }}">{{ anio }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" id="btnGenerarConsolidado" class="btn btn-success">
+                        <i class="bi bi-download me-2"></i>Generar Consolidado
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Progreso Consolidado -->
+<div class="modal fade" id="modalProgresoConsolidado" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-gear-wide-connected me-2"></i>Generando Consolidado</h5>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <div class="spinner-border text-success mb-3" role="status" id="spinnerConsolidado" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Procesando...</span>
+                </div>
+                <h5 id="tituloConsolidado" class="mb-2">Procesando...</h5>
+                <p class="text-muted mb-3" id="mensajeConsolidado">Validando obligaciones y consolidando actividades. Por favor espere...</p>
+                <div class="progress" style="height: 20px;">
+                    <div id="barraConsolidado" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                         role="progressbar" style="width: 100%"></div>
+                </div>
+                <div id="errorConsolidado" class="alert alert-danger mt-3 d-none">
+                    <i class="bi bi-x-circle-fill me-2"></i>
+                    <span id="textoErrorConsolidado"></span>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-center" id="footerConsolidado">
+                <span class="text-muted small">Por favor no cierre esta ventana.</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('formConsolidado');
+    const btnGenerar = document.getElementById('btnGenerarConsolidado');
+    const modalConsolidadoEl = document.getElementById('modalConsolidado');
+    const modalProgresoEl = document.getElementById('modalProgresoConsolidado');
+    const spinner = document.getElementById('spinnerConsolidado');
+    const titulo = document.getElementById('tituloConsolidado');
+    const mensaje = document.getElementById('mensajeConsolidado');
+    const barra = document.getElementById('barraConsolidado');
+    const errorDiv = document.getElementById('errorConsolidado');
+    const textoError = document.getElementById('textoErrorConsolidado');
+    const footer = document.getElementById('footerConsolidado');
+
+    if (!form) return;
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const mes = document.getElementById('consolidadoMes').value;
+        const anio = document.getElementById('consolidadoAnio').value;
+
+        if (!mes || !anio) {
+            alert('Seleccione mes y año.');
+            return;
+        }
+
+        // Cerrar modal de selección
+        const modalConsolidado = bootstrap.Modal.getInstance(modalConsolidadoEl);
+        if (modalConsolidado) modalConsolidado.hide();
+
+        // Limpiar backdrops residuales
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+
+        await new Promise(r => setTimeout(r, 200));
+
+        // Abrir modal de progreso
+        const modalProgreso = new bootstrap.Modal(modalProgresoEl, { backdrop: 'static', keyboard: false });
+        modalProgreso.show();
+
+        // Resetear estado
+        spinner.className = 'spinner-border text-success mb-3';
+        spinner.style.cssText = 'width: 3rem; height: 3rem;';
+        spinner.innerHTML = '<span class="visually-hidden">Procesando...</span>';
+        titulo.textContent = 'Procesando...';
+        titulo.className = 'mb-2';
+        mensaje.textContent = 'Validando obligaciones y consolidando actividades. Por favor espere...';
+        barra.className = 'progress-bar progress-bar-striped progress-bar-animated bg-success';
+        barra.style.width = '100%';
+        errorDiv.classList.add('d-none');
+        footer.innerHTML = '<span class="text-muted small">Por favor no cierre esta ventana.</span>';
+        btnGenerar.disabled = true;
+
+        try {
+            const url = `{{ url_for('reportes.generar_excel_consolidado') }}?mes=${encodeURIComponent(mes)}&anio=${encodeURIComponent(anio)}`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+
+            const contentType = response.headers.get('content-type') || '';
+
+            // Si la respuesta no es OK, leer como texto/json para obtener el error
+            if (!response.ok) {
+                let errorMsg = `Error del servidor (${response.status})`;
+                try {
+                    if (contentType.includes('application/json')) {
+                        const data = await response.json();
+                        errorMsg = data.error || errorMsg;
+                    } else {
+                        const text = await response.text();
+                        // Si es HTML, extraer solo el mensaje o usar genérico
+                        if (text.trim().startsWith('<')) {
+                            errorMsg = 'Error del servidor. Revise la consola para más detalles.';
+                        } else {
+                            errorMsg = text.substring(0, 200);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parseando respuesta de error:', e);
+                }
+                throw new Error(errorMsg);
+            }
+
+            // Si es JSON con error (aunque status sea 200)
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+            }
+
+            // Descargar archivo Excel
+            const blob = await response.blob();
+            const disposition = response.headers.get('content-disposition');
+            let filename = `Consolidado_${mes}_${anio}.xlsx`;
+            if (disposition) {
+                const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (match) filename = match[1].replace(/['"]/g, '');
+            }
+
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+
+            // Éxito
+            spinner.className = 'bi bi-check-circle-fill text-success fs-1 mb-3';
+            spinner.innerHTML = '';
+            titulo.textContent = '¡Descarga completada!';
+            titulo.classList.add('text-success');
+            mensaje.textContent = 'El consolidado se ha descargado exitosamente.';
+            barra.classList.remove('progress-bar-animated');
+            footer.innerHTML = `<button type="button" class="btn btn-success" data-bs-dismiss="modal"><i class="bi bi-check-lg me-2"></i>Aceptar</button>`;
+
+        } catch (error) {
+            console.error('Error:', error);
+            spinner.className = 'bi bi-x-circle-fill text-danger fs-1 mb-3';
+            spinner.innerHTML = '';
+            titulo.textContent = 'No se pudo generar el consolidado';
+            titulo.classList.add('text-danger');
+            mensaje.textContent = 'Revise los detalles del error:';
+            barra.className = 'progress-bar bg-danger';
+            barra.style.width = '100%';
+            errorDiv.classList.remove('d-none');
+            textoError.innerHTML = error.message;
+            footer.innerHTML = `
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-2"></i>Cerrar</button>
+                <button type="button" class="btn btn-success ms-2" onclick="document.getElementById('modalProgresoConsolidado').dispatchEvent(new Event('hidden.bs.modal')); bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConsolidado')).show();"><i class="bi bi-arrow-repeat me-2"></i>Intentar de nuevo</button>
+            `;
+        }
+
+        btnGenerar.disabled = false;
+    });
+});
+</script>
+
+{% endblock %}
