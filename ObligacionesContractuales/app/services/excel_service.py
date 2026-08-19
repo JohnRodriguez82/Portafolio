@@ -264,6 +264,7 @@ class ExcelService:
                     'Fecha'
                 )
             )
+        )
 
         nombre_imagen = (
             datos.get(
