@@ -1,5 +1,7 @@
 """
-Servicios relacionados con generación de archivos Excel.
+Servicios para generación de archivos Excel.
+
+Este módulo NO depende de Flask.
 
 Responsabilidades:
 - Generar plantilla Excel para carga masiva mensual.
@@ -34,14 +36,16 @@ EXCEL_MIMETYPE = (
 # ============================================================
 
 def generar_plantilla_masiva(
-    contrato,
     obligaciones,
     mes,
     anio
 ):
     """
-    Genera una plantilla Excel para cargar evidencias
-    de todas las obligaciones de un mes.
+    Genera el archivo Excel de plantilla para carga masiva
+    de evidencias de todas las obligaciones de un mes.
+
+    Retorna:
+        BytesIO: archivo Excel en memoria.
     """
 
     wb = Workbook()
@@ -52,9 +56,9 @@ def generar_plantilla_masiva(
         f'Carga_{mes:02d}_{anio}'
     )
 
-    # --------------------------------------------------------
-    # Encabezados
-    # --------------------------------------------------------
+    # ========================================================
+    # ENCABEZADOS
+    # ========================================================
 
     headers = [
         'Obligacion No.',
@@ -66,9 +70,9 @@ def generar_plantilla_masiva(
 
     ws.append(headers)
 
-    # --------------------------------------------------------
-    # Estilos
-    # --------------------------------------------------------
+    # ========================================================
+    # ESTILOS
+    # ========================================================
 
     header_font = Font(
         bold=True,
@@ -102,9 +106,9 @@ def generar_plantilla_masiva(
         cell.alignment = header_align
         cell.border = thin_border
 
-    # --------------------------------------------------------
-    # Obligaciones
-    # --------------------------------------------------------
+    # ========================================================
+    # OBLIGACIONES
+    # ========================================================
 
     for obligacion in obligaciones:
 
@@ -118,9 +122,9 @@ def generar_plantilla_masiva(
             ]
         )
 
-    # --------------------------------------------------------
-    # Anchos
-    # --------------------------------------------------------
+    # ========================================================
+    # ANCHOS
+    # ========================================================
 
     ws.column_dimensions['A'].width = 16
     ws.column_dimensions['B'].width = 55
@@ -231,13 +235,16 @@ def generar_plantilla_masiva(
     ]
 
     for row in instrucciones:
+
         ws_instr.append(row)
 
-    ws_instr.column_dimensions['A'].width = 100
+    ws_instr.column_dimensions[
+        'A'
+    ].width = 100
 
-    # --------------------------------------------------------
-    # Generar archivo en memoria
-    # --------------------------------------------------------
+    # ========================================================
+    # ARCHIVO EN MEMORIA
+    # ========================================================
 
     output = io.BytesIO()
 
@@ -254,8 +261,7 @@ def generar_plantilla_masiva(
 
 def generar_plantilla_reporte():
     """
-    Genera una plantilla Excel simple para registrar
-    actividades de un reporte específico.
+    Genera una plantilla Excel para un reporte específico.
 
     Retorna:
         BytesIO: archivo Excel en memoria.
@@ -267,9 +273,9 @@ def generar_plantilla_reporte():
 
     ws.title = 'Carga Masiva'
 
-    # --------------------------------------------------------
-    # Encabezados
-    # --------------------------------------------------------
+    # ========================================================
+    # ENCABEZADOS
+    # ========================================================
 
     headers = [
         'Anuncio / Contexto',
@@ -278,9 +284,9 @@ def generar_plantilla_reporte():
 
     ws.append(headers)
 
-    # --------------------------------------------------------
-    # Estilos
-    # --------------------------------------------------------
+    # ========================================================
+    # ESTILOS
+    # ========================================================
 
     for cell in ws[1]:
 
@@ -299,9 +305,9 @@ def generar_plantilla_reporte():
             horizontal='center'
         )
 
-    # --------------------------------------------------------
-    # Ejemplos
-    # --------------------------------------------------------
+    # ========================================================
+    # EJEMPLOS
+    # ========================================================
 
     ws.append(
         [
@@ -327,16 +333,16 @@ def generar_plantilla_reporte():
         ]
     )
 
-    # --------------------------------------------------------
-    # Anchos
-    # --------------------------------------------------------
+    # ========================================================
+    # ANCHOS
+    # ========================================================
 
     ws.column_dimensions['A'].width = 60
     ws.column_dimensions['B'].width = 25
 
-    # --------------------------------------------------------
-    # Generar archivo en memoria
-    # --------------------------------------------------------
+    # ========================================================
+    # ARCHIVO EN MEMORIA
+    # ========================================================
 
     output = io.BytesIO()
 
