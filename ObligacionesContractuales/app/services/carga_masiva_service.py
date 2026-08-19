@@ -1,64 +1,87 @@
 """
 Servicio de orquestación para la carga masiva mensual.
 
+Este servicio concentra la lógica de negocio que anteriormente
+se encontraba en app/blueprints/cargas.py.
+
 Responsabilidades:
+
+- Validar el contrato y el período.
 - Leer el archivo Excel.
-- Validar las obligaciones.
+- Obtener las obligaciones del contrato.
 - Obtener o crear los reportes mensuales.
-- Localizar las imágenes asociadas a cada fila.
-- Analizar las imágenes mediante Gemini.
-- Guardar las imágenes como evidencias.
-- Crear las evidencias en base de datos.
-- Actualizar el progreso del proceso.
+- Localizar imágenes temporales.
+- Analizar imágenes mediante Gemini.
+- Guardar imágenes como evidencias.
+- Crear evidencias.
+- Reportar progreso.
 - Limpiar archivos temporales.
 
-Este servicio NO contiene rutas Flask.
+El Blueprint debe encargarse únicamente de HTTP/request/response.
 """
 
 from datetime import datetime, date
 
 from models import db
 
-from app.services.excel_service import (
-    ExcelService
-)
+from app.services.excel_service import ExcelService
+from app.services.contrato_service import ContratoService
+from app.services.reporte_service import ReporteService
+from app.services.evidencia_service import EvidenciaService
+from app.services.gemini_service import GeminiService
+from app.services.archivo_service import limpiar_archivos
 
-from app.services.contrato_service import (
-    ContratoService
-)
-
-from app.services.reporte_service import (
-    ReporteService
-)
-
-from app.services.evidencia_service import (
-    EvidenciaService
-)
-
-from app.services.gemini_service import (
-    GeminiService
-)
-
-from app.services.archivo_service import (
-    limpiar_archivos
-)
-
-
-# ============================================================
-# SERVICIO PRINCIPAL
-# ============================================================
 
 class CargaMasivaService:
     """
-    Orquestador del proceso de carga masiva mensual.
+    Orquestador principal de la carga masiva mensual.
     """
+
+    def __init__(
+        self,
+        excel_service=None,
+        contrato_service=None,
+        reporte_service=None,
+        evidencia_service=None,
+        gemini_service=None
+    ):
+        """
+        Permite inyectar servicios para facilitar pruebas.
+
+        Si no se proporcionan, se utilizan las implementaciones
+        reales de la aplicación.
+        """
+
+        self.excel_service = (
+            excel_service
+            or ExcelService
+        )
+
+        self.contrato_service = (
+            contrato_service
+            or ContratoService
+        )
+
+        self.reporte_service = (
+            reporte_service
+            or ReporteService
+        )
+
+        self.evidencia_service = (
+            evidencia_service
+            or EvidenciaService()
+        )
+
+        self.gemini_service = (
+            gemini_service
+        )
 
     # ========================================================
     # PROCESAR CARGA MASIVA
     # ========================================================
 
-    @staticmethod
     def procesar(
+        self,
         contrato,
         mes,
         anio,
@@ -69,36 +92,16 @@ class CargaMasivaService:
         job_id=None
     ):
         """
-        Procesa una carga masiva mensual.
-
-        Args:
-            contrato:
-                Objeto Contrato.
-
-            mes:
-                Mes del reporte.
-
-            anio:
-                Año del reporte.
-
-            excel_path:
-                Ruta del archivo Excel.
-
-            imagenes:
-                Diccionario de imágenes temporales.
-
-            api_key:
-                API Key de Gemini.
-
-            actualizar_progreso:
-                Callback para informar progreso.
-
-            job_id:
-                Identificador del trabajo.
+        Procesa una carga masiva mensual completa.
 
         Returns:
             dict:
-                Resultado del procesamiento.
+                {
+                    'exitosos': int,
+                    'errores': list,
+                    'mes': int,
+                    'anio': int
+                }
         """
 
         errores = []
@@ -108,10 +111,10 @@ class CargaMasivaService:
         imagenes = imagenes or {}
 
         # ----------------------------------------------------
-        # VALIDAR PARÁMETROS
+        # VALIDACIÓN INICIAL
         # ----------------------------------------------------
 
-        CargaMasivaService._validar_parametros(
+        self._validar_parametros(
             contrato=contrato,
             mes=mes,
             anio=anio,
@@ -127,7 +130,8 @@ class CargaMasivaService:
         # ----------------------------------------------------
 
         valido, mensaje = (
-            ContratoService.validar_contrato_para_carga(
+            self.contrato_service
+            .validar_contrato_para_carga(
                 contrato=contrato,
                 mes=mes,
                 anio=anio
@@ -135,7 +139,6 @@ class CargaMasivaService:
         )
 
         if not valido:
-
             raise ValueError(
                 mensaje
             )
@@ -144,7 +147,7 @@ class CargaMasivaService:
         # PROGRESO
         # ----------------------------------------------------
 
-        CargaMasivaService._actualizar_progreso(
+        self._actualizar_progreso(
             callback=actualizar_progreso,
             job_id=job_id,
             estado='procesando',
@@ -157,45 +160,41 @@ class CargaMasivaService:
         # ----------------------------------------------------
 
         filas = (
-            ExcelService.leer_excel(
+            self.excel_service.leer_excel(
                 excel_path
             )
         )
 
         if not filas:
-
             raise ValueError(
                 'El archivo Excel no contiene registros válidos.'
             )
 
-        total = len(
-            filas
-        )
+        total = len(filas)
 
         # ----------------------------------------------------
-        # OBTENER OBLIGACIONES
+        # OBLIGACIONES
         # ----------------------------------------------------
 
         obligaciones = (
-            ContratoService.obtener_obligaciones(
+            self.contrato_service
+            .obtener_obligaciones(
                 contrato.id
             )
         )
 
         obligaciones_por_numero = (
-            CargaMasivaService._crear_indice_obligaciones(
+            self._crear_indice_obligaciones(
                 obligaciones
             )
         )
 
         # ----------------------------------------------------
-        # CREAR SERVICIO GEMINI
+        # GEMINI
         # ----------------------------------------------------
 
-        gemini = (
-            CargaMasivaService._crear_gemini(
-                api_key
-            )
+        gemini = self._crear_gemini(
+            api_key
         )
 
         # ----------------------------------------------------
@@ -205,7 +204,7 @@ class CargaMasivaService:
         reportes_cache = {}
 
         # ----------------------------------------------------
-        # PROCESAR FILAS
+        # PROCESAMIENTO
         # ----------------------------------------------------
 
         try:
@@ -219,11 +218,10 @@ class CargaMasivaService:
                     (
                         (indice - 1)
                         / total
-                    )
-                    * 100
+                    ) * 100
                 )
 
-                CargaMasivaService._actualizar_progreso(
+                self._actualizar_progreso(
                     callback=actualizar_progreso,
                     job_id=job_id,
                     estado='procesando',
@@ -237,7 +235,7 @@ class CargaMasivaService:
                 try:
 
                     resultado = (
-                        CargaMasivaService._procesar_fila(
+                        self._procesar_fila(
                             contrato=contrato,
                             mes=mes,
                             anio=anio,
@@ -257,7 +255,6 @@ class CargaMasivaService:
                         'exitoso',
                         False
                     ):
-
                         exitosos += 1
 
                     errores.extend(
@@ -271,16 +268,20 @@ class CargaMasivaService:
 
                     db.session.rollback()
 
+                    numero_fila = fila.get(
+                        'fila',
+                        indice
+                    )
+
                     errores.append(
                         (
-                            f'Fila '
-                            f'{fila.get("fila", indice)}: '
+                            f'Fila {numero_fila}: '
                             f'{str(exc)}'
                         )
                     )
 
             # ------------------------------------------------
-            # COMMIT FINAL
+            # COMMIT
             # ------------------------------------------------
 
             db.session.commit()
@@ -293,26 +294,22 @@ class CargaMasivaService:
 
         finally:
 
-            # ------------------------------------------------
-            # LIMPIAR ARCHIVOS
-            # ------------------------------------------------
-
-            CargaMasivaService._limpiar_temporales(
+            self._limpiar_temporales(
                 imagenes
             )
 
         # ----------------------------------------------------
-        # RESULTADO FINAL
+        # FINALIZAR
         # ----------------------------------------------------
 
-        CargaMasivaService._actualizar_progreso(
+        self._actualizar_progreso(
             callback=actualizar_progreso,
             job_id=job_id,
             estado='completado',
             porcentaje=100,
             mensaje=(
                 f'Proceso finalizado. '
-                f'{exitosos} evidencias procesadas.'
+                f'{exitosos} registros procesados.'
             )
         )
 
@@ -327,8 +324,8 @@ class CargaMasivaService:
     # PROCESAR FILA
     # ========================================================
 
-    @staticmethod
     def _procesar_fila(
+        self,
         contrato,
         mes,
         anio,
@@ -339,19 +336,17 @@ class CargaMasivaService:
         reportes_cache
     ):
         """
-        Procesa una fila individual del Excel.
+        Procesa una fila del Excel.
         """
 
         errores = []
 
         # ----------------------------------------------------
-        # DATOS
+        # DATOS DE LA FILA
         # ----------------------------------------------------
 
         numero_obligacion = (
-            fila.get(
-                'obligacion'
-            )
+            fila.get('obligacion')
         )
 
         if numero_obligacion is None:
@@ -414,14 +409,14 @@ class CargaMasivaService:
         # ----------------------------------------------------
 
         fecha = (
-            CargaMasivaService._convertir_fecha(
+            self._convertir_fecha(
                 fecha
             )
         )
 
         if fecha is not None:
 
-            if not CargaMasivaService._fecha_en_mes(
+            if not self._fecha_en_mes(
                 fecha,
                 mes,
                 anio
@@ -433,13 +428,13 @@ class CargaMasivaService:
                         (
                             f'La fecha '
                             f'{fecha.strftime("%Y-%m-%d")} '
-                            f'no pertenece al periodo '
+                            f'no pertenece al período '
                             f'{mes:02d}/{anio}.'
                         )
                     ]
                 }
 
-            if not ContratoService.fecha_dentro_del_contrato(
+            if not self.contrato_service.fecha_dentro_del_contrato(
                 contrato,
                 fecha
             ):
@@ -450,7 +445,7 @@ class CargaMasivaService:
                         (
                             f'La fecha '
                             f'{fecha.strftime("%Y-%m-%d")} '
-                            f'no está dentro del periodo '
+                            f'no está dentro del período '
                             f'del contrato.'
                         )
                     ]
@@ -475,7 +470,8 @@ class CargaMasivaService:
         if reporte is None:
 
             reporte = (
-                ReporteService.obtener_o_crear_reporte(
+                self.reporte_service
+                .obtener_o_crear_reporte(
                     contrato=contrato,
                     obligacion=obligacion,
                     mes=mes,
@@ -488,17 +484,18 @@ class CargaMasivaService:
             ] = reporte
 
         # ----------------------------------------------------
-        # BUSCAR IMAGEN
+        # IMAGEN TEMPORAL
         # ----------------------------------------------------
 
         imagen_temporal = (
-            EvidenciaService.obtener_imagen_temporal(
+            self.evidencia_service
+            .obtener_imagen_temporal(
                 nombre_imagen,
                 imagenes
             )
         )
 
-        if imagen_temporal is None:
+        if not imagen_temporal:
 
             return {
                 'exitoso': False,
@@ -511,17 +508,25 @@ class CargaMasivaService:
             }
 
         # ----------------------------------------------------
-        # DESCRIPCIÓN
+        # GEMINI
         # ----------------------------------------------------
 
         descripcion = ''
 
         if gemini is not None:
 
+            contexto = self._crear_contexto_gemini(
+                contrato=contrato,
+                obligacion=obligacion,
+                anuncio=anuncio,
+                fecha=fecha
+            )
+
             descripcion = (
-                CargaMasivaService._analizar_imagen(
+                self._analizar_imagen(
                     gemini=gemini,
-                    imagen=imagen_temporal
+                    ruta_imagen=imagen_temporal,
+                    contexto=contexto
                 )
             )
 
@@ -530,19 +535,33 @@ class CargaMasivaService:
         # ----------------------------------------------------
 
         imagen_guardada = (
-            EvidenciaService.guardar_imagen_evidencia(
+            self.evidencia_service
+            .guardar_imagen_evidencia(
                 imagen_temporal=imagen_temporal,
                 reporte_id=reporte.id,
                 nombre_imagen=nombre_imagen
             )
         )
 
+        if not imagen_guardada:
+
+            return {
+                'exitoso': False,
+                'errores': [
+                    (
+                        f'No fue posible guardar '
+                        f'la imagen "{nombre_imagen}".'
+                    )
+                ]
+            }
+
         # ----------------------------------------------------
         # CREAR EVIDENCIA
         # ----------------------------------------------------
 
         evidencia = (
-            EvidenciaService.crear_evidencia(
+            self.evidencia_service
+            .crear_evidencia(
                 reporte=reporte,
                 imagen=imagen_guardada,
                 anuncio=anuncio,
@@ -551,83 +570,77 @@ class CargaMasivaService:
             )
         )
 
-        # ----------------------------------------------------
-        # RESULTADO
-        # ----------------------------------------------------
+        if evidencia is None:
+
+            return {
+                'exitoso': False,
+                'errores': [
+                    (
+                        f'No fue posible crear la evidencia '
+                        f'para la imagen "{nombre_imagen}".'
+                    )
+                ]
+            }
 
         return {
-            'exitoso': evidencia is not None,
-            'errores': errores,
+            'exitoso': True,
+            'errores': [],
             'evidencia': evidencia
         }
 
     # ========================================================
-    # CREAR ÍNDICE DE OBLIGACIONES
+    # CONTEXTO GEMINI
     # ========================================================
 
     @staticmethod
-    def _crear_indice_obligaciones(
-        obligaciones
+    def _crear_contexto_gemini(
+        contrato,
+        obligacion,
+        anuncio,
+        fecha
     ):
         """
-        Crea un índice rápido por número de obligación.
+        Construye el contexto enviado a Gemini.
         """
 
-        resultado = {}
+        partes = []
 
-        for obligacion in obligaciones:
+        numero = getattr(
+            obligacion,
+            'numero',
+            ''
+        )
 
-            numero = getattr(
-                obligacion,
-                'numero',
-                None
+        descripcion_obligacion = getattr(
+            obligacion,
+            'descripcion',
+            ''
+        )
+
+        if numero:
+            partes.append(
+                f'Obligación: {numero}'
             )
 
-            if numero is None:
-
-                continue
-
-            resultado[
-                str(numero).strip()
-            ] = obligacion
-
-        return resultado
-
-    # ========================================================
-    # GEMINI
-    # ========================================================
-
-    @staticmethod
-    def _crear_gemini(
-        api_key=None
-    ):
-        """
-        Crea la instancia de GeminiService.
-
-        Se intenta utilizar la API key proporcionada.
-        Si el servicio ya obtiene la configuración desde
-        variables de entorno, se permite utilizar su
-        configuración normal.
-        """
-
-        try:
-
-            if api_key:
-
-                return GeminiService(
-                    api_key=api_key
-                )
-
-            return GeminiService()
-
-        except Exception as exc:
-
-            print(
-                '[ADVERTENCIA] '
-                f'Gemini no pudo inicializarse: {exc}'
+        if descripcion_obligacion:
+            partes.append(
+                f'Descripción de la obligación: '
+                f'{descripcion_obligacion}'
             )
 
-            return None
+        if anuncio:
+            partes.append(
+                f'Actividad/anuncio: {anuncio}'
+            )
+
+        if fecha:
+            partes.append(
+                f'Fecha: {fecha.strftime("%Y-%m-%d")}'
+            )
+
+        return '\n'.join(
+            partes
+        )
 
     # ========================================================
     # ANALIZAR IMAGEN
@@ -636,57 +649,42 @@ class CargaMasivaService:
     @staticmethod
     def _analizar_imagen(
         gemini,
-        imagen
+        ruta_imagen,
+        contexto=None
     ):
         """
-        Analiza una imagen utilizando Gemini.
+        Envía una imagen a Gemini.
 
-        Se utiliza el método con reintentos cuando está
-        disponible.
+        Gemini recibe la ruta del archivo, que coincide
+        con la interfaz real del servicio.
         """
 
         if gemini is None:
-
             return ''
 
         try:
 
-            if hasattr(
+            activo = getattr(
                 gemini,
-                'activo'
-            ):
+                'activo',
+                True
+            )
 
-                activo = gemini.activo
+            if callable(activo):
+                activo = activo()
 
-                if callable(activo):
+            if activo is False:
+                return ''
 
-                    activo = activo()
-
-                if activo is False:
-
-                    return ''
-
-            if hasattr(
-                gemini,
-                'analizar_imagen_con_reintentos'
-            ):
-
-                resultado = (
-                    gemini.analizar_imagen_con_reintentos(
-                        imagen
-                    )
+            resultado = (
+                gemini
+                .analizar_imagen_con_reintentos(
+                    ruta_imagen,
+                    contexto=contexto
                 )
-
-            else:
-
-                resultado = (
-                    gemini.analizar_imagen(
-                        imagen
-                    )
-                )
+            )
 
             if resultado is None:
-
                 return ''
 
             return str(
@@ -704,11 +702,70 @@ class CargaMasivaService:
             return ''
 
     # ========================================================
-    # VALIDAR PARÁMETROS
+    # CREAR GEMINI
     # ========================================================
 
     @staticmethod
+    def _crear_gemini(
+        api_key=None
+    ):
+        """
+        Crea GeminiService usando la interfaz real.
+        """
+
+        try:
+
+            return GeminiService(
+                api_key=api_key
+            )
+
+        except Exception as exc:
+
+            print(
+                '[ADVERTENCIA] '
+                f'No se pudo inicializar Gemini: '
+                f'{exc}'
+            )
+
+            return None
+
+    # ========================================================
+    # ÍNDICE DE OBLIGACIONES
+    # ========================================================
+
+    @staticmethod
+    def _crear_indice_obligaciones(
+        obligaciones
+    ):
+        """
+        Crea un índice por número de obligación.
+        """
+
+        resultado = {}
+
+        for obligacion in obligaciones:
+
+            numero = getattr(
+                obligacion,
+                'numero',
+                None
+            )
+
+            if numero is None:
+                continue
+
+            resultado[
+                str(numero).strip()
+            ] = obligacion
+
+        return resultado
+
+    # ========================================================
+    # VALIDACIÓN DE PARÁMETROS
+    # ========================================================
+
     def _validar_parametros(
+        self,
         contrato,
         mes,
         anio,
@@ -724,7 +781,7 @@ class CargaMasivaService:
                 'No se recibió un contrato.'
             )
 
-        if not ContratoService.mes_valido(
+        if not self.contrato_service.mes_valido(
             mes
         ):
 
@@ -732,7 +789,7 @@ class CargaMasivaService:
                 'El mes no es válido.'
             )
 
-        if not ContratoService.anio_valido(
+        if not self.contrato_service.anio_valido(
             anio
         ):
 
@@ -747,7 +804,7 @@ class CargaMasivaService:
             )
 
     # ========================================================
-    # CONVERTIR FECHA
+    # CONVERSIÓN DE FECHA
     # ========================================================
 
     @staticmethod
@@ -755,25 +812,22 @@ class CargaMasivaService:
         valor
     ):
         """
-        Convierte una fecha a datetime.date.
+        Convierte distintos formatos a date.
         """
 
         if valor is None:
-
             return None
 
         if isinstance(
             valor,
             datetime
         ):
-
             return valor.date()
 
         if isinstance(
             valor,
             date
         ):
-
             return valor
 
         texto = str(
@@ -781,7 +835,6 @@ class CargaMasivaService:
         ).strip()
 
         if not texto:
-
             return None
 
         formatos = (
@@ -801,18 +854,14 @@ class CargaMasivaService:
                 ).date()
 
             except ValueError:
-
                 continue
 
         raise ValueError(
-            (
-                f'Formato de fecha no válido: '
-                f'{valor}'
-            )
+            f'Formato de fecha no válido: {valor}'
         )
 
     # ========================================================
-    # VALIDAR MES
+    # FECHA EN PERÍODO
     # ========================================================
 
     @staticmethod
@@ -822,11 +871,10 @@ class CargaMasivaService:
         anio
     ):
         """
-        Verifica que la fecha pertenezca al periodo.
+        Comprueba que la fecha pertenezca al mes/año.
         """
 
         if fecha is None:
-
             return True
 
         return (
@@ -836,7 +884,7 @@ class CargaMasivaService:
         )
 
     # ========================================================
-    # LIMPIAR ARCHIVOS
+    # LIMPIEZA
     # ========================================================
 
     @staticmethod
@@ -844,11 +892,10 @@ class CargaMasivaService:
         imagenes
     ):
         """
-        Limpia los archivos temporales restantes.
+        Elimina archivos temporales.
         """
 
         if not imagenes:
-
             return
 
         try:
@@ -858,7 +905,6 @@ class CargaMasivaService:
             )
 
             if archivos:
-
                 limpiar_archivos(
                     archivos
                 )
@@ -867,8 +913,8 @@ class CargaMasivaService:
 
             print(
                 '[ADVERTENCIA] '
-                'No se pudieron limpiar los archivos '
-                f'temporales: {exc}'
+                f'Error limpiando archivos temporales: '
+                f'{exc}'
             )
 
     # ========================================================
@@ -884,11 +930,10 @@ class CargaMasivaService:
         mensaje
     ):
         """
-        Actualiza el progreso mediante el callback.
+        Ejecuta el callback de progreso.
         """
 
         if callback is None:
-
             return
 
         try:
@@ -904,7 +949,7 @@ class CargaMasivaService:
 
             print(
                 '[ADVERTENCIA] '
-                f'No se pudo actualizar el progreso: '
+                f'Error actualizando progreso: '
                 f'{exc}'
             )
 
@@ -924,31 +969,26 @@ def procesar_carga_masiva(
     job_id=None
 ):
     """
-    Función de compatibilidad para el Blueprint cargas.py.
-
-    Permite mantener temporalmente la interfaz utilizada
-    por el código antiguo mientras se termina la
-    refactorización.
+    Mantiene una función de entrada compatible con el
+    Blueprint mientras se termina la migración de cargas.py.
     """
 
-    return (
-        CargaMasivaService.procesar(
-            contrato=contrato,
-            mes=mes,
-            anio=anio,
-            excel_path=excel_path,
-            imagenes=imagenes,
-            api_key=api_key,
-            actualizar_progreso=actualizar_progreso,
-            job_id=job_id
-        )
+    servicio = CargaMasivaService()
+
+    return servicio.procesar(
+        contrato=contrato,
+        mes=mes,
+        anio=anio,
+        excel_path=excel_path,
+        imagenes=imagenes,
+        api_key=api_key,
+        actualizar_progreso=actualizar_progreso,
+        job_id=job_id
     )
 
 
 # ============================================================
-# INSTANCIA DEL SERVICIO
+# INSTANCIA GLOBAL
 # ============================================================
 
-carga_masiva_service = (
-    CargaMasivaService()
-)
+carga_masiva_service = CargaMasivaService()
