@@ -76,6 +76,10 @@ class CargaMasivaService:
         self.gemini_service = (
             gemini_service
         )
+        self.job_service = (
+        job_service
+        or JobService()
+        )
 
     # ========================================================
     # PROCESAR CARGA MASIVA
