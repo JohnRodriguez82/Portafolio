@@ -1,13 +1,18 @@
 """
-Servicio para procesamiento de evidencias.
+Servicio para gestionar evidencias.
 
 Responsabilidades:
-- Buscar imágenes cargadas temporalmente.
-- Mover imágenes al almacenamiento definitivo.
-- Analizar imágenes mediante Gemini.
+
+- Resolver archivos de evidencia.
+- Guardar imágenes.
+- Generar el número de actividad.
 - Crear registros Evidencia.
-- Generar descripción de la actividad.
-- Mantener la lógica de evidencias fuera del Blueprint.
+- Generar la descripción de actividad.
+- Mantener separada la lógica de persistencia.
+
+El análisis de Gemini pertenece a GeminiService.
+
+Este servicio NO contiene rutas Flask.
 """
 
 import os
@@ -24,11 +29,299 @@ from models import (
 )
 
 
-# ============================================================
-# SERVICIO DE EVIDENCIAS
-# ============================================================
-
 class EvidenciaService:
+    """
+    Servicio para gestionar evidencias contractuales.
+    """
+
+    # ========================================================
+    # CREAR EVIDENCIA
+    # ========================================================
+
+    def crear_evidencia(
+        self,
+        reporte,
+        imagen=None,
+        anuncio=None,
+        fecha=None,
+        descripcion=None
+    ):
+        """
+        Crea una evidencia asociada a un reporte.
+
+        Args:
+            reporte:
+                Objeto ReporteMensual.
+
+            imagen:
+                Archivo FileStorage o ruta de archivo.
+
+            anuncio:
+                Texto ingresado por el usuario.
+
+            fecha:
+                Fecha de la actividad.
+
+            descripcion:
+                Descripción generada por Gemini.
+
+        Returns:
+            Evidencia
+        """
+
+        if reporte is None:
+            raise ValueError(
+                "No se recibió el reporte."
+            )
+
+        anuncio = (
+            str(anuncio or '').strip()
+        )
+
+        if not anuncio:
+            anuncio = (
+                'Actividad contractual realizada '
+                'durante el periodo reportado.'
+            )
+
+        # ----------------------------------------------------
+        # Número de actividad
+        # ----------------------------------------------------
+
+        numero_actividad = (
+            self._obtener_siguiente_actividad(
+                reporte.id
+            )
+        )
+
+        # ----------------------------------------------------
+        # Guardar imagen
+        # ----------------------------------------------------
+
+        imagen_path = (
+            self._guardar_imagen(
+                imagen=imagen,
+                reporte_id=reporte.id,
+                numero_actividad=numero_actividad
+            )
+        )
+
+        # ----------------------------------------------------
+        # Descripción
+        # ----------------------------------------------------
+
+        descripcion_actividad = (
+            descripcion
+            or
+            self._generar_descripcion(
+                anuncio=anuncio,
+                numero_actividad=numero_actividad
+            )
+        )
+
+        # ----------------------------------------------------
+        # Crear registro
+        # ----------------------------------------------------
+
+        evidencia = Evidencia(
+            numero_actividad=numero_actividad,
+            imagen_path=imagen_path,
+            anuncio_usuario=anuncio,
+            descripcion_visual_ia=descripcion,
+            descripcion_actividad=descripcion_actividad,
+            fecha_actividad=fecha,
+            reporte_id=reporte.id
+        )
+
+        db.session.add(
+            evidencia
+        )
+
+        db.session.flush()
+
+        return evidencia
+
+    # ========================================================
+    # OBTENER SIGUIENTE ACTIVIDAD
+    # ========================================================
+
+    def _obtener_siguiente_actividad(
+        self,
+        reporte_id
+    ):
+        """
+        Obtiene el siguiente número de actividad.
+        """
+
+        ultima = (
+            Evidencia.query
+            .filter_by(
+                reporte_id=reporte_id
+            )
+            .order_by(
+                Evidencia.numero_actividad.desc()
+            )
+            .first()
+        )
+
+        if ultima is None:
+            return 1
+
+        return (
+            ultima.numero_actividad + 1
+        )
+
+    # ========================================================
+    # GUARDAR IMAGEN
+    # ========================================================
+
+    def _guardar_imagen(
+        self,
+        imagen,
+        reporte_id,
+        numero_actividad
+    ):
+        """
+        Guarda una imagen en UPLOAD_FOLDER.
+
+        Acepta:
+
+        - Flask FileStorage.
+        - Ruta de archivo.
+        - None.
+
+        Returns:
+            str
+        """
+
+        if imagen is None:
+            return ''
+
+        upload_folder = (
+            current_app.config.get(
+                'UPLOAD_FOLDER'
+            )
+        )
+
+        if not upload_folder:
+            raise RuntimeError(
+                'UPLOAD_FOLDER no está configurado.'
+            )
+
+        os.makedirs(
+            upload_folder,
+            exist_ok=True
+        )
+
+        # ----------------------------------------------------
+        # Nombre original
+        # ----------------------------------------------------
+
+        nombre_original = getattr(
+            imagen,
+            'filename',
+            None
+        )
+
+        if nombre_original:
+            nombre_original = secure_filename(
+                nombre_original
+            )
+        else:
+            nombre_original = secure_filename(
+                os.path.basename(
+                    str(imagen)
+                )
+            )
+
+        if not nombre_original:
+            raise ValueError(
+                'No fue posible determinar el nombre '
+                'de la imagen.'
+            )
+
+        extension = (
+            os.path.splitext(
+                nombre_original
+            )[1]
+            or
+            '.jpg'
+        )
+
+        nombre_final = secure_filename(
+            (
+                f'evidencia_'
+                f'{reporte_id}_'
+                f'{numero_actividad}_'
+                f'{datetime.now().strftime("%Y%m%d_%H%M%S_%f")}'
+                f'{extension}'
+            )
+        )
+
+        ruta_final = os.path.join(
+            upload_folder,
+            nombre_final
+        )
+
+        # ----------------------------------------------------
+        # FileStorage
+        # ----------------------------------------------------
+
+        if hasattr(
+            imagen,
+            'save'
+        ):
+            imagen.save(
+                ruta_final
+            )
+
+            return ruta_final
+
+        # ----------------------------------------------------
+        # Ruta física
+        # ----------------------------------------------------
+
+        ruta_origen = os.path.abspath(
+            str(imagen)
+        )
+
+        if not os.path.isfile(
+            ruta_origen
+        ):
+            raise FileNotFoundError(
+                f'No existe la imagen: {imagen}'
+            )
+
+        os.replace(
+            ruta_origen,
+            ruta_final
+        )
+
+        return ruta_final
+
+    # ========================================================
+    # GENERAR DESCRIPCIÓN
+    # ========================================================
+
+    @staticmethod
+    def _generar_descripcion(
+        anuncio,
+        numero_actividad
+    ):
+        """
+        Genera una descripción básica cuando Gemini
+        no está disponible.
+
+        La generación inteligente de contenido visual
+        pertenece a GeminiService.
+        """
+
+        return (
+            f'{anuncio}. '
+            'Esta actividad corresponde al cumplimiento '
+            'de las obligaciones contractuales durante '
+            'el periodo reportado.'
+        )
 
     # ========================================================
     # OBTENER IMAGEN TEMPORAL
@@ -40,522 +333,142 @@ class EvidenciaService:
         imagenes_disponibles
     ):
         """
-        Obtiene una imagen del conjunto de archivos
-        cargados y la elimina del diccionario para
-        evitar reutilizarla.
+        Busca y consume una imagen del diccionario.
+
+        Se mantiene como método de compatibilidad para
+        otros procesos de la aplicación.
         """
 
         if not nombre_imagen:
-
             return None
 
-        # ----------------------------------------------------
-        # BÚSQUEDA EXACTA
-        # ----------------------------------------------------
+        if not imagenes_disponibles:
+            return None
 
         if nombre_imagen in imagenes_disponibles:
-
             return imagenes_disponibles.pop(
                 nombre_imagen
             )
 
-        # ----------------------------------------------------
-        # BÚSQUEDA CON NOMBRE SEGURO
-        # ----------------------------------------------------
-
-        nombre_seguro = secure_filename(
-            nombre_imagen
+        safe_name = secure_filename(
+            str(nombre_imagen)
         )
 
-        if nombre_seguro in imagenes_disponibles:
-
+        if safe_name in imagenes_disponibles:
             return imagenes_disponibles.pop(
-                nombre_seguro
+                safe_name
             )
+
+        # Comparación normalizada
+        nombre_normalizado = (
+            safe_name.lower()
+        )
+
+        for clave in list(
+            imagenes_disponibles.keys()
+        ):
+            clave_normalizada = secure_filename(
+                str(clave)
+            ).lower()
+
+            if clave_normalizada == nombre_normalizado:
+                return imagenes_disponibles.pop(
+                    clave
+                )
 
         return None
 
     # ========================================================
-    # GUARDAR IMAGEN
+    # GUARDAR IMAGEN DE EVIDENCIA
     # ========================================================
 
-    @staticmethod
     def guardar_imagen_evidencia(
+        self,
         imagen_temporal,
         reporte_id,
         nombre_imagen
     ):
         """
-        Mueve una imagen temporal al almacenamiento
-        definitivo.
+        Guarda una imagen temporal como evidencia.
+
+        Se mantiene como método público para compatibilidad.
         """
 
         if not imagen_temporal:
+            return ''
 
-            return None
-
-        if not os.path.exists(
-            imagen_temporal
-        ):
-
-            raise FileNotFoundError(
-                (
-                    'No se encontró la imagen temporal: '
-                    f'{imagen_temporal}'
-                )
-            )
-
-        upload_folder = current_app.config.get(
-            'UPLOAD_FOLDER'
+        return self._guardar_imagen(
+            imagen=imagen_temporal,
+            reporte_id=reporte_id,
+            numero_actividad=0
         )
-
-        if not upload_folder:
-
-            raise ValueError(
-                'UPLOAD_FOLDER no está configurado.'
-            )
-
-        # ----------------------------------------------------
-        # CARPETA DEL REPORTE
-        # ----------------------------------------------------
-
-        carpeta_reporte = os.path.join(
-            upload_folder,
-            'evidencias',
-            str(reporte_id)
-        )
-
-        os.makedirs(
-            carpeta_reporte,
-            exist_ok=True
-        )
-
-        # ----------------------------------------------------
-        # NOMBRE
-        # ----------------------------------------------------
-
-        nombre_original = secure_filename(
-            nombre_imagen or 'imagen'
-        )
-
-        timestamp = datetime.now().strftime(
-            '%Y%m%d_%H%M%S_%f'
-        )
-
-        nombre_final = (
-            f'{timestamp}_{nombre_original}'
-        )
-
-        ruta_final = os.path.join(
-            carpeta_reporte,
-            nombre_final
-        )
-
-        # ----------------------------------------------------
-        # MOVER
-        # ----------------------------------------------------
-
-        os.replace(
-            imagen_temporal,
-            ruta_final
-        )
-
-        return ruta_final
 
     # ========================================================
-    # ANALIZAR CON IA
+    # OBTENER EVIDENCIA
     # ========================================================
 
     @staticmethod
-    def analizar_con_ia(
-        imagen_path,
-        gemini
+    def obtener_por_id(
+        evidencia_id
     ):
         """
-        Analiza una imagen utilizando GeminiService.
+        Obtiene una evidencia por ID.
         """
 
-        if not imagen_path:
-
-            return None
-
-        if not gemini:
-
-            return None
-
-        try:
-
-            return gemini.analizar_imagen(
-                imagen_path
+        return (
+            Evidencia.query
+            .filter_by(
+                id=evidencia_id
             )
-
-        except Exception as exc:
-
-            print(
-                '[ADVERTENCIA] '
-                'No fue posible analizar la imagen '
-                f'con Gemini: {exc}'
-            )
-
-            return None
+            .first()
+        )
 
     # ========================================================
-    # SIGUIENTE NÚMERO DE ACTIVIDAD
+    # OBTENER EVIDENCIAS DE REPORTE
     # ========================================================
 
     @staticmethod
-    def obtener_siguiente_numero(
-        reporte
+    def obtener_por_reporte(
+        reporte_id
     ):
         """
-        Obtiene el siguiente número consecutivo
-        de actividad dentro del reporte.
+        Obtiene las evidencias de un reporte.
         """
 
-        actividades = reporte.evidencias
-
-        if not actividades:
-
-            return 1
-
-        numeros = [
-            evidencia.numero_actividad
-            for evidencia in actividades
-            if evidencia.numero_actividad is not None
-        ]
-
-        if not numeros:
-
-            return 1
-
-        return max(numeros) + 1
+        return (
+            Evidencia.query
+            .filter_by(
+                reporte_id=reporte_id
+            )
+            .order_by(
+                Evidencia.numero_actividad.asc()
+            )
+            .all()
+        )
 
     # ========================================================
-    # CREAR EVIDENCIA
+    # CONTAR EVIDENCIAS
     # ========================================================
 
     @staticmethod
-    def crear_evidencia(
-        reporte,
-        anuncio,
-        fecha,
-        ruta_imagen,
-        descripcion_visual_ia=''
+    def contar(
+        reporte_id
     ):
         """
-        Crea una evidencia utilizando exactamente
-        las columnas definidas en el modelo Evidencia.
+        Cuenta las evidencias de un reporte.
         """
 
-        numero_actividad = (
-            EvidenciaService.obtener_siguiente_numero(
-                reporte
+        return (
+            Evidencia.query
+            .filter_by(
+                reporte_id=reporte_id
             )
+            .count()
         )
-
-        # ----------------------------------------------------
-        # CREAR OBJETO
-        # ----------------------------------------------------
-
-        evidencia = Evidencia(
-            numero_actividad=numero_actividad,
-
-            imagen_path=ruta_imagen,
-
-            anuncio_usuario=(
-                anuncio or ''
-            ),
-
-            descripcion_visual_ia=(
-                descripcion_visual_ia or ''
-            ),
-
-            descripcion_actividad='',
-
-            fecha_actividad=fecha,
-
-            reporte_id=reporte.id
-        )
-
-        # ----------------------------------------------------
-        # GENERAR DESCRIPCIÓN
-        # ----------------------------------------------------
-
-        try:
-
-            obligacion = reporte.obligacion
-
-            evidencia.descripcion_actividad = (
-                evidencia.generar_descripcion_automatica(
-                    obligacion
-                )
-            )
-
-        except Exception as exc:
-
-            print(
-                '[ADVERTENCIA] '
-                'No fue posible generar la descripción '
-                f'automática: {exc}'
-            )
-
-            evidencia.descripcion_actividad = (
-                anuncio or
-                'Actividad realizada durante '
-                'el periodo reportado.'
-            )
-
-        db.session.add(
-            evidencia
-        )
-
-        return evidencia
 
 
 # ============================================================
-# FUNCIÓN PRINCIPAL
+# INSTANCIA DEL SERVICIO
 # ============================================================
 
-def procesar_evidencia(
-    reporte,
-    obligacion,
-    anuncio,
-    fecha,
-    nombre_imagen,
-    imagenes,
-    gemini,
-    actualizar_progreso=None,
-    job_id=None
-):
-    """
-    Procesa una evidencia individual.
-
-    Es la función principal consumida por
-    CargaMasivaService.
-    """
-
-    errores = []
-
-    # ========================================================
-    # VALIDACIONES
-    # ========================================================
-
-    if reporte is None:
-
-        return {
-            'creada': False,
-            'errores': [
-                'No se recibió un reporte válido.'
-            ],
-            'evidencia': None
-        }
-
-    # ========================================================
-    # SIN IMAGEN
-    # ========================================================
-
-    if not nombre_imagen:
-
-        try:
-
-            evidencia = (
-                EvidenciaService.crear_evidencia(
-                    reporte=reporte,
-                    anuncio=anuncio,
-                    fecha=fecha,
-                    ruta_imagen='',
-                    descripcion_visual_ia=''
-                )
-            )
-
-            return {
-                'creada': True,
-                'errores': [],
-                'evidencia': evidencia
-            }
-
-        except Exception as exc:
-
-            db.session.rollback()
-
-            return {
-                'creada': False,
-                'errores': [
-                    (
-                        'No fue posible crear la actividad: '
-                        f'{str(exc)}'
-                    )
-                ],
-                'evidencia': None
-            }
-
-    # ========================================================
-    # BUSCAR IMAGEN
-    # ========================================================
-
-    imagen_temporal = (
-        EvidenciaService.obtener_imagen_temporal(
-            nombre_imagen,
-            imagenes
-        )
-    )
-
-    if not imagen_temporal:
-
-        errores.append(
-            (
-                f'No se encontró la imagen '
-                f'"{nombre_imagen}".'
-            )
-        )
-
-        return {
-            'creada': False,
-            'errores': errores,
-            'evidencia': None
-        }
-
-    # ========================================================
-    # GUARDAR IMAGEN
-    # ========================================================
-
-    try:
-
-        ruta_imagen = (
-            EvidenciaService.guardar_imagen_evidencia(
-                imagen_temporal=imagen_temporal,
-                reporte_id=reporte.id,
-                nombre_imagen=nombre_imagen
-            )
-        )
-
-    except Exception as exc:
-
-        errores.append(
-            (
-                f'No fue posible guardar la imagen '
-                f'"{nombre_imagen}": {str(exc)}'
-            )
-        )
-
-        return {
-            'creada': False,
-            'errores': errores,
-            'evidencia': None
-        }
-
-    # ========================================================
-    # ANALIZAR CON GEMINI
-    # ========================================================
-
-    descripcion_visual_ia = ''
-
-    if gemini:
-
-        try:
-
-            descripcion_visual_ia = (
-                EvidenciaService.analizar_con_ia(
-                    imagen_path=ruta_imagen,
-                    gemini=gemini
-                )
-                or ''
-            )
-
-        except Exception as exc:
-
-            errores.append(
-                (
-                    'La imagen fue guardada, pero '
-                    f'no pudo analizarse con IA: {str(exc)}'
-                )
-            )
-
-    # ========================================================
-    # CREAR EVIDENCIA
-    # ========================================================
-
-    try:
-
-        evidencia = (
-            EvidenciaService.crear_evidencia(
-                reporte=reporte,
-                anuncio=anuncio,
-                fecha=fecha,
-                ruta_imagen=ruta_imagen,
-                descripcion_visual_ia=(
-                    descripcion_visual_ia
-                )
-            )
-        )
-
-        return {
-            'creada': True,
-            'errores': errores,
-            'evidencia': evidencia
-        }
-
-    except Exception as exc:
-
-        db.session.rollback()
-
-        errores.append(
-            (
-                'No fue posible crear el registro '
-                f'de evidencia: {str(exc)}'
-            )
-        )
-
-        return {
-            'creada': False,
-            'errores': errores,
-            'evidencia': None
-        }
-
-
-# ============================================================
-# FUNCIONES DE COMPATIBILIDAD
-# ============================================================
-
-def obtener_imagen_temporal(
-    nombre_imagen,
-    imagenes_disponibles
-):
-    """
-    Compatibilidad con código anterior.
-    """
-
-    return EvidenciaService.obtener_imagen_temporal(
-        nombre_imagen,
-        imagenes_disponibles
-    )
-
-
-def guardar_imagen_evidencia(
-    imagen_temporal,
-    reporte_id,
-    nombre_imagen
-):
-    """
-    Compatibilidad con código anterior.
-    """
-
-    return EvidenciaService.guardar_imagen_evidencia(
-        imagen_temporal,
-        reporte_id,
-        nombre_imagen
-    )
-
-
-def analizar_evidencia_con_ia(
-    imagen_path,
-    gemini
-):
-    """
-    Compatibilidad con código anterior.
-    """
-
-    return EvidenciaService.analizar_con_ia(
-        imagen_path,
-        gemini
-    )
+evidencia_service = EvidenciaService()
