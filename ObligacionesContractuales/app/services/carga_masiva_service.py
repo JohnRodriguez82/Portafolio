@@ -1,80 +1,134 @@
 """
-Servicio principal de carga masiva mensual.
+Servicio de carga masiva mensual.
 
-CargaMasivaService actúa como orquestador de la carga masiva.
+Responsabilidades:
+- Validar los parámetros de una carga.
+- Leer y validar el Excel mediante ExcelService.
+- Obtener las obligaciones del contrato.
+- Crear o reutilizar reportes mensuales.
+- Procesar cada fila del Excel.
+- Asociar imágenes.
+- Analizar imágenes mediante Gemini cuando esté disponible.
+- Crear evidencias.
+- Actualizar el progreso mediante JobService y/o callback legacy.
+- Limpiar archivos temporales.
 
-Responsabilidades delegadas:
-
-    ExcelService
-        - Lectura y normalización del archivo Excel.
-
-    ContratoService
-        - Validación del contrato.
-        - Consulta de obligaciones.
-
-    ReporteService
-        - Obtención o creación de reportes.
-
-    EvidenciaService
-        - Creación de evidencias.
-        - Gestión de imágenes.
-
-    GeminiService
-        - Análisis de imágenes mediante Gemini.
-
-    ArchivoService
-        - Limpieza de archivos temporales.
-
-    JobService
-        - Control y seguimiento del progreso del proceso.
-
-Este servicio no debe contener:
-
-    - rutas Flask
-    - lógica SSE
-    - generación de plantillas
-    - lógica propia de Excel
-    - lógica propia de Gemini
-    - lógica propia de evidencias
-    - lógica propia de reportes
-    - lógica propia de contratos
+Este servicio está diseñado para ser utilizado desde:
+    app.blueprints.cargas
 """
 
-from models import db
+import os
+import traceback
 
 
-from app.services.excel_service import (
-    ExcelService
-)
+# ============================================================
+# IMPORTACIONES DE LA APLICACIÓN
+# ============================================================
 
-from app.services.contrato_service import (
-    ContratoService
-)
+try:
+    from models import db
+except ImportError:
+    db = None
 
-from app.services.reporte_service import (
-    ReporteService
-)
 
-from app.services.evidencia_service import (
-    EvidenciaService
-)
+# Servicios principales
+try:
+    from app.services.excel_service import ExcelService
+except ImportError:
+    ExcelService = None
 
-from app.services.gemini_service import (
-    GeminiService
-)
 
-from app.services.archivo_service import (
-    limpiar_archivos
-)
+try:
+    from app.services.contrato_service import ContratoService
+except ImportError:
+    ContratoService = None
 
-from app.services.job_service import (
-    JobService
-)
 
+try:
+    from app.services.reporte_service import ReporteService
+except ImportError:
+    ReporteService = None
+
+
+try:
+    from app.services.evidencia_service import EvidenciaService
+except ImportError:
+    EvidenciaService = None
+
+
+try:
+    from app.services.gemini_service import GeminiService
+except ImportError:
+    GeminiService = None
+
+
+try:
+    from app.services.job_service import JobService
+except ImportError:
+    JobService = None
+
+
+# ============================================================
+# LIMPIEZA DE TEMPORALES
+# ============================================================
+
+try:
+    from app.services.archivo_service import limpiar_archivos
+except ImportError:
+
+    def limpiar_archivos(imagenes):
+        """
+        Fallback para limpiar archivos temporales.
+
+        Se utiliza solamente si la aplicación no dispone
+        de la función centralizada limpiar_archivos().
+        """
+
+        if not imagenes:
+            return
+
+        archivos = set()
+
+        if isinstance(imagenes, dict):
+
+            for ruta in imagenes.values():
+
+                if ruta:
+                    archivos.add(ruta)
+
+        elif isinstance(imagenes, (list, tuple, set)):
+
+            for ruta in imagenes:
+
+                if ruta:
+                    archivos.add(ruta)
+
+        for ruta in archivos:
+
+            try:
+
+                if os.path.isfile(ruta):
+                    os.remove(ruta)
+
+            except Exception as exc:
+
+                print(
+                    '[CargaMasivaService] '
+                    f'No fue posible eliminar temporal: '
+                    f'{ruta} - {exc}'
+                )
+
+
+# ============================================================
+# SERVICIO
+# ============================================================
 
 class CargaMasivaService:
     """
     Orquestador principal de la carga masiva mensual.
+
+    Los servicios pueden ser inyectados para facilitar pruebas
+    unitarias y mantener desacoplada la lógica del Blueprint.
     """
 
     def __init__(
@@ -87,44 +141,69 @@ class CargaMasivaService:
         job_service=None
     ):
         """
-        Permite inyectar servicios para facilitar pruebas.
+        Inicializa el servicio.
 
-        Si no se proporcionan servicios, se utilizan las
-        implementaciones reales de la aplicación.
+        Si se proporciona una dependencia, se utiliza esa instancia.
+
+        Si no se proporciona, se intenta utilizar la implementación
+        real correspondiente.
         """
 
         self.excel_service = (
             excel_service
-            or ExcelService
+            if excel_service is not None
+            else (
+                ExcelService()
+                if ExcelService is not None
+                else None
+            )
         )
 
         self.contrato_service = (
             contrato_service
-            or ContratoService
+            if contrato_service is not None
+            else (
+                ContratoService()
+                if ContratoService is not None
+                else None
+            )
         )
 
         self.reporte_service = (
             reporte_service
-            or ReporteService
+            if reporte_service is not None
+            else (
+                ReporteService()
+                if ReporteService is not None
+                else None
+            )
         )
 
         self.evidencia_service = (
             evidencia_service
-            or EvidenciaService()
+            if evidencia_service is not None
+            else (
+                EvidenciaService()
+                if EvidenciaService is not None
+                else None
+            )
         )
 
-        self.gemini_service = (
-            gemini_service
-        )
+        self.gemini_service = gemini_service
 
         self.job_service = (
             job_service
-            or JobService()
+            if job_service is not None
+            else (
+                JobService()
+                if JobService is not None
+                else None
+            )
         )
 
-    # ============================================================
+    # ========================================================
     # PROCESAMIENTO PRINCIPAL
-    # ============================================================
+    # ========================================================
 
     def procesar(
         self,
@@ -154,16 +233,25 @@ class CargaMasivaService:
                 Ruta del archivo Excel.
 
             imagenes:
-                Diccionario con imágenes temporales.
+                Diccionario:
+                    nombre_archivo -> ruta_temporal
 
             api_key:
                 API Key de Gemini.
 
             actualizar_progreso:
-                Callback de compatibilidad con cargas.py.
+                Callback legacy utilizado por cargas.py.
+
+                Firma esperada:
+                    callback(
+                        job_id,
+                        estado,
+                        porcentaje,
+                        mensaje
+                    )
 
             job_id:
-                Identificador del trabajo.
+                Identificador del job.
 
         Returns:
             dict:
@@ -181,9 +269,11 @@ class CargaMasivaService:
 
         imagenes = imagenes or {}
 
-        # --------------------------------------------------------
-        # VALIDACIÓN INICIAL
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # VALIDACIONES
+        # ----------------------------------------------------
+
+        self._validar_dependencias()
 
         self._validar_parametros(
             contrato=contrato,
@@ -196,9 +286,9 @@ class CargaMasivaService:
 
         anio = int(anio)
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # VALIDAR CONTRATO
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         valido, mensaje = (
             self.contrato_service
@@ -210,13 +300,14 @@ class CargaMasivaService:
         )
 
         if not valido:
+
             raise ValueError(
                 mensaje
             )
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # PROGRESO INICIAL
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         self._actualizar_progreso(
             callback=actualizar_progreso,
@@ -226,9 +317,9 @@ class CargaMasivaService:
             mensaje='Leyendo archivo Excel...'
         )
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # LEER EXCEL
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         filas = (
             self.excel_service
@@ -238,15 +329,16 @@ class CargaMasivaService:
         )
 
         if not filas:
+
             raise ValueError(
                 'El archivo Excel no contiene registros válidos.'
             )
 
         total = len(filas)
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # OBLIGACIONES
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         obligaciones = (
             self.contrato_service
@@ -261,23 +353,23 @@ class CargaMasivaService:
             )
         )
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # GEMINI
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         gemini = self._crear_gemini(
             api_key
         )
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # CACHE DE REPORTES
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         reportes_cache = {}
 
-        # --------------------------------------------------------
-        # PROCESAMIENTO
-        # --------------------------------------------------------
+        # ====================================================
+        # PROCESAR FILAS
+        # ====================================================
 
         try:
 
@@ -327,6 +419,7 @@ class CargaMasivaService:
                         'exitoso',
                         False
                     ):
+
                         exitosos += 1
 
                     errores.extend(
@@ -338,10 +431,10 @@ class CargaMasivaService:
 
                 except Exception as exc:
 
-                    db.session.rollback()
+                    self._rollback()
 
-                    numero_fila = fila.get(
-                        'fila',
+                    numero_fila = self._obtener_numero_fila(
+                        fila,
                         indice
                     )
 
@@ -352,15 +445,15 @@ class CargaMasivaService:
                         )
                     )
 
-            # ----------------------------------------------------
+            # ------------------------------------------------
             # COMMIT FINAL
-            # ----------------------------------------------------
+            # ------------------------------------------------
 
-            db.session.commit()
+            self._commit()
 
         except Exception:
 
-            db.session.rollback()
+            self._rollback()
 
             raise
 
@@ -370,33 +463,36 @@ class CargaMasivaService:
                 imagenes
             )
 
-        # --------------------------------------------------------
-        # FINALIZAR JOB
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # RESULTADO FINAL
+        # ----------------------------------------------------
 
         mensaje_final = (
             f'Proceso finalizado. '
             f'{exitosos} registros procesados.'
         )
 
-        self._actualizar_progreso(
-            callback=actualizar_progreso,
-            job_id=job_id,
-            estado='completado',
-            porcentaje=100,
-            mensaje=mensaje_final
-        )
-
-        return {
+        resultado_final = {
             'exitosos': exitosos,
             'errores': errores,
             'mes': mes,
             'anio': anio
         }
 
-    # ============================================================
+        self._actualizar_progreso(
+            callback=actualizar_progreso,
+            job_id=job_id,
+            estado='completado',
+            porcentaje=100,
+            mensaje=mensaje_final,
+            resultado=resultado_final
+        )
+
+        return resultado_final
+
+    # ========================================================
     # PROCESAR FILA
-    # ============================================================
+    # ========================================================
 
     def _procesar_fila(
         self,
@@ -415,9 +511,9 @@ class CargaMasivaService:
 
         errores = []
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # DATOS DEL EXCEL
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         numero_obligacion = (
             fila.get(
@@ -430,6 +526,10 @@ class CargaMasivaService:
                 'anuncio'
             )
             or ''
+        )
+
+        anuncio = str(
+            anuncio
         ).strip()
 
         fecha = (
@@ -443,18 +543,20 @@ class CargaMasivaService:
                 'nombre_imagen'
             )
             or ''
+        )
+
+        nombre_imagen = str(
+            nombre_imagen
         ).strip()
 
-        # --------------------------------------------------------
-        # OBLIGACIÓN
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # VALIDAR OBLIGACIÓN
+        # ----------------------------------------------------
 
         obligacion = (
-            obligaciones_por_numero
-            .get(
-                str(
-                    numero_obligacion
-                ).strip()
+            self._buscar_obligacion(
+                numero_obligacion,
+                obligaciones_por_numero
             )
         )
 
@@ -466,14 +568,27 @@ class CargaMasivaService:
                     (
                         f'Obligación '
                         f'{numero_obligacion} '
-                        'no encontrada.'
+                        f'no encontrada.'
                     )
                 ]
             }
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # VALIDAR ANUNCIO
+        # ----------------------------------------------------
+
+        if not anuncio:
+
+            return {
+                'exitoso': False,
+                'errores': [
+                    'El anuncio/contexto es obligatorio.'
+                ]
+            }
+
+        # ----------------------------------------------------
         # REPORTE
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         cache_key = (
             obligacion.id,
@@ -483,9 +598,7 @@ class CargaMasivaService:
 
         if cache_key not in reportes_cache:
 
-            reportes_cache[
-                cache_key
-            ] = (
+            reporte = (
                 self.reporte_service
                 .obtener_o_crear_reporte(
                     contrato=contrato,
@@ -495,15 +608,29 @@ class CargaMasivaService:
                 )
             )
 
+            reportes_cache[
+                cache_key
+            ] = reporte
+
         reporte = (
             reportes_cache[
                 cache_key
             ]
         )
 
-        # --------------------------------------------------------
-        # IMAGEN
-        # --------------------------------------------------------
+        if reporte is None:
+
+            raise ValueError(
+                (
+                    f'No fue posible obtener o crear '
+                    f'el reporte para la obligación '
+                    f'{numero_obligacion}.'
+                )
+            )
+
+        # ----------------------------------------------------
+        # IMAGEN TEMPORAL
+        # ----------------------------------------------------
 
         imagen_temporal = None
 
@@ -517,9 +644,18 @@ class CargaMasivaService:
                 )
             )
 
-        # --------------------------------------------------------
+            if not imagen_temporal:
+
+                errores.append(
+                    (
+                        f'Imagen "{nombre_imagen}" '
+                        f'no encontrada.'
+                    )
+                )
+
+        # ----------------------------------------------------
         # GEMINI
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         descripcion = None
 
@@ -551,9 +687,9 @@ class CargaMasivaService:
                     )
                 )
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # CREAR EVIDENCIA
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         try:
 
@@ -582,9 +718,22 @@ class CargaMasivaService:
                 ]
             }
 
-        # --------------------------------------------------------
+        if evidencia is None:
+
+            return {
+                'exitoso': False,
+                'errores': [
+                    (
+                        f'No fue posible crear la evidencia '
+                        f'para la obligación '
+                        f'{numero_obligacion}.'
+                    )
+                ]
+            }
+
+        # ----------------------------------------------------
         # GUARDAR IMAGEN
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         if (
             imagen_temporal
@@ -610,18 +759,140 @@ class CargaMasivaService:
                     )
                 )
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # RESULTADO
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         return {
-            'exitoso': evidencia is not None,
+            'exitoso': True,
             'errores': errores
         }
 
-    # ============================================================
+    # ========================================================
+    # BUSCAR OBLIGACIÓN
+    # ========================================================
+
+    @staticmethod
+    def _buscar_obligacion(
+        numero_obligacion,
+        obligaciones_por_numero
+    ):
+        """
+        Busca una obligación tolerando valores Excel como:
+
+            1
+            "1"
+            1.0
+            "1.0"
+        """
+
+        if numero_obligacion is None:
+
+            return None
+
+        valor = str(
+            numero_obligacion
+        ).strip()
+
+        if not valor:
+
+            return None
+
+        # Coincidencia directa
+        obligacion = (
+            obligaciones_por_numero
+            .get(valor)
+        )
+
+        if obligacion:
+
+            return obligacion
+
+        # Excel puede devolver 1.0 para un número entero
+        try:
+
+            numero = float(
+                valor
+            )
+
+            if numero.is_integer():
+
+                valor_normalizado = str(
+                    int(numero)
+                )
+
+                return (
+                    obligaciones_por_numero
+                    .get(
+                        valor_normalizado
+                    )
+                )
+
+        except (
+            ValueError,
+            TypeError
+        ):
+
+            pass
+
+        return None
+
+    # ========================================================
+    # VALIDAR DEPENDENCIAS
+    # ========================================================
+
+    def _validar_dependencias(self):
+        """
+        Verifica que los servicios indispensables estén
+        disponibles.
+        """
+
+        faltantes = []
+
+        if self.excel_service is None:
+
+            faltantes.append(
+                'ExcelService'
+            )
+
+        if self.contrato_service is None:
+
+            faltantes.append(
+                'ContratoService'
+            )
+
+        if self.reporte_service is None:
+
+            faltantes.append(
+                'ReporteService'
+            )
+
+        if self.evidencia_service is None:
+
+            faltantes.append(
+                'EvidenciaService'
+            )
+
+        if self.job_service is None:
+
+            # JobService no debe impedir una carga cuando
+            # se está utilizando únicamente el callback legacy.
+            pass
+
+        if faltantes:
+
+            raise RuntimeError(
+                (
+                    'No fue posible inicializar los servicios '
+                    'requeridos: '
+                    +
+                    ', '.join(faltantes)
+                )
+            )
+
+    # ========================================================
     # VALIDACIONES
-    # ============================================================
+    # ========================================================
 
     @staticmethod
     def _validar_parametros(
@@ -631,7 +902,7 @@ class CargaMasivaService:
         excel_path
     ):
         """
-        Valida los parámetros mínimos de una carga.
+        Valida los parámetros mínimos.
         """
 
         if contrato is None:
@@ -658,16 +929,60 @@ class CargaMasivaService:
                 'El archivo Excel es obligatorio.'
             )
 
-    # ============================================================
+        try:
+
+            mes_int = int(
+                mes
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            raise ValueError(
+                'El mes debe ser numérico.'
+            )
+
+        if mes_int < 1 or mes_int > 12:
+
+            raise ValueError(
+                'El mes debe estar entre 1 y 12.'
+            )
+
+        try:
+
+            anio_int = int(
+                anio
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            raise ValueError(
+                'El año debe ser numérico.'
+            )
+
+        if anio_int < 1900 or anio_int > 3000:
+
+            raise ValueError(
+                'El año no es válido.'
+            )
+
+    # ========================================================
     # ÍNDICE DE OBLIGACIONES
-    # ============================================================
+    # ========================================================
 
     @staticmethod
     def _crear_indice_obligaciones(
         obligaciones
     ):
         """
-        Crea un índice de obligaciones por número.
+        Crea un índice:
+
+            numero -> objeto Obligacion
         """
 
         indice = {}
@@ -683,19 +998,22 @@ class CargaMasivaService:
             )
 
             if numero is None:
+
                 continue
 
+            clave = str(
+                numero
+            ).strip()
+
             indice[
-                str(
-                    numero
-                ).strip()
+                clave
             ] = obligacion
 
         return indice
 
-    # ============================================================
-    # CREAR GEMINI
-    # ============================================================
+    # ========================================================
+    # GEMINI
+    # ========================================================
 
     def _crear_gemini(
         self,
@@ -704,14 +1022,28 @@ class CargaMasivaService:
         """
         Obtiene la instancia de Gemini.
 
-        Si se inyectó un GeminiService, se reutiliza.
+        Si se inyectó un servicio se reutiliza.
 
-        Si se proporciona api_key, se crea una nueva instancia.
+        Si no existe servicio Gemini o no hay API key,
+        se devuelve None y la carga continúa sin análisis IA.
         """
 
         if self.gemini_service is not None:
 
             return self.gemini_service
+
+        if not api_key:
+
+            return None
+
+        if GeminiService is None:
+
+            print(
+                '[CargaMasivaService] '
+                'GeminiService no está disponible.'
+            )
+
+            return None
 
         try:
 
@@ -719,19 +1051,48 @@ class CargaMasivaService:
                 api_key=api_key
             )
 
+        except TypeError:
+
+            # Compatibilidad con servicios que reciben
+            # la API key mediante otro mecanismo.
+            try:
+
+                servicio = GeminiService()
+
+                if hasattr(
+                    servicio,
+                    'api_key'
+                ):
+
+                    servicio.api_key = (
+                        api_key
+                    )
+
+                return servicio
+
+            except Exception as exc:
+
+                print(
+                    '[CargaMasivaService] '
+                    f'No fue posible inicializar Gemini: '
+                    f'{exc}'
+                )
+
+                return None
+
         except Exception as exc:
 
             print(
-                '[ADVERTENCIA] '
+                '[CargaMasivaService] '
                 f'No fue posible inicializar Gemini: '
                 f'{exc}'
             )
 
             return None
 
-    # ============================================================
+    # ========================================================
     # PROGRESO
-    # ============================================================
+    # ========================================================
 
     def _actualizar_progreso(
         self,
@@ -739,24 +1100,31 @@ class CargaMasivaService:
         job_id,
         estado,
         porcentaje,
-        mensaje
+        mensaje,
+        resultado=None,
+        error=None
     ):
         """
-        Actualiza el progreso del proceso.
+        Actualiza el progreso.
 
-        Primero actualiza JobService.
+        Orden:
 
-        Después ejecuta el callback existente de cargas.py.
+        1. JobService.
+        2. Callback legacy.
 
-        Esto permite mantener compatibilidad con el Blueprint
-        mientras se termina la refactorización.
+        Esto permite convivir con la implementación actual
+        de cargas.py.
         """
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # JOB SERVICE
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
-        if job_id:
+        if (
+            job_id
+            and
+            self.job_service is not None
+        ):
 
             try:
 
@@ -764,22 +1132,25 @@ class CargaMasivaService:
                     job_id,
                     estado=estado,
                     porcentaje=porcentaje,
-                    mensaje=mensaje
+                    mensaje=mensaje,
+                    resultado=resultado,
+                    error=error
                 )
 
             except Exception as exc:
 
                 print(
-                    '[ADVERTENCIA] '
+                    '[CargaMasivaService] '
                     f'Error actualizando JobService: '
                     f'{exc}'
                 )
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # CALLBACK LEGACY
-        # --------------------------------------------------------
+        # ----------------------------------------------------
 
         if callback is None:
+
             return
 
         try:
@@ -791,18 +1162,37 @@ class CargaMasivaService:
                 mensaje
             )
 
+        except TypeError:
+
+            # Compatibilidad por si el callback antiguo
+            # solamente recibe estado, porcentaje y mensaje.
+            try:
+
+                callback(
+                    estado,
+                    porcentaje,
+                    mensaje
+                )
+
+            except Exception as exc:
+
+                print(
+                    '[CargaMasivaService] '
+                    f'Error ejecutando callback: '
+                    f'{exc}'
+                )
+
         except Exception as exc:
 
             print(
-                '[ADVERTENCIA] '
-                f'Error ejecutando callback '
-                f'de progreso: '
+                '[CargaMasivaService] '
+                f'Error ejecutando callback: '
                 f'{exc}'
             )
 
-    # ============================================================
+    # ========================================================
     # LIMPIEZA
-    # ============================================================
+    # ========================================================
 
     @staticmethod
     def _limpiar_temporales(
@@ -813,6 +1203,7 @@ class CargaMasivaService:
         """
 
         if not imagenes:
+
             return
 
         try:
@@ -824,7 +1215,70 @@ class CargaMasivaService:
         except Exception as exc:
 
             print(
-                '[ADVERTENCIA] '
+                '[CargaMasivaService] '
                 f'Error limpiando archivos temporales: '
                 f'{exc}'
             )
+
+    # ========================================================
+    # DATABASE
+    # ========================================================
+
+    @staticmethod
+    def _commit():
+        """
+        Ejecuta commit si existe db.session.
+        """
+
+        if db is None:
+
+            return
+
+        db.session.commit()
+
+    @staticmethod
+    def _rollback():
+        """
+        Ejecuta rollback si existe db.session.
+        """
+
+        if db is None:
+
+            return
+
+        try:
+
+            db.session.rollback()
+
+        except Exception as exc:
+
+            print(
+                '[CargaMasivaService] '
+                f'Error realizando rollback: '
+                f'{exc}'
+            )
+
+    # ========================================================
+    # FILA
+    # ========================================================
+
+    @staticmethod
+    def _obtener_numero_fila(
+        fila,
+        indice
+    ):
+        """
+        Obtiene el número de fila original del Excel.
+        """
+
+        if isinstance(
+            fila,
+            dict
+        ):
+
+            return fila.get(
+                'fila',
+                indice
+            )
+
+        return indice
