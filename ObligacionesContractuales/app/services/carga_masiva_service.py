@@ -1,3 +1,15 @@
+"""
+Servicio para procesar cargas masivas mensuales de evidencias.
+
+Este servicio centraliza la lógica de procesamiento de cada fila
+del Excel y evita duplicar responsabilidades que pertenecen a:
+
+    - ExcelService
+    - ReporteService
+    - EvidenciaService
+    - GeminiService
+"""
+
 class CargaMasivaService:
     """
     Servicio encargado de procesar la carga masiva mensual
@@ -12,6 +24,20 @@ class CargaMasivaService:
     - Analizar imágenes con Gemini.
     - Crear evidencias.
     - Mantener el número consecutivo de actividad.
+
+    IMPORTANTE:
+
+    El servicio NO guarda directamente las imágenes.
+
+    La responsabilidad de guardar/mover la imagen pertenece a:
+
+        EvidenciaService.crear_evidencia()
+
+    Por esta razón NO debe utilizarse:
+
+        guardar_imagen_evidencia()
+
+    después de crear una evidencia.
     """
 
     def __init__(
@@ -19,8 +45,13 @@ class CargaMasivaService:
         reporte_service,
         evidencia_service
     ):
-        self.reporte_service = reporte_service
-        self.evidencia_service = evidencia_service
+        self.reporte_service = (
+            reporte_service
+        )
+
+        self.evidencia_service = (
+            evidencia_service
+        )
 
     # ========================================================
     # PROCESAR FILA
@@ -50,9 +81,35 @@ class CargaMasivaService:
             'nombre_imagen': ...,
             '_fila_excel': ...
         }
+
+        Returns:
+
+            {
+                'exitoso': bool,
+                'errores': list,
+                'evidencia': Evidencia | None
+            }
         """
 
         errores = []
+
+        # ----------------------------------------------------
+        # VALIDAR FILA
+        # ----------------------------------------------------
+
+        if not isinstance(
+            fila,
+            dict
+        ):
+
+            return {
+                'exitoso': False,
+                'errores': [
+                    'La fila recibida no tiene '
+                    'un formato válido.'
+                ],
+                'evidencia': None
+            }
 
         # ----------------------------------------------------
         # NÚMERO DE FILA EXCEL
@@ -69,8 +126,10 @@ class CargaMasivaService:
         # DATOS DEL EXCEL
         # ----------------------------------------------------
 
-        numero_obligacion = fila.get(
-            'obligacion'
+        numero_obligacion = (
+            fila.get(
+                'obligacion'
+            )
         )
 
         anuncio = str(
@@ -80,8 +139,10 @@ class CargaMasivaService:
             or ''
         ).strip()
 
-        fecha = fila.get(
-            'fecha'
+        fecha = (
+            fila.get(
+                'fecha'
+            )
         )
 
         nombre_imagen = str(
@@ -113,7 +174,8 @@ class CargaMasivaService:
                         f'{numero_obligacion} '
                         f'no encontrada.'
                     )
-                ]
+                ],
+                'evidencia': None
             }
 
         # ----------------------------------------------------
@@ -130,7 +192,8 @@ class CargaMasivaService:
                         f'El anuncio/contexto '
                         f'es obligatorio.'
                     )
-                ]
+                ],
+                'evidencia': None
             }
 
         # ----------------------------------------------------
@@ -145,23 +208,43 @@ class CargaMasivaService:
 
         if cache_key not in reportes_cache:
 
-            reporte = (
-                self.reporte_service
-                .obtener_o_crear_reporte(
-                    contrato=contrato,
-                    obligacion=obligacion,
-                    mes=mes,
-                    anio=anio
+            try:
+
+                reporte = (
+                    self.reporte_service
+                    .obtener_o_crear_reporte(
+                        contrato=contrato,
+                        obligacion=obligacion,
+                        mes=mes,
+                        anio=anio
+                    )
                 )
-            )
+
+            except Exception as exc:
+
+                return {
+                    'exitoso': False,
+                    'errores': [
+                        (
+                            f'Fila {numero_fila}: '
+                            f'Error obteniendo o creando '
+                            f'el reporte para la obligación '
+                            f'{numero_obligacion}: '
+                            f'{str(exc)}'
+                        )
+                    ],
+                    'evidencia': None
+                }
 
             reportes_cache[
                 cache_key
             ] = reporte
 
-        reporte = reportes_cache[
-            cache_key
-        ]
+        reporte = (
+            reportes_cache[
+                cache_key
+            ]
+        )
 
         if reporte is None:
 
@@ -174,7 +257,8 @@ class CargaMasivaService:
                         f'el reporte para la obligación '
                         f'{numero_obligacion}.'
                     )
-                ]
+                ],
+                'evidencia': None
             }
 
         # ----------------------------------------------------
@@ -185,13 +269,26 @@ class CargaMasivaService:
 
         if nombre_imagen:
 
-            imagen_temporal = (
-                self.evidencia_service
-                .obtener_imagen_temporal(
-                    nombre_imagen,
-                    imagenes
+            try:
+
+                imagen_temporal = (
+                    self.evidencia_service
+                    .obtener_imagen_temporal(
+                        nombre_imagen,
+                        imagenes
+                    )
                 )
-            )
+
+            except Exception as exc:
+
+                errores.append(
+                    (
+                        f'Fila {numero_fila}: '
+                        f'Error buscando imagen '
+                        f'"{nombre_imagen}": '
+                        f'{str(exc)}'
+                    )
+                )
 
             if not imagen_temporal:
 
@@ -238,6 +335,15 @@ class CargaMasivaService:
                     )
                 )
 
+                # --------------------------------------------
+                # IMPORTANTE
+                #
+                # Un error de Gemini NO impide crear
+                # la evidencia.
+                # --------------------------------------------
+
+                descripcion = None
+
         # ----------------------------------------------------
         # CREAR EVIDENCIA
         # ----------------------------------------------------
@@ -267,7 +373,8 @@ class CargaMasivaService:
                         f'{numero_obligacion}: '
                         f'{str(exc)}'
                     )
-                ]
+                ],
+                'evidencia': None
             }
 
         if evidencia is None:
@@ -281,7 +388,8 @@ class CargaMasivaService:
                         f'para la obligación '
                         f'{numero_obligacion}.'
                     )
-                ]
+                ],
+                'evidencia': None
             }
 
         # ----------------------------------------------------
@@ -293,6 +401,9 @@ class CargaMasivaService:
         #
         # porque crear_evidencia() ya guarda/mueve
         # la imagen mediante _guardar_imagen().
+        #
+        # Si se llama nuevamente se intenta mover
+        # una imagen que ya fue movida.
         # ----------------------------------------------------
 
         return {
@@ -313,26 +424,68 @@ class CargaMasivaService:
         """
         Busca una obligación utilizando el número
         normalizado.
+
+        Soporta valores como:
+
+            1
+            1.0
+            "1"
+            "1.0"
+            " 1 "
+            "01"
+
+        Returns:
+
+            Obligacion | None
         """
 
-        if numero_obligacion is None:
+        if (
+            numero_obligacion is None
+        ):
+
             return None
 
-        # Coincidencia directa
-        if numero_obligacion in obligaciones_por_numero:
+        if not obligaciones_por_numero:
 
-            return obligaciones_por_numero[
-                numero_obligacion
-            ]
+            return None
 
-        # Intentar convertir a entero
+        # ----------------------------------------------------
+        # COINCIDENCIA DIRECTA
+        # ----------------------------------------------------
+
         try:
+
+            if (
+                numero_obligacion
+                in obligaciones_por_numero
+            ):
+
+                return (
+                    obligaciones_por_numero[
+                        numero_obligacion
+                    ]
+                )
+
+        except (
+            TypeError,
+            AttributeError
+        ):
+
+            pass
+
+        # ----------------------------------------------------
+        # CONVERTIR A ENTERO
+        # ----------------------------------------------------
+
+        try:
+
+            texto_numero = str(
+                numero_obligacion
+            ).strip()
 
             numero = int(
                 float(
-                    str(
-                        numero_obligacion
-                    ).replace(
+                    texto_numero.replace(
                         ',',
                         '.'
                     )
@@ -341,29 +494,99 @@ class CargaMasivaService:
 
             if numero in obligaciones_por_numero:
 
-                return obligaciones_por_numero[
-                    numero
-                ]
+                return (
+                    obligaciones_por_numero[
+                        numero
+                    ]
+                )
 
         except (
             ValueError,
-            TypeError
+            TypeError,
+            OverflowError
         ):
 
             pass
 
-        # Comparación textual
+        # ----------------------------------------------------
+        # COMPARACIÓN TEXTUAL
+        # ----------------------------------------------------
+
         texto = str(
             numero_obligacion
         ).strip()
+
+        if not texto:
+
+            return None
 
         for clave, obligacion in (
             obligaciones_por_numero.items()
         ):
 
-            if str(
-                clave
-            ).strip() == texto:
+            if (
+                str(
+                    clave
+                ).strip()
+                ==
+                texto
+            ):
+
+                return obligacion
+
+        # ----------------------------------------------------
+        # COMPARACIÓN NUMÉRICA FINAL
+        # ----------------------------------------------------
+
+        try:
+
+            numero_buscado = int(
+                float(
+                    texto.replace(
+                        ',',
+                        '.'
+                    )
+                )
+            )
+
+        except (
+            ValueError,
+            TypeError,
+            OverflowError
+        ):
+
+            return None
+
+        for clave, obligacion in (
+            obligaciones_por_numero.items()
+        ):
+
+            try:
+
+                numero_clave = int(
+                    float(
+                        str(
+                            clave
+                        ).strip().replace(
+                            ',',
+                            '.'
+                        )
+                    )
+                )
+
+            except (
+                ValueError,
+                TypeError,
+                OverflowError
+            ):
+
+                continue
+
+            if (
+                numero_clave
+                ==
+                numero_buscado
+            ):
 
                 return obligacion
 
@@ -378,15 +601,28 @@ class CargaMasivaService:
         fila,
         indice
     ):
+        """
+        Obtiene el número real de fila del Excel.
+
+        ExcelService agrega:
+
+            '_fila_excel': numero_fila
+
+        Si por alguna razón no existe esa propiedad,
+        se utiliza el índice recibido.
+        """
 
         if isinstance(
             fila,
             dict
         ):
 
-            return fila.get(
-                '_fila_excel',
-                indice
+            numero_fila = fila.get(
+                '_fila_excel'
             )
+
+            if numero_fila is not None:
+
+                return numero_fila
 
         return indice
