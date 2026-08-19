@@ -1,127 +1,56 @@
-"""
-Servicio de carga masiva mensual.
-
-Responsabilidades:
-- Validar los parámetros de una carga.
-- Leer y validar el Excel mediante ExcelService.
-- Obtener las obligaciones del contrato.
-- Crear o reutilizar reportes mensuales.
-- Procesar cada fila del Excel.
-- Asociar imágenes.
-- Analizar imágenes mediante Gemini cuando esté disponible.
-- Crear evidencias.
-- Actualizar el progreso mediante JobService y/o callback legacy.
-- Limpiar archivos temporales.
-
-Este servicio está diseñado para ser utilizado desde:
-    app.blueprints.cargas
-"""
-
+import calendar
 import os
-import traceback
 
-
-# ============================================================
-# IMPORTACIONES DE LA APLICACIÓN
-# ============================================================
+from datetime import date
 
 try:
-    from models import db
+    from flask import current_app
+except ImportError:
+    current_app = None
+
+try:
+    from app.extensions import db
 except ImportError:
     db = None
 
-
-# Servicios principales
 try:
     from app.services.excel_service import ExcelService
 except ImportError:
     ExcelService = None
-
 
 try:
     from app.services.contrato_service import ContratoService
 except ImportError:
     ContratoService = None
 
-
 try:
     from app.services.reporte_service import ReporteService
 except ImportError:
     ReporteService = None
-
 
 try:
     from app.services.evidencia_service import EvidenciaService
 except ImportError:
     EvidenciaService = None
 
-
 try:
     from app.services.gemini_service import GeminiService
 except ImportError:
     GeminiService = None
-
 
 try:
     from app.services.job_service import JobService
 except ImportError:
     JobService = None
 
-
-# ============================================================
-# LIMPIEZA DE TEMPORALES
-# ============================================================
-
 try:
-    from app.services.archivo_service import limpiar_archivos
+    from app.utils.archivos import limpiar_archivos
 except ImportError:
+    try:
+        from app.utils.file_utils import limpiar_archivos
+    except ImportError:
+        limpiar_archivos = None
 
-    def limpiar_archivos(imagenes):
-        """
-        Fallback para limpiar archivos temporales.
-
-        Se utiliza solamente si la aplicación no dispone
-        de la función centralizada limpiar_archivos().
-        """
-
-        if not imagenes:
-            return
-
-        archivos = set()
-
-        if isinstance(imagenes, dict):
-
-            for ruta in imagenes.values():
-
-                if ruta:
-                    archivos.add(ruta)
-
-        elif isinstance(imagenes, (list, tuple, set)):
-
-            for ruta in imagenes:
-
-                if ruta:
-                    archivos.add(ruta)
-
-        for ruta in archivos:
-
-            try:
-
-                if os.path.isfile(ruta):
-                    os.remove(ruta)
-
-            except Exception as exc:
-
-                print(
-                    '[CargaMasivaService] '
-                    f'No fue posible eliminar temporal: '
-                    f'{ruta} - {exc}'
-                )
-
-
-# ============================================================
-# SERVICIO
-# ============================================================
 
 class CargaMasivaService:
     """
@@ -142,11 +71,6 @@ class CargaMasivaService:
     ):
         """
         Inicializa el servicio.
-
-        Si se proporciona una dependencia, se utiliza esa instancia.
-
-        Si no se proporciona, se intenta utilizar la implementación
-        real correspondiente.
         """
 
         self.excel_service = (
@@ -218,49 +142,6 @@ class CargaMasivaService:
     ):
         """
         Procesa una carga masiva mensual completa.
-
-        Args:
-            contrato:
-                Objeto Contrato.
-
-            mes:
-                Mes de la carga.
-
-            anio:
-                Año de la carga.
-
-            excel_path:
-                Ruta del archivo Excel.
-
-            imagenes:
-                Diccionario:
-                    nombre_archivo -> ruta_temporal
-
-            api_key:
-                API Key de Gemini.
-
-            actualizar_progreso:
-                Callback legacy utilizado por cargas.py.
-
-                Firma esperada:
-                    callback(
-                        job_id,
-                        estado,
-                        porcentaje,
-                        mensaje
-                    )
-
-            job_id:
-                Identificador del job.
-
-        Returns:
-            dict:
-                {
-                    'exitosos': int,
-                    'errores': list,
-                    'mes': int,
-                    'anio': int
-                }
         """
 
         errores = []
@@ -433,9 +314,11 @@ class CargaMasivaService:
 
                     self._rollback()
 
-                    numero_fila = self._obtener_numero_fila(
-                        fila,
-                        indice
+                    numero_fila = (
+                        self._obtener_numero_fila(
+                            fila,
+                            indice
+                        )
                     )
 
                     errores.append(
@@ -517,7 +400,7 @@ class CargaMasivaService:
 
         numero_obligacion = (
             fila.get(
-                'obligacion_numero'
+                'obligacion'
             )
         )
 
@@ -549,6 +432,64 @@ class CargaMasivaService:
             nombre_imagen
         ).strip()
 
+        numero_fila = (
+            self._obtener_numero_fila(
+                fila,
+                0
+            )
+        )
+
+        # ----------------------------------------------------
+        # VALIDAR FECHA
+        # ----------------------------------------------------
+
+        if fecha is not None:
+
+            fecha_inicio_mes = date(
+                anio,
+                mes,
+                1
+            )
+
+            _, ultimo_dia = (
+                calendar.monthrange(
+                    anio,
+                    mes
+                )
+            )
+
+            fecha_fin_mes = date(
+                anio,
+                mes,
+                ultimo_dia
+            )
+
+            if (
+                fecha < fecha_inicio_mes
+                or
+                fecha > fecha_fin_mes
+            ):
+
+                return {
+                    'exitoso': False,
+                    'errores': [
+                        (
+                            f'Fila {numero_fila}: '
+                            f'Fecha {fecha} fuera del '
+                            f'mes {mes}/{anio}.'
+                        )
+                    ]
+                }
+
+        else:
+
+            # Compatibilidad con el comportamiento anterior.
+            fecha = date(
+                anio,
+                mes,
+                15
+            )
+
         # ----------------------------------------------------
         # VALIDAR OBLIGACIÓN
         # ----------------------------------------------------
@@ -566,6 +507,7 @@ class CargaMasivaService:
                 'exitoso': False,
                 'errores': [
                     (
+                        f'Fila {numero_fila}: '
                         f'Obligación '
                         f'{numero_obligacion} '
                         f'no encontrada.'
@@ -582,7 +524,11 @@ class CargaMasivaService:
             return {
                 'exitoso': False,
                 'errores': [
-                    'El anuncio/contexto es obligatorio.'
+                    (
+                        f'Fila {numero_fila}: '
+                        f'El anuncio/contexto '
+                        f'es obligatorio.'
+                    )
                 ]
             }
 
@@ -710,6 +656,7 @@ class CargaMasivaService:
                 'exitoso': False,
                 'errores': [
                     (
+                        f'Fila {numero_fila}: '
                         f'Error creando evidencia '
                         f'para obligación '
                         f'{numero_obligacion}: '
@@ -724,40 +671,23 @@ class CargaMasivaService:
                 'exitoso': False,
                 'errores': [
                     (
-                        f'No fue posible crear la evidencia '
-                        f'para la obligación '
+                        f'Fila {numero_fila}: '
+                        f'No fue posible crear '
+                        f'la evidencia para la '
+                        f'obligación '
                         f'{numero_obligacion}.'
                     )
                 ]
             }
 
         # ----------------------------------------------------
-        # GUARDAR IMAGEN
+        # IMPORTANTE
+        #
+        # NO se llama a guardar_imagen_evidencia().
+        #
+        # crear_evidencia() ya guarda/mueve la imagen
+        # mediante EvidenciaService._guardar_imagen().
         # ----------------------------------------------------
-
-        if (
-            imagen_temporal
-            and reporte
-            and nombre_imagen
-        ):
-
-            try:
-
-                self.evidencia_service.guardar_imagen_evidencia(
-                    imagen_temporal=imagen_temporal,
-                    reporte_id=reporte.id,
-                    nombre_imagen=nombre_imagen
-                )
-
-            except Exception as exc:
-
-                errores.append(
-                    (
-                        f'Error guardando imagen '
-                        f'{nombre_imagen}: '
-                        f'{str(exc)}'
-                    )
-                )
 
         # ----------------------------------------------------
         # RESULTADO
@@ -798,7 +728,6 @@ class CargaMasivaService:
 
             return None
 
-        # Coincidencia directa
         obligacion = (
             obligaciones_por_numero
             .get(valor)
@@ -808,7 +737,6 @@ class CargaMasivaService:
 
             return obligacion
 
-        # Excel puede devolver 1.0 para un número entero
         try:
 
             numero = float(
@@ -842,10 +770,6 @@ class CargaMasivaService:
     # ========================================================
 
     def _validar_dependencias(self):
-        """
-        Verifica que los servicios indispensables estén
-        disponibles.
-        """
 
         faltantes = []
 
@@ -873,12 +797,6 @@ class CargaMasivaService:
                 'EvidenciaService'
             )
 
-        if self.job_service is None:
-
-            # JobService no debe impedir una carga cuando
-            # se está utilizando únicamente el callback legacy.
-            pass
-
         if faltantes:
 
             raise RuntimeError(
@@ -901,9 +819,6 @@ class CargaMasivaService:
         anio,
         excel_path
     ):
-        """
-        Valida los parámetros mínimos.
-        """
 
         if contrato is None:
 
@@ -979,11 +894,6 @@ class CargaMasivaService:
     def _crear_indice_obligaciones(
         obligaciones
     ):
-        """
-        Crea un índice:
-
-            numero -> objeto Obligacion
-        """
 
         indice = {}
 
@@ -1019,14 +929,6 @@ class CargaMasivaService:
         self,
         api_key=None
     ):
-        """
-        Obtiene la instancia de Gemini.
-
-        Si se inyectó un servicio se reutiliza.
-
-        Si no existe servicio Gemini o no hay API key,
-        se devuelve None y la carga continúa sin análisis IA.
-        """
 
         if self.gemini_service is not None:
 
@@ -1053,8 +955,6 @@ class CargaMasivaService:
 
         except TypeError:
 
-            # Compatibilidad con servicios que reciben
-            # la API key mediante otro mecanismo.
             try:
 
                 servicio = GeminiService()
@@ -1105,20 +1005,9 @@ class CargaMasivaService:
         error=None
     ):
         """
-        Actualiza el progreso.
-
-        Orden:
-
-        1. JobService.
-        2. Callback legacy.
-
-        Esto permite convivir con la implementación actual
-        de cargas.py.
+        Actualiza el JobService y, opcionalmente,
+        el callback legacy.
         """
-
-        # ----------------------------------------------------
-        # JOB SERVICE
-        # ----------------------------------------------------
 
         if (
             job_id
@@ -1145,10 +1034,6 @@ class CargaMasivaService:
                     f'{exc}'
                 )
 
-        # ----------------------------------------------------
-        # CALLBACK LEGACY
-        # ----------------------------------------------------
-
         if callback is None:
 
             return
@@ -1164,8 +1049,6 @@ class CargaMasivaService:
 
         except TypeError:
 
-            # Compatibilidad por si el callback antiguo
-            # solamente recibe estado, porcentaje y mensaje.
             try:
 
                 callback(
@@ -1198,11 +1081,12 @@ class CargaMasivaService:
     def _limpiar_temporales(
         imagenes
     ):
-        """
-        Limpia los archivos temporales asociados a la carga.
-        """
 
         if not imagenes:
+
+            return
+
+        if limpiar_archivos is None:
 
             return
 
@@ -1226,9 +1110,6 @@ class CargaMasivaService:
 
     @staticmethod
     def _commit():
-        """
-        Ejecuta commit si existe db.session.
-        """
 
         if db is None:
 
@@ -1238,9 +1119,6 @@ class CargaMasivaService:
 
     @staticmethod
     def _rollback():
-        """
-        Ejecuta rollback si existe db.session.
-        """
 
         if db is None:
 
@@ -1267,9 +1145,6 @@ class CargaMasivaService:
         fila,
         indice
     ):
-        """
-        Obtiene el número de fila original del Excel.
-        """
 
         if isinstance(
             fila,
@@ -1277,7 +1152,7 @@ class CargaMasivaService:
         ):
 
             return fila.get(
-                'fila',
+                '_fila_excel',
                 indice
             )
 
