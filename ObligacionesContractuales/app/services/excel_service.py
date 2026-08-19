@@ -1,32 +1,32 @@
 """
-Servicio para procesamiento de archivos Excel.
+Servicio para generación y lectura de archivos Excel.
 
 Responsabilidades:
 
-- Leer archivos Excel.
+- Leer archivos Excel de carga masiva.
 - Validar encabezados.
-- Convertir filas Excel a diccionarios.
-- Limpiar valores.
-- Validar estructura.
-- Generar plantillas mediante PlantillaService.
+- Normalizar registros.
+- Generar plantilla Excel para carga masiva.
+- Generar plantilla Excel para reportes.
 
-Este servicio NO depende de Flask.
+Este módulo NO depende de Flask.
 """
 
-from datetime import (
-    datetime,
-    date
-)
+import io
 
-from pathlib import Path
+from datetime import date, datetime
 
 from openpyxl import (
+    Workbook,
     load_workbook
 )
 
-from app.services.plantilla_service import (
-    PlantillaService,
-    ENCABEZADOS_CARGA_MASIVA
+from openpyxl.styles import (
+    Font,
+    PatternFill,
+    Alignment,
+    Border,
+    Side
 )
 
 
@@ -34,136 +34,104 @@ from app.services.plantilla_service import (
 # CONSTANTES
 # ============================================================
 
-EXTENSIONES_EXCEL = {
-    '.xlsx',
-    '.xlsm'
-}
-
-
-ENCABEZADOS_ESPERADOS = (
-    ENCABEZADOS_CARGA_MASIVA
+EXCEL_MIMETYPE = (
+    'application/vnd.openxmlformats-officedocument.'
+    'spreadsheetml.sheet'
 )
 
+ENCABEZADOS_CARGA = [
+    'Obligacion No.',
+    'Descripcion',
+    'Anuncio',
+    'Fecha',
+    'Nombre Imagen'
+]
 
-# ============================================================
-# SERVICIO
-# ============================================================
 
 class ExcelService:
     """
-    Servicio encargado del procesamiento de archivos Excel.
+    Servicio para trabajar con archivos Excel.
     """
 
     # ========================================================
     # LEER EXCEL
     # ========================================================
 
-    @staticmethod
     def leer_excel(
-        archivo
+        self,
+        archivo_excel
     ):
         """
-        Lee un archivo Excel y retorna una lista de
-        diccionarios preparada para CargaMasivaService.
+        Lee un Excel de carga masiva.
 
-        La estructura retornada es:
+        Retorna una lista de diccionarios:
 
-            [
-                {
-                    'obligacion': ...,
-                    'descripcion_obligacion': ...,
-                    'anuncio': ...,
-                    'fecha': ...,
-                    'nombre_imagen': ...
-                }
-            ]
-
-        Args:
-            archivo:
-                Puede ser:
-
-                - ruta como str
-                - pathlib.Path
-                - objeto FileStorage
-                - objeto archivo compatible con openpyxl
-
-        Returns:
-            list[dict]
+        [
+            {
+                "obligacion": ...,
+                "descripcion": ...,
+                "anuncio": ...,
+                "fecha": ...,
+                "nombre_imagen": ...
+            }
+        ]
         """
 
-        workbook = None
+        if archivo_excel is None:
+            raise ValueError(
+                'No se recibió el archivo Excel.'
+            )
+
+        workbook = self._abrir_workbook(
+            archivo_excel
+        )
 
         try:
+            worksheet = workbook.active
 
-            workbook = (
-                ExcelService._abrir_workbook(
-                    archivo
+            filas = list(
+                worksheet.iter_rows(
+                    values_only=True
                 )
             )
 
-            worksheet = (
-                workbook.active
+            if not filas:
+                return []
+
+            encabezados = [
+                self._normalizar_encabezado(
+                    valor
+                )
+                for valor in filas[0]
+            ]
+
+            self._validar_encabezados(
+                encabezados
             )
 
-            # ------------------------------------------------
-            # Validar encabezados
-            # ------------------------------------------------
+            resultado = []
 
-            ExcelService.validar_encabezados(
-                worksheet
-            )
-
-            registros = []
-
-            # ------------------------------------------------
-            # Leer filas
-            # ------------------------------------------------
-
-            for numero_fila, row in enumerate(
-                worksheet.iter_rows(
-                    min_row=2,
-                    values_only=True
-                ),
+            for numero_fila, fila in enumerate(
+                filas[1:],
                 start=2
             ):
-
-                if ExcelService._fila_vacia(
-                    row
-                ):
-                    continue
-
                 registro = (
-                    ExcelService._convertir_fila(
-                        row,
-                        numero_fila
+                    self._convertir_fila(
+                        fila=fila,
+                        numero_fila=numero_fila,
+                        encabezados=encabezados
                     )
                 )
 
-                # --------------------------------------------
-                # Las filas sin obligación se ignoran.
-                # --------------------------------------------
+                if registro is not None:
+                    resultado.append(
+                        registro
+                    )
 
-                if not registro[
-                    'obligacion'
-                ]:
-
-                    continue
-
-                registros.append(
-                    registro
-                )
-
-            return registros
+            return resultado
 
         finally:
-
-            if workbook is not None:
-
-                try:
-                    workbook.close()
-
-                except Exception:
-                    pass
+            workbook.close()
 
     # ========================================================
     # ABRIR WORKBOOK
@@ -171,256 +139,185 @@ class ExcelService:
 
     @staticmethod
     def _abrir_workbook(
-        archivo
+        archivo_excel
     ):
         """
-        Abre un archivo Excel desde diferentes tipos
-        de entrada.
+        Abre un archivo Excel recibido como:
+
+        - FileStorage
+        - BytesIO
+        - bytes
+        - ruta
         """
 
-        if archivo is None:
-
-            raise ValueError(
-                'No se recibió un archivo Excel.'
-            )
-
-        # ----------------------------------------------------
-        # Ruta
-        # ----------------------------------------------------
-
-        if isinstance(
-            archivo,
-            (
-                str,
-                Path
-            )
+        if hasattr(
+            archivo_excel,
+            'stream'
         ):
-
-            ruta = Path(
-                archivo
-            )
-
-            if not ruta.exists():
-
-                raise FileNotFoundError(
-                    f'No existe el archivo Excel: {ruta}'
-                )
-
-            ExcelService.validar_extension(
-                ruta.name
-            )
+            archivo_excel.stream.seek(0)
 
             return load_workbook(
-                filename=str(ruta),
-                data_only=False
+                filename=archivo_excel.stream,
+                data_only=True
             )
 
-        # ----------------------------------------------------
-        # FileStorage / archivo subido
-        # ----------------------------------------------------
-
-        nombre = getattr(
-            archivo,
-            'filename',
-            None
-        )
-
-        if nombre:
-
-            ExcelService.validar_extension(
-                nombre
-            )
-
-        # ----------------------------------------------------
-        # Reiniciar posición
-        # ----------------------------------------------------
-
-        try:
-
-            archivo.seek(
-                0
-            )
-
-        except (
-            AttributeError,
-            OSError
+        if hasattr(
+            archivo_excel,
+            'seek'
         ):
+            archivo_excel.seek(0)
 
-            pass
-
-        try:
-
-            return load_workbook(
-                filename=archivo,
-                data_only=False
-            )
-
-        except Exception as exc:
-
-            raise ValueError(
-                'No fue posible abrir el archivo Excel. '
-                'Verifique que sea un archivo .xlsx válido.'
-            ) from exc
-
-    # ========================================================
-    # VALIDAR EXTENSIÓN
-    # ========================================================
-
-    @staticmethod
-    def validar_extension(
-        nombre_archivo
-    ):
-        """
-        Valida la extensión del archivo Excel.
-        """
-
-        if not nombre_archivo:
-
-            raise ValueError(
-                'El archivo Excel no tiene nombre.'
-            )
-
-        extension = (
-            Path(
-                str(nombre_archivo)
-            ).suffix.lower()
+        return load_workbook(
+            filename=archivo_excel,
+            data_only=True
         )
-
-        if extension not in EXTENSIONES_EXCEL:
-
-            raise ValueError(
-                'Formato de Excel no permitido. '
-                'Utilice un archivo .xlsx.'
-            )
-
-        return True
 
     # ========================================================
     # VALIDAR ENCABEZADOS
     # ========================================================
 
-    @staticmethod
-    def validar_encabezados(
-        worksheet
+    @classmethod
+    def _validar_encabezados(
+        cls,
+        encabezados
     ):
         """
-        Valida que la primera fila del Excel contenga
-        los encabezados oficiales.
-
-        Returns:
-            True
-
-        Raises:
-            ValueError
+        Valida que el Excel tenga las columnas necesarias.
         """
 
-        encabezados = [
-            ExcelService._limpiar_texto(
-                cell.value
-            )
-            for cell in worksheet[1]
-        ]
-
-        esperados = [
-            ExcelService._limpiar_texto(
+        requeridos = {
+            cls._normalizar_encabezado(
                 encabezado
             )
-            for encabezado in ENCABEZADOS_ESPERADOS
-        ]
+            for encabezado in ENCABEZADOS_CARGA
+        }
 
-        encabezados_principales = (
-            encabezados[:len(esperados)]
+        disponibles = set(
+            encabezados
         )
 
-        if encabezados_principales != esperados:
+        faltantes = (
+            requeridos - disponibles
+        )
 
+        if faltantes:
             raise ValueError(
-                'Encabezados incorrectos. '
-                'La plantilla debe conservar exactamente '
-                'los encabezados: '
-                f'{ENCABEZADOS_ESPERADOS}'
+                'El archivo Excel no contiene '
+                'los encabezados requeridos. '
+                f'Faltan: {", ".join(faltantes)}'
             )
-
-        return True
 
     # ========================================================
     # CONVERTIR FILA
     # ========================================================
 
-    @staticmethod
+    @classmethod
     def _convertir_fila(
-        row,
-        numero_fila
+        cls,
+        fila,
+        numero_fila,
+        encabezados
     ):
         """
-        Convierte una fila Excel en un diccionario
-        compatible con CargaMasivaService.
+        Convierte una fila del Excel en un diccionario.
         """
 
-        valores = list(
-            row
-        )
+        datos = {}
 
-        # ----------------------------------------------------
-        # Asegurar cinco columnas
-        # ----------------------------------------------------
+        for indice, encabezado in enumerate(
+            encabezados
+        ):
+            if indice >= len(fila):
+                valor = None
+            else:
+                valor = fila[indice]
 
-        while len(valores) < 5:
-
-            valores.append(
-                None
-            )
+            datos[encabezado] = valor
 
         obligacion = (
-            ExcelService._normalizar_obligacion(
-                valores[0]
+            datos.get(
+                cls._normalizar_encabezado(
+                    'Obligacion No.'
+                )
             )
         )
 
         descripcion = (
-            ExcelService._limpiar_texto(
-                valores[1]
+            datos.get(
+                cls._normalizar_encabezado(
+                    'Descripcion'
+                )
             )
         )
 
         anuncio = (
-            ExcelService._limpiar_texto(
-                valores[2]
+            datos.get(
+                cls._normalizar_encabezado(
+                    'Anuncio'
+                )
             )
         )
 
         fecha = (
-            ExcelService._normalizar_fecha(
-                valores[3]
+            datos.get(
+                cls._normalizar_encabezado(
+                    'Fecha'
+                )
             )
-        )
 
         nombre_imagen = (
-            ExcelService._limpiar_texto(
-                valores[4]
+            datos.get(
+                cls._normalizar_encabezado(
+                    'Nombre Imagen'
+                )
             )
         )
 
+        # ----------------------------------------------------
+        # Ignorar filas completamente vacías
+        # ----------------------------------------------------
+
+        valores = [
+            obligacion,
+            descripcion,
+            anuncio,
+            fecha,
+            nombre_imagen
+        ]
+
+        if all(
+            cls._esta_vacio(valor)
+            for valor in valores
+        ):
+            return None
+
         return {
-            'fila': numero_fila,
-
-            'obligacion': obligacion,
-
-            'descripcion_obligacion': (
-                descripcion
+            'obligacion': (
+                cls._normalizar_obligacion(
+                    obligacion
+                )
             ),
-
+            'descripcion': (
+                cls._texto(
+                    descripcion
+                )
+            ),
             'anuncio': (
-                anuncio
+                cls._texto(
+                    anuncio
+                )
             ),
-
             'fecha': (
-                fecha
+                cls._normalizar_fecha(
+                    fecha
+                )
             ),
-
             'nombre_imagen': (
-                nombre_imagen
-            )
+                cls._texto(
+                    nombre_imagen
+                )
+            ),
+            '_fila_excel': numero_fila
         }
 
     # ========================================================
@@ -432,45 +329,23 @@ class ExcelService:
         valor
     ):
         """
-        Normaliza el número de obligación.
-
-        Ejemplos:
-
-            3       -> 3
-            3.0     -> 3
-            "3"     -> 3
-            " 3 "   -> 3
+        Convierte el número de obligación a un formato
+        manejable por ContratoService.
         """
 
         if valor is None:
-
             return None
 
         if isinstance(
             valor,
-            bool
-        ):
-
-            return None
+            float
+        ) and valor.is_integer():
+            return int(valor)
 
         if isinstance(
             valor,
             int
         ):
-
-            return valor
-
-        if isinstance(
-            valor,
-            float
-        ):
-
-            if valor.is_integer():
-
-                return int(
-                    valor
-                )
-
             return valor
 
         texto = str(
@@ -478,23 +353,23 @@ class ExcelService:
         ).strip()
 
         if not texto:
-
             return None
 
         try:
-
             numero = float(
-                texto
+                texto.replace(
+                    ',',
+                    '.'
+                )
             )
 
             if numero.is_integer():
+                return int(numero)
 
-                return int(
-                    numero
-                )
-
-        except ValueError:
-
+        except (
+            ValueError,
+            TypeError
+        ):
             pass
 
         return texto
@@ -508,104 +383,71 @@ class ExcelService:
         valor
     ):
         """
-        Normaliza fechas provenientes de Excel.
+        Convierte fechas de Excel a datetime/date.
 
-        Se conserva como string ISO cuando es posible.
+        Acepta:
 
-        Formatos soportados:
-
-        - datetime
         - date
+        - datetime
         - YYYY-MM-DD
         - DD/MM/YYYY
-        - DD-MM-YYYY
         """
 
         if valor is None:
-
-            return ''
-
-        # ----------------------------------------------------
-        # datetime
-        # ----------------------------------------------------
+            return None
 
         if isinstance(
             valor,
             datetime
         ):
-
-            return valor.strftime(
-                '%Y-%m-%d'
-            )
-
-        # ----------------------------------------------------
-        # date
-        # ----------------------------------------------------
+            return valor.date()
 
         if isinstance(
             valor,
             date
         ):
-
-            return valor.strftime(
-                '%Y-%m-%d'
-            )
+            return valor
 
         texto = str(
             valor
         ).strip()
 
         if not texto:
+            return None
 
-            return ''
-
-        formatos = (
+        formatos = [
             '%Y-%m-%d',
             '%d/%m/%Y',
             '%d-%m-%Y',
             '%Y/%m/%d'
-        )
+        ]
 
         for formato in formatos:
-
             try:
-
-                fecha = datetime.strptime(
+                return datetime.strptime(
                     texto,
                     formato
-                )
-
-                return fecha.strftime(
-                    '%Y-%m-%d'
-                )
-
+                ).date()
             except ValueError:
-
                 continue
 
-        # ----------------------------------------------------
-        # Si no se puede convertir, devolver texto.
-        #
-        # CargaMasivaService será quien determine
-        # posteriormente si es válido.
-        # ----------------------------------------------------
-
-        return texto
+        raise ValueError(
+            f'Fecha no válida: {valor}'
+        )
 
     # ========================================================
-    # LIMPIAR TEXTO
+    # NORMALIZAR TEXTO
     # ========================================================
 
     @staticmethod
-    def _limpiar_texto(
+    def _texto(
         valor
     ):
         """
-        Convierte un valor Excel a texto limpio.
+        Convierte un valor a texto limpio.
         """
 
         if valor is None:
-
             return ''
 
         return str(
@@ -613,41 +455,82 @@ class ExcelService:
         ).strip()
 
     # ========================================================
-    # FILA VACÍA
+    # VALIDAR VACÍO
     # ========================================================
 
     @staticmethod
-    def _fila_vacia(
-        row
+    def _esta_vacio(
+        valor
     ):
         """
-        Determina si una fila está completamente vacía.
+        Determina si un valor está vacío.
         """
 
-        if not row:
-
+        if valor is None:
             return True
 
-        for valor in row:
+        if isinstance(
+            valor,
+            str
+        ):
+            return not valor.strip()
 
-            if valor is None:
+        return False
 
-                continue
+    # ========================================================
+    # NORMALIZAR ENCABEZADO
+    # ========================================================
 
-            if isinstance(
-                valor,
-                str
-            ):
+    @staticmethod
+    def _normalizar_encabezado(
+        valor
+    ):
+        """
+        Normaliza nombres de columnas.
 
-                if valor.strip():
+        Permite tolerar diferencias menores de espacios
+        y mayúsculas.
+        """
 
-                    return False
+        if valor is None:
+            return ''
 
-            else:
+        texto = str(
+            valor
+        ).strip().lower()
 
-                return False
+        reemplazos = {
+            'á': 'a',
+            'é': 'e',
+            'í': 'i',
+            'ó': 'o',
+            'ú': 'u',
+            'ü': 'u'
+        }
 
-        return True
+        for origen, destino in (
+            reemplazos.items()
+        ):
+            texto = texto.replace(
+                origen,
+                destino
+            )
+
+        texto = (
+            texto
+            .replace(
+                '_',
+                ' '
+            )
+            .replace(
+                '-',
+                ' '
+            )
+        )
+
+        return ' '.join(
+            texto.split()
+        )
 
     # ========================================================
     # GENERAR PLANTILLA MASIVA
@@ -660,61 +543,241 @@ class ExcelService:
         anio
     ):
         """
-        Genera una plantilla Excel para carga masiva.
-
-        La construcción real corresponde a PlantillaService.
+        Genera plantilla para carga masiva mensual.
         """
 
-        return (
-            PlantillaService.crear_plantilla(
-                obligaciones=obligaciones,
-                mes=mes,
-                anio=anio
+        wb = Workbook()
+
+        ws = wb.active
+
+        ws.title = (
+            f'Carga_{int(mes):02d}_{anio}'
+        )
+
+        # ----------------------------------------------------
+        # Estilos
+        # ----------------------------------------------------
+
+        encabezado_fill = PatternFill(
+            'solid',
+            fgColor='0D6EFD'
+        )
+
+        encabezado_font = Font(
+            bold=True,
+            color='FFFFFF'
+        )
+
+        borde = Border(
+            bottom=Side(
+                style='thin',
+                color='CCCCCC'
             )
         )
 
+        # ----------------------------------------------------
+        # Encabezados
+        # ----------------------------------------------------
+
+        for columna, encabezado in enumerate(
+            ENCABEZADOS_CARGA,
+            start=1
+        ):
+            celda = ws.cell(
+                row=1,
+                column=columna,
+                value=encabezado
+            )
+
+            celda.fill = encabezado_fill
+            celda.font = encabezado_font
+            celda.alignment = Alignment(
+                horizontal='center',
+                vertical='center'
+            )
+            celda.border = borde
+
+        # ----------------------------------------------------
+        # Obligaciones
+        # ----------------------------------------------------
+
+        fila = 2
+
+        for obligacion in (
+            obligaciones or []
+        ):
+            numero = getattr(
+                obligacion,
+                'numero',
+                ''
+            )
+
+            descripcion = getattr(
+                obligacion,
+                'descripcion',
+                ''
+            )
+
+            ws.cell(
+                row=fila,
+                column=1,
+                value=numero
+            )
+
+            ws.cell(
+                row=fila,
+                column=2,
+                value=descripcion
+            )
+
+            fila += 1
+
+        # ----------------------------------------------------
+        # Anchos
+        # ----------------------------------------------------
+
+        ws.column_dimensions[
+            'A'
+        ].width = 18
+
+        ws.column_dimensions[
+            'B'
+        ].width = 70
+
+        ws.column_dimensions[
+            'C'
+        ].width = 55
+
+        ws.column_dimensions[
+            'D'
+        ].width = 18
+
+        ws.column_dimensions[
+            'E'
+        ].width = 35
+
+        ws.freeze_panes = 'A2'
+
+        # ----------------------------------------------------
+        # Hoja de instrucciones
+        # ----------------------------------------------------
+
+        ws_instr = wb.create_sheet(
+            'Instrucciones'
+        )
+
+        instrucciones = [
+            [
+                'INSTRUCCIONES DE CARGA MASIVA POR MES'
+            ],
+            [''],
+            [
+                '1. NO modifique los encabezados.'
+            ],
+            [
+                '2. NO modifique las columnas A y B.'
+            ],
+            [
+                '3. Columna C: Anuncio o contexto.'
+            ],
+            [
+                '4. Columna D: Fecha.'
+            ],
+            [
+                '5. Columna E: Nombre exacto de imagen.'
+            ],
+            [
+                '6. Puede duplicar filas para una obligación.'
+            ],
+            [
+                '7. La fecha debe pertenecer al periodo.'
+            ],
+            [
+                '8. Las imágenes deben coincidir '
+                'exactamente con el nombre del Excel.'
+            ]
+        ]
+
+        for fila_instruccion in instrucciones:
+            ws_instr.append(
+                fila_instruccion
+            )
+
+        ws_instr.column_dimensions[
+            'A'
+        ].width = 100
+
+        # ----------------------------------------------------
+        # Archivo en memoria
+        # ----------------------------------------------------
+
+        output = io.BytesIO()
+
+        wb.save(
+            output
+        )
+
+        output.seek(0)
+
+        return output
+
     # ========================================================
-    # GENERAR PLANTILLA DE REPORTE
+    # GENERAR PLANTILLA REPORTE
     # ========================================================
 
     @staticmethod
     def generar_plantilla_reporte():
         """
-        Genera una plantilla para un reporte específico.
+        Genera una plantilla Excel básica para reporte.
         """
 
-        return (
-            PlantillaService.crear_plantilla_reporte()
-        )
+        wb = Workbook()
 
-    # ========================================================
-    # NOMBRE ARCHIVO PLANTILLA
-    # ========================================================
+        ws = wb.active
 
-    @staticmethod
-    def nombre_archivo_plantilla(
-        mes,
-        anio
-    ):
-        """
-        Retorna el nombre estándar de la plantilla.
-        """
+        ws.title = 'Carga Masiva'
 
-        return (
-            PlantillaService.nombre_archivo_masiva(
-                mes,
-                anio
+        encabezados = [
+            'Anuncio',
+            'Fecha',
+            'Nombre Imagen'
+        ]
+
+        for columna, encabezado in enumerate(
+            encabezados,
+            start=1
+        ):
+            celda = ws.cell(
+                row=1,
+                column=columna,
+                value=encabezado
             )
+
+            celda.font = Font(
+                bold=True
+            )
+
+        ws.column_dimensions[
+            'A'
+        ].width = 60
+
+        ws.column_dimensions[
+            'B'
+        ].width = 20
+
+        ws.column_dimensions[
+            'C'
+        ].width = 35
+
+        output = io.BytesIO()
+
+        wb.save(
+            output
         )
 
+        output.seek(0)
 
-# ============================================================
-# INSTANCIA COMPARTIDA
-# ============================================================
-
-excel_service = (
-    ExcelService()
-)
+        return output
 
 
 # ============================================================
@@ -722,16 +785,22 @@ excel_service = (
 # ============================================================
 
 def leer_excel(
-    archivo
+    archivo_excel
 ):
     """
     Función de compatibilidad.
+
+    Permite utilizar:
+
+        leer_excel(archivo)
+
+    además de:
+
+        ExcelService().leer_excel(archivo)
     """
 
-    return (
-        ExcelService.leer_excel(
-            archivo
-        )
+    return ExcelService().leer_excel(
+        archivo_excel
     )
 
 
@@ -744,12 +813,10 @@ def generar_plantilla_masiva(
     Función de compatibilidad.
     """
 
-    return (
-        ExcelService.generar_plantilla_masiva(
-            obligaciones,
-            mes,
-            anio
-        )
+    return ExcelService.generar_plantilla_masiva(
+        obligaciones,
+        mes,
+        anio
     )
 
 
@@ -758,6 +825,4 @@ def generar_plantilla_reporte():
     Función de compatibilidad.
     """
 
-    return (
-        ExcelService.generar_plantilla_reporte()
-    )
+    return ExcelService.generar_plantilla_reporte()
