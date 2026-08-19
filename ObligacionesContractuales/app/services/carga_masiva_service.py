@@ -30,7 +30,7 @@ from app.services.reporte_service import ReporteService
 from app.services.evidencia_service import EvidenciaService
 from app.services.gemini_service import GeminiService
 from app.services.archivo_service import limpiar_archivos
-
+from app.services.job_service import JobService
 
 class CargaMasivaService:
     """
