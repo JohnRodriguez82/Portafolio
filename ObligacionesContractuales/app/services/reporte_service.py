@@ -1,25 +1,18 @@
 """
-Servicio de gestión de reportes mensuales.
+Servicio para gestionar los reportes mensuales.
 
 Responsabilidades:
-
-- Buscar reportes mensuales.
+- Obtener reportes mensuales.
 - Crear reportes mensuales.
 - Obtener o crear reportes.
-- Resolver obligaciones por número o por objeto.
-- Calcular fechas de un mes.
-- Validar periodos.
-- Obtener la última actividad.
-- Obtener el siguiente número de actividad.
+- Trabajar con contrato + obligación.
+- Calcular las fechas de un mes.
+- Obtener el número de la última actividad.
 - Obtener reportes de una obligación.
-- Obtener reportes por ID.
+- Obtener reportes por contrato.
 - Obtener evidencias de un reporte.
-- Contar evidencias.
 
 Este servicio NO contiene rutas Flask.
-
-El commit debe ser responsabilidad del proceso
-que utiliza el servicio.
 """
 
 import calendar
@@ -28,9 +21,9 @@ from datetime import date
 
 from models import (
     db,
-    Obligacion,
     ReporteMensual,
-    Evidencia
+    Evidencia,
+    Obligacion
 )
 
 
@@ -40,7 +33,7 @@ class ReporteService:
     """
 
     # ============================================================
-    # OBTENER REPORTE POR OBLIGACIÓN
+    # OBTENER REPORTE
     # ============================================================
 
     @staticmethod
@@ -50,16 +43,31 @@ class ReporteService:
         anio
     ):
         """
-        Busca un reporte mensual asociado a una obligación.
+        Busca un reporte mensual asociado
+        a una obligación.
 
         Args:
-            obligacion_id: ID de la obligación.
-            mes: Número del mes.
-            anio: Año del reporte.
+            obligacion_id:
+                ID de la obligación.
+
+            mes:
+                Número del mes.
+
+            anio:
+                Año del reporte.
 
         Returns:
             ReporteMensual | None
         """
+
+        if not obligacion_id:
+            return None
+
+        if not ReporteService.periodo_valido(
+            mes,
+            anio
+        ):
+            return None
 
         return (
             ReporteMensual.query
@@ -72,108 +80,24 @@ class ReporteService:
         )
 
     # ============================================================
-    # OBTENER REPORTE POR OBJETO
+    # OBTENER REPORTE POR ID
     # ============================================================
 
     @staticmethod
-    def obtener_reporte_por_obligacion(
-        obligacion,
-        mes,
-        anio
+    def obtener_por_id(
+        reporte_id
     ):
         """
-        Busca un reporte utilizando directamente
-        un objeto Obligacion.
+        Obtiene un reporte por su ID.
         """
 
-        if not obligacion:
+        if not reporte_id:
             return None
-
-        return ReporteService.obtener_reporte(
-            obligacion_id=obligacion.id,
-            mes=mes,
-            anio=anio
-        )
-
-    # ============================================================
-    # RESOLVER OBLIGACIÓN
-    # ============================================================
-
-    @staticmethod
-    def resolver_obligacion(
-        obligacion,
-        contrato=None
-    ):
-        """
-        Resuelve una obligación recibida como:
-
-        - objeto Obligacion
-        - ID de obligación
-        - número de obligación
-
-        Cuando se recibe un número, se utiliza el contrato
-        para garantizar que la obligación pertenece al
-        contrato correspondiente.
-
-        Returns:
-            Obligacion | None
-        """
-
-        if obligacion is None:
-            return None
-
-        # --------------------------------------------------------
-        # Ya es un objeto Obligacion
-        # --------------------------------------------------------
-
-        if isinstance(
-            obligacion,
-            Obligacion
-        ):
-            return obligacion
-
-        # --------------------------------------------------------
-        # Obtener valor numérico
-        # --------------------------------------------------------
-
-        try:
-            valor = int(
-                obligacion
-            )
-
-        except (
-            TypeError,
-            ValueError
-        ):
-            return None
-
-        # --------------------------------------------------------
-        # Si tenemos contrato, buscar por número
-        # dentro del contrato.
-        # --------------------------------------------------------
-
-        if contrato is not None:
-
-            resultado = (
-                Obligacion.query
-                .filter_by(
-                    contrato_id=contrato.id,
-                    numero=valor
-                )
-                .first()
-            )
-
-            if resultado:
-                return resultado
-
-        # --------------------------------------------------------
-        # Como alternativa, intentar por ID.
-        # --------------------------------------------------------
 
         return (
-            Obligacion.query
+            ReporteMensual.query
             .filter_by(
-                id=valor
+                id=reporte_id
             )
             .first()
         )
@@ -192,15 +116,48 @@ class ReporteService:
         Crea un nuevo reporte mensual.
 
         No realiza commit.
+
+        El commit queda bajo responsabilidad
+        del proceso que utiliza el servicio.
+
+        Returns:
+            ReporteMensual
         """
+
+        if not obligacion_id:
+            raise ValueError(
+                'Debe indicar la obligación.'
+            )
 
         if not ReporteService.periodo_valido(
             mes,
             anio
         ):
             raise ValueError(
-                "El mes o año del reporte no es válido."
+                'El mes o año del reporte no es válido.'
             )
+
+        mes = int(mes)
+        anio = int(anio)
+
+        # --------------------------------------------------------
+        # Evitar duplicados
+        # --------------------------------------------------------
+
+        existente = (
+            ReporteService.obtener_reporte(
+                obligacion_id=obligacion_id,
+                mes=mes,
+                anio=anio
+            )
+        )
+
+        if existente:
+            return existente
+
+        # --------------------------------------------------------
+        # Fechas del periodo
+        # --------------------------------------------------------
 
         fecha_inicio, fecha_fin = (
             ReporteService.obtener_fechas_mes(
@@ -209,9 +166,13 @@ class ReporteService:
             )
         )
 
+        # --------------------------------------------------------
+        # Crear objeto
+        # --------------------------------------------------------
+
         reporte = ReporteMensual(
-            mes=int(mes),
-            anio=int(anio),
+            mes=mes,
+            anio=anio,
             fecha_inicio_reporte=fecha_inicio,
             fecha_fin_reporte=fecha_fin,
             obligacion_id=obligacion_id
@@ -226,41 +187,6 @@ class ReporteService:
         return reporte
 
     # ============================================================
-    # OBTENER O CREAR REPORTE POR ID
-    # ============================================================
-
-    @staticmethod
-    def obtener_o_crear_por_id(
-        obligacion_id,
-        mes,
-        anio
-    ):
-        """
-        Obtiene o crea un reporte utilizando el ID
-        de la obligación.
-
-        Returns:
-            ReporteMensual
-        """
-
-        reporte = (
-            ReporteService.obtener_reporte(
-                obligacion_id=obligacion_id,
-                mes=mes,
-                anio=anio
-            )
-        )
-
-        if reporte:
-            return reporte
-
-        return ReporteService.crear_reporte(
-            obligacion_id=obligacion_id,
-            mes=mes,
-            anio=anio
-        )
-
-    # ============================================================
     # OBTENER O CREAR REPORTE
     # ============================================================
 
@@ -268,31 +194,59 @@ class ReporteService:
     def obtener_o_crear_reporte(
         contrato=None,
         obligacion=None,
+        obligacion_id=None,
         mes=None,
-        anio=None,
-        obligacion_id=None
+        anio=None
     ):
         """
-        Obtiene un reporte existente o crea uno nuevo.
+        Obtiene o crea un reporte mensual.
 
         Esta es la interfaz principal utilizada por
         CargaMasivaService.
 
-        Ejemplo:
+        Puede recibir:
 
-            reporte = ReporteService.obtener_o_crear_reporte(
-                contrato=contrato,
-                obligacion=numero_obligacion,
-                mes=mes,
-                anio=anio
+            contrato
+            obligacion
+            mes
+            anio
+
+        También conserva compatibilidad con código
+        anterior que utilice:
+
+            obligacion_id
+            mes
+            anio
+
+        IMPORTANTE:
+
+        Retorna directamente el objeto ReporteMensual.
+
+        NO retorna:
+
+            (reporte, creado)
+
+        porque CargaMasivaService necesita trabajar
+        directamente con el reporte.
+        """
+
+        # --------------------------------------------------------
+        # Determinar ID de obligación
+        # --------------------------------------------------------
+
+        if obligacion is not None:
+
+            obligacion_id = getattr(
+                obligacion,
+                'id',
+                None
             )
 
-        También permite utilizar directamente
-        obligacion_id para compatibilidad.
+        if not obligacion_id:
 
-        Returns:
-            ReporteMensual
-        """
+            raise ValueError(
+                'No fue posible identificar la obligación.'
+            )
 
         # --------------------------------------------------------
         # Validar periodo
@@ -302,58 +256,44 @@ class ReporteService:
             mes,
             anio
         ):
-            raise ValueError(
-                "El mes o año del reporte no es válido."
-            )
-
-        # --------------------------------------------------------
-        # Resolver obligación
-        # --------------------------------------------------------
-
-        obligacion_actual = None
-
-        if obligacion is not None:
-
-            obligacion_actual = (
-                ReporteService.resolver_obligacion(
-                    obligacion=obligacion,
-                    contrato=contrato
-                )
-            )
-
-        elif obligacion_id is not None:
-
-            obligacion_actual = (
-                ReporteService.resolver_obligacion(
-                    obligacion=obligacion_id,
-                    contrato=contrato
-                )
-            )
-
-        # --------------------------------------------------------
-        # Validar obligación
-        # --------------------------------------------------------
-
-        if obligacion_actual is None:
 
             raise ValueError(
-                "No fue posible identificar la obligación "
-                "para crear el reporte."
+                'El mes o año del reporte no es válido.'
             )
 
+        mes = int(mes)
+        anio = int(anio)
+
         # --------------------------------------------------------
-        # Validar contrato
+        # Validar que la obligación pertenezca
+        # al contrato cuando se proporciona contrato
         # --------------------------------------------------------
 
         if contrato is not None:
 
+            contrato_id = getattr(
+                contrato,
+                'id',
+                None
+            )
+
+            obligacion_contrato_id = getattr(
+                obligacion,
+                'contrato_id',
+                None
+            )
+
             if (
-                obligacion_actual.contrato_id
-                != contrato.id
+                contrato_id
+                and obligacion_contrato_id
+                and
+                contrato_id
+                != obligacion_contrato_id
             ):
+
                 raise ValueError(
-                    "La obligación no pertenece al "
-                    "contrato seleccionado."
+                    'La obligación no pertenece '
+                    'al contrato indicado.'
                 )
 
         # --------------------------------------------------------
@@ -361,8 +301,8 @@ class ReporteService:
         # --------------------------------------------------------
 
         reporte = (
-            ReporteService.obtener_reporte_por_obligacion(
-                obligacion=obligacion_actual,
+            ReporteService.obtener_reporte(
+                obligacion_id=obligacion_id,
                 mes=mes,
                 anio=anio
             )
@@ -376,14 +316,16 @@ class ReporteService:
         # Crear reporte
         # --------------------------------------------------------
 
-        return ReporteService.crear_reporte(
-            obligacion_id=obligacion_actual.id,
-            mes=mes,
-            anio=anio
+        return (
+            ReporteService.crear_reporte(
+                obligacion_id=obligacion_id,
+                mes=mes,
+                anio=anio
+            )
         )
 
     # ============================================================
-    # FECHAS DEL MES
+    # OBTENER FECHAS DEL MES
     # ============================================================
 
     @staticmethod
@@ -392,7 +334,7 @@ class ReporteService:
         anio
     ):
         """
-        Obtiene el primer y último día de un mes.
+        Obtiene el primer y último día del mes.
 
         Ejemplo:
 
@@ -405,6 +347,14 @@ class ReporteService:
                 date(2026, 8, 31)
             )
         """
+
+        if not ReporteService.periodo_valido(
+            mes,
+            anio
+        ):
+            raise ValueError(
+                'Periodo inválido.'
+            )
 
         mes = int(mes)
         anio = int(anio)
@@ -445,9 +395,7 @@ class ReporteService:
 
         try:
 
-            mes = int(
-                mes
-            )
+            mes = int(mes)
 
         except (
             TypeError,
@@ -472,9 +420,7 @@ class ReporteService:
 
         try:
 
-            anio = int(
-                anio
-            )
+            anio = int(anio)
 
         except (
             TypeError,
@@ -529,6 +475,9 @@ class ReporteService:
             int
         """
 
+        if not reporte_id:
+            return 0
+
         ultima = (
             Evidencia.query
             .filter_by(
@@ -545,10 +494,11 @@ class ReporteService:
 
         return (
             ultima.numero_actividad
+            or 0
         )
 
     # ============================================================
-    # SIGUIENTE ACTIVIDAD
+    # OBTENER SIGUIENTE ACTIVIDAD
     # ============================================================
 
     @staticmethod
@@ -556,20 +506,18 @@ class ReporteService:
         reporte_id
     ):
         """
-        Obtiene el siguiente número de actividad
-        disponible para un reporte.
+        Obtiene el siguiente número de actividad.
         """
 
-        ultima = (
+        return (
             ReporteService.obtener_ultima_actividad(
                 reporte_id
             )
+            + 1
         )
 
-        return ultima + 1
-
     # ============================================================
-    # OBTENER REPORTES DE OBLIGACIÓN
+    # OBTENER REPORTES DE UNA OBLIGACIÓN
     # ============================================================
 
     @staticmethod
@@ -581,10 +529,12 @@ class ReporteService:
         a una obligación.
 
         Orden:
-
-        - Año descendente.
-        - Mes descendente.
+            Año descendente.
+            Mes descendente.
         """
+
+        if not obligacion_id:
+            return []
 
         return (
             ReporteMensual.query
@@ -599,44 +549,45 @@ class ReporteService:
         )
 
     # ============================================================
-    # OBTENER REPORTES POR OBJETO
+    # OBTENER REPORTES DE CONTRATO
     # ============================================================
 
     @staticmethod
-    def obtener_reportes_de_obligacion(
-        obligacion
+    def obtener_reportes_contrato(
+        contrato_id
     ):
         """
-        Obtiene todos los reportes de una obligación.
+        Obtiene todos los reportes asociados
+        a un contrato.
+
+        Se utiliza la relación:
+
+            Contrato
+                |
+                +-- Obligacion
+                        |
+                        +-- ReporteMensual
         """
 
-        if not obligacion:
+        if not contrato_id:
             return []
 
         return (
-            ReporteService.obtener_reportes_obligacion(
-                obligacion.id
-            )
-        )
-
-    # ============================================================
-    # OBTENER REPORTE POR ID
-    # ============================================================
-
-    @staticmethod
-    def obtener_por_id(
-        reporte_id
-    ):
-        """
-        Obtiene un reporte por su ID.
-        """
-
-        return (
             ReporteMensual.query
-            .filter_by(
-                id=reporte_id
+            .join(
+                Obligacion,
+                ReporteMensual.obligacion_id
+                == Obligacion.id
             )
-            .first()
+            .filter(
+                Obligacion.contrato_id
+                == contrato_id
+            )
+            .order_by(
+                ReporteMensual.anio.desc(),
+                ReporteMensual.mes.desc()
+            )
+            .all()
         )
 
     # ============================================================
@@ -648,9 +599,13 @@ class ReporteService:
         reporte_id
     ):
         """
-        Obtiene las evidencias de un reporte
-        ordenadas por número de actividad.
+        Obtiene las evidencias de un reporte.
+
+        Ordenadas por número de actividad.
         """
+
+        if not reporte_id:
+            return []
 
         return (
             Evidencia.query
@@ -672,8 +627,12 @@ class ReporteService:
         reporte_id
     ):
         """
-        Cuenta las evidencias asociadas a un reporte.
+        Cuenta las evidencias asociadas
+        a un reporte.
         """
+
+        if not reporte_id:
+            return 0
 
         return (
             Evidencia.query
@@ -684,116 +643,82 @@ class ReporteService:
         )
 
     # ============================================================
-    # EXISTE REPORTE
+    # NOMBRE DEL MES
     # ============================================================
 
     @staticmethod
-    def existe_reporte(
-        obligacion_id,
-        mes,
-        anio
+    def nombre_mes(
+        mes
     ):
         """
-        Indica si existe un reporte para una obligación
-        en un periodo determinado.
+        Devuelve el nombre del mes en español.
         """
 
-        return (
-            ReporteService.obtener_reporte(
-                obligacion_id=obligacion_id,
-                mes=mes,
-                anio=anio
-            )
-            is not None
-        )
+        meses = [
+            '',
+            'Enero',
+            'Febrero',
+            'Marzo',
+            'Abril',
+            'Mayo',
+            'Junio',
+            'Julio',
+            'Agosto',
+            'Septiembre',
+            'Octubre',
+            'Noviembre',
+            'Diciembre'
+        ]
 
-    # ============================================================
-    # OBTENER REPORTES DE UN CONTRATO
-    # ============================================================
+        try:
 
-    @staticmethod
-    def obtener_reportes_contrato(
-        contrato
-    ):
-        """
-        Obtiene todos los reportes asociados
-        a las obligaciones de un contrato.
-        """
+            mes = int(mes)
 
-        if not contrato:
-            return []
-
-        obligaciones = (
-            contrato.obligaciones
-        )
-
-        if not obligaciones:
-            return []
-
-        resultado = []
-
-        for obligacion in obligaciones:
-
-            reportes = (
-                ReporteService.obtener_reportes_de_obligacion(
-                    obligacion
-                )
-            )
-
-            resultado.extend(
-                reportes
-            )
-
-        return resultado
-
-    # ============================================================
-    # OBTENER REPORTE DEL CONTRATO POR PERIODO
-    # ============================================================
-
-    @staticmethod
-    def obtener_reportes_contrato_periodo(
-        contrato,
-        mes,
-        anio
-    ):
-        """
-        Obtiene los reportes de todas las obligaciones
-        de un contrato para un periodo determinado.
-        """
-
-        if not contrato:
-            return []
-
-        if not ReporteService.periodo_valido(
-            mes,
-            anio
+        except (
+            TypeError,
+            ValueError
         ):
-            return []
+
+            return ''
+
+        if not 1 <= mes <= 12:
+            return ''
+
+        return meses[mes]
+
+    # ============================================================
+    # NOMBRE DEL PERIODO
+    # ============================================================
+
+    @staticmethod
+    def nombre_periodo(
+        mes,
+        anio
+    ):
+        """
+        Devuelve el periodo en formato:
+
+            Agosto 2026
+        """
+
+        nombre = (
+            ReporteService.nombre_mes(
+                mes
+            )
+        )
+
+        if not nombre:
+            return str(anio)
 
         return (
-            ReporteMensual.query
-            .join(
-                Obligacion,
-                ReporteMensual.obligacion_id
-                == Obligacion.id
-            )
-            .filter(
-                Obligacion.contrato_id
-                == contrato.id,
-                ReporteMensual.mes
-                == int(mes),
-                ReporteMensual.anio
-                == int(anio)
-            )
-            .order_by(
-                Obligacion.numero.asc()
-            )
-            .all()
+            f'{nombre} {anio}'
         )
 
 
 # ============================================================
-# INSTANCIA COMPARTIDA
+# INSTANCIA DEL SERVICIO
 # ============================================================
 
-reporte_service = ReporteService()
+reporte_service = (
+    ReporteService()
+)
