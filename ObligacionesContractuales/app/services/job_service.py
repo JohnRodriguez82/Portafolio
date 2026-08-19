@@ -1,283 +1,292 @@
 """
-Servicio para gestión de trabajos de carga masiva.
+Servicio para gestionar trabajos de procesamiento en segundo plano.
 
-Responsabilidades:
-- Crear jobs.
-- Actualizar progreso.
-- Consultar estado.
-- Marcar jobs como completados.
-- Marcar jobs como error.
+Este servicio encapsula el estado de los jobs que anteriormente
+se manejaba directamente desde cargas.py.
 
-El servicio es independiente de Flask routes.
+No contiene lógica de negocio de cargas masivas.
 """
 
-import threading
-import uuid
-
-from datetime import datetime
+from threading import Lock
+from uuid import uuid4
 
 
-# ============================================================
-# ALMACENAMIENTO EN MEMORIA
-# ============================================================
-
-_jobs = {}
-
-_jobs_lock = threading.Lock()
-
-
-# ============================================================
-# CREAR JOB
-# ============================================================
-
-def crear_job():
+class JobService:
     """
-    Crea un nuevo trabajo.
+    Gestiona jobs y su progreso en memoria.
 
-    Retorna:
-        job_id
+    La información permanece en memoria mientras el proceso
+    Flask esté ejecutándose.
+
+    IMPORTANTE:
+    Esta implementación conserva el comportamiento apropiado
+    para la arquitectura actual de la aplicación.
     """
 
-    job_id = str(
-        uuid.uuid4()
-    )
+    def __init__(self):
+        self._jobs = {}
+        self._lock = Lock()
 
-    job = {
-        'id': job_id,
-        'estado': 'iniciando',
-        'porcentaje': 0,
-        'mensaje': 'Iniciando...',
-        'errores': [],
-        'resultado': None,
-        'creado': datetime.now(),
-        'actualizado': datetime.now()
-    }
+    # ========================================================
+    # CREAR JOB
+    # ========================================================
 
-    with _jobs_lock:
+    def crear(
+        self,
+        estado='pendiente',
+        porcentaje=0,
+        mensaje=''
+    ):
+        """
+        Crea un nuevo job.
 
-        _jobs[
-            job_id
-        ] = job
+        Returns:
+            str:
+                Identificador único del job.
+        """
 
-    return job_id
-
-
-# ============================================================
-# OBTENER JOB
-# ============================================================
-
-def obtener_job(
-    job_id
-):
-    """
-    Retorna el estado actual del job.
-    """
-
-    with _jobs_lock:
-
-        job = _jobs.get(
-            job_id
+        job_id = str(
+            uuid4()
         )
 
-        if not job:
+        with self._lock:
+
+            self._jobs[job_id] = {
+                'id': job_id,
+                'estado': estado,
+                'porcentaje': porcentaje,
+                'mensaje': mensaje,
+                'resultado': None,
+                'error': None
+            }
+
+        return job_id
+
+    # ========================================================
+    # OBTENER JOB
+    # ========================================================
+
+    def obtener(
+        self,
+        job_id
+    ):
+        """
+        Obtiene el estado actual de un job.
+
+        Returns:
+            dict | None
+        """
+
+        if not job_id:
             return None
 
-        return job.copy()
+        with self._lock:
 
+            job = self._jobs.get(
+                job_id
+            )
 
-# ============================================================
-# ACTUALIZAR PROGRESO
-# ============================================================
+            if job is None:
+                return None
 
-def actualizar_progreso(
-    job_id,
-    estado,
-    porcentaje,
-    mensaje,
-    errores=None,
-    resultado=None
-):
-    """
-    Actualiza el estado de un job.
-    """
+            return dict(
+                job
+            )
 
-    with _jobs_lock:
+    # ========================================================
+    # ACTUALIZAR
+    # ========================================================
 
-        job = _jobs.get(
-            job_id
+    def actualizar(
+        self,
+        job_id,
+        estado=None,
+        porcentaje=None,
+        mensaje=None,
+        resultado=None,
+        error=None
+    ):
+        """
+        Actualiza uno o varios campos del job.
+
+        Returns:
+            dict | None
+        """
+
+        if not job_id:
+            return None
+
+        with self._lock:
+
+            job = self._jobs.get(
+                job_id
+            )
+
+            if job is None:
+                return None
+
+            if estado is not None:
+
+                job['estado'] = (
+                    estado
+                )
+
+            if porcentaje is not None:
+
+                job['porcentaje'] = (
+                    int(porcentaje)
+                )
+
+            if mensaje is not None:
+
+                job['mensaje'] = (
+                    mensaje
+                )
+
+            if resultado is not None:
+
+                job['resultado'] = (
+                    resultado
+                )
+
+            if error is not None:
+
+                job['error'] = (
+                    error
+                )
+
+            return dict(
+                job
+            )
+
+    # ========================================================
+    # PROGRESO
+    # ========================================================
+
+    def actualizar_progreso(
+        self,
+        job_id,
+        porcentaje,
+        mensaje=''
+    ):
+        """
+        Actualiza únicamente el progreso.
+        """
+
+        return self.actualizar(
+            job_id=job_id,
+            estado='procesando',
+            porcentaje=porcentaje,
+            mensaje=mensaje
         )
 
-        if not job:
+    # ========================================================
+    # COMPLETAR
+    # ========================================================
+
+    def completar(
+        self,
+        job_id,
+        resultado=None,
+        mensaje='Proceso completado.'
+    ):
+        """
+        Marca un job como completado.
+        """
+
+        return self.actualizar(
+            job_id=job_id,
+            estado='completado',
+            porcentaje=100,
+            mensaje=mensaje,
+            resultado=resultado
+        )
+
+    # ========================================================
+    # ERROR
+    # ========================================================
+
+    def error(
+        self,
+        job_id,
+        error,
+        mensaje='Error durante el procesamiento.'
+    ):
+        """
+        Marca un job como fallido.
+        """
+
+        return self.actualizar(
+            job_id=job_id,
+            estado='error',
+            mensaje=mensaje,
+            error=str(error)
+        )
+
+    # ========================================================
+    # ELIMINAR
+    # ========================================================
+
+    def eliminar(
+        self,
+        job_id
+    ):
+        """
+        Elimina un job de memoria.
+        """
+
+        if not job_id:
             return False
 
-        job['estado'] = estado
+        with self._lock:
 
-        job['porcentaje'] = max(
-            0,
-            min(
-                100,
-                int(
-                    porcentaje or 0
-                )
-            )
-        )
+            if job_id not in self._jobs:
+                return False
 
-        job['mensaje'] = (
-            mensaje or ''
-        )
+            del self._jobs[job_id]
 
-        job['actualizado'] = (
-            datetime.now()
-        )
+            return True
 
-        if errores is not None:
+    # ========================================================
+    # EXISTE
+    # ========================================================
 
-            job['errores'] = list(
-                errores
-            )
+    def existe(
+        self,
+        job_id
+    ):
+        """
+        Comprueba si existe un job.
+        """
 
-        if resultado is not None:
-
-            job['resultado'] = resultado
-
-        return True
-
-
-# ============================================================
-# AGREGAR ERROR
-# ============================================================
-
-def agregar_error(
-    job_id,
-    error
-):
-    """
-    Agrega una advertencia o error al job.
-    """
-
-    with _jobs_lock:
-
-        job = _jobs.get(
-            job_id
-        )
-
-        if not job:
+        if not job_id:
             return False
 
-        job[
-            'errores'
-        ].append(
-            str(error)
-        )
+        with self._lock:
 
-        job['actualizado'] = (
-            datetime.now()
-        )
-
-        return True
-
-
-# ============================================================
-# COMPLETAR JOB
-# ============================================================
-
-def completar_job(
-    job_id,
-    resultado=None,
-    errores=None
-):
-    """
-    Marca un job como completado.
-    """
-
-    return actualizar_progreso(
-        job_id=job_id,
-        estado='completado',
-        porcentaje=100,
-        mensaje='Proceso finalizado.',
-        errores=errores,
-        resultado=resultado
-    )
-
-
-# ============================================================
-# ERROR JOB
-# ============================================================
-
-def marcar_error(
-    job_id,
-    mensaje,
-    errores=None
-):
-    """
-    Marca un job como fallido.
-    """
-
-    return actualizar_progreso(
-        job_id=job_id,
-        estado='error',
-        porcentaje=0,
-        mensaje=mensaje,
-        errores=errores
-    )
-
-
-# ============================================================
-# ELIMINAR JOB
-# ============================================================
-
-def eliminar_job(
-    job_id
-):
-    """
-    Elimina un job de memoria.
-    """
-
-    with _jobs_lock:
-
-        return _jobs.pop(
-            job_id,
-            None
-        )
-
-
-# ============================================================
-# LIMPIAR JOBS ANTIGUOS
-# ============================================================
-
-def limpiar_jobs(
-    max_jobs=100
-):
-    """
-    Limita el número de jobs almacenados en memoria.
-
-    Útil para evitar que el diccionario crezca
-    indefinidamente.
-    """
-
-    with _jobs_lock:
-
-        if len(_jobs) <= max_jobs:
-            return
-
-        ordenados = sorted(
-            _jobs.items(),
-            key=lambda item:
-                item[1].get(
-                    'actualizado'
-                )
-        )
-
-        cantidad_eliminar = (
-            len(_jobs)
-            - max_jobs
-        )
-
-        for job_id, _ in ordenados[
-            :cantidad_eliminar
-        ]:
-
-            _jobs.pop(
-                job_id,
-                None
+            return (
+                job_id
+                in self._jobs
             )
+
+    # ========================================================
+    # LIMPIAR
+    # ========================================================
+
+    def limpiar(
+        self
+    ):
+        """
+        Elimina todos los jobs almacenados.
+        """
+
+        with self._lock:
+
+            self._jobs.clear()
+
+
+# ============================================================
+# INSTANCIA GLOBAL
+# ============================================================
+
+job_service = JobService()
