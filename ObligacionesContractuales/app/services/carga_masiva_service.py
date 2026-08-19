@@ -43,7 +43,8 @@ class CargaMasivaService:
         contrato_service=None,
         reporte_service=None,
         evidencia_service=None,
-        gemini_service=None
+        gemini_service=None,
+        job_service=None
     ):
         """
         Permite inyectar servicios para facilitar pruebas.
