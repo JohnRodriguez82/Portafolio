@@ -49,3 +49,42 @@ def obtener_imagen_temporal(
         )
 
     return None
+
+ef guardar_imagen_evidencia(
+    imagen_temporal,
+    reporte_id,
+    nombre_imagen
+):
+    """
+    Mueve una imagen temporal al almacenamiento
+    definitivo de evidencias.
+
+    Retorna:
+        str: ruta definitiva.
+    """
+
+    if not imagen_temporal:
+        return ''
+
+    final_name = secure_filename(
+        (
+            f'evidencia_'
+            f'{reporte_id}_'
+            f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_'
+            f'{nombre_imagen}'
+        )
+    )
+
+    final_path = os.path.join(
+        current_app.config[
+            'UPLOAD_FOLDER'
+        ],
+        final_name
+    )
+
+    os.rename(
+        imagen_temporal,
+        final_path
+    )
+
+    return final_path
