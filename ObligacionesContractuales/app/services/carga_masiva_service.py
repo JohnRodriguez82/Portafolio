@@ -1,50 +1,74 @@
 """
 Servicio para procesar cargas masivas mensuales de evidencias.
 
-Este servicio centraliza la lógica de procesamiento de cada fila
-del Excel y evita duplicar responsabilidades que pertenecen a:
+Responsabilidades:
 
-    - ExcelService
-    - ReporteService
-    - EvidenciaService
-    - GeminiService
+- Procesar las filas normalizadas por ExcelService.
+- Validar obligaciones.
+- Validar anuncio/contexto.
+- Validar fechas del periodo.
+- Obtener o crear reportes mensuales.
+- Resolver imágenes temporales.
+- Analizar imágenes mediante GeminiService.
+- Crear evidencias mediante EvidenciaService.
+- Mantener una única responsabilidad por servicio.
+
+Este servicio NO contiene rutas Flask.
+
+Dependencias esperadas:
+
+    ExcelService
+        Se encarga de leer y normalizar el Excel.
+
+    ReporteService
+        Se encarga de obtener o crear ReporteMensual.
+
+    EvidenciaService
+        Se encarga de guardar/mover la imagen y crear Evidencia.
+
+    GeminiService
+        Se encarga del análisis visual mediante IA.
+
+IMPORTANTE:
+
+CargaMasivaService NO debe mover directamente las imágenes.
+
+La imagen temporal debe entregarse a:
+
+    EvidenciaService.crear_evidencia()
+
+Ese servicio es el responsable de persistirla.
 """
+
+from datetime import date, datetime
+
 
 class CargaMasivaService:
     """
-    Servicio encargado de procesar la carga masiva mensual
-    de evidencias.
-
-    Responsabilidades:
-
-    - Validar filas del Excel.
-    - Buscar obligaciones.
-    - Crear/reutilizar reportes.
-    - Buscar imágenes temporales.
-    - Analizar imágenes con Gemini.
-    - Crear evidencias.
-    - Mantener el número consecutivo de actividad.
-
-    IMPORTANTE:
-
-    El servicio NO guarda directamente las imágenes.
-
-    La responsabilidad de guardar/mover la imagen pertenece a:
-
-        EvidenciaService.crear_evidencia()
-
-    Por esta razón NO debe utilizarse:
-
-        guardar_imagen_evidencia()
-
-    después de crear una evidencia.
+    Servicio encargado de procesar cargas masivas
+    mensuales de evidencias.
     """
+
+    # ============================================================
+    # CONSTRUCTOR
+    # ============================================================
 
     def __init__(
         self,
         reporte_service,
         evidencia_service
     ):
+        """
+        Inicializa el servicio.
+
+        Args:
+            reporte_service:
+                Instancia de ReporteService.
+
+            evidencia_service:
+                Instancia de EvidenciaService.
+        """
+
         self.reporte_service = (
             reporte_service
         )
@@ -53,9 +77,9 @@ class CargaMasivaService:
             evidencia_service
         )
 
-    # ========================================================
+    # ============================================================
     # PROCESAR FILA
-    # ========================================================
+    # ============================================================
 
     def _procesar_fila(
         self,
@@ -71,7 +95,7 @@ class CargaMasivaService:
         """
         Procesa una fila individual del Excel.
 
-        La estructura esperada de `fila` es:
+        La fila debe venir normalizada por ExcelService:
 
         {
             'obligacion': ...,
@@ -81,6 +105,33 @@ class CargaMasivaService:
             'nombre_imagen': ...,
             '_fila_excel': ...
         }
+
+        Args:
+            contrato:
+                Contrato activo.
+
+            mes:
+                Mes del proceso.
+
+            anio:
+                Año del proceso.
+
+            fila:
+                Diccionario normalizado.
+
+            imagenes:
+                Diccionario de imágenes temporales.
+
+            obligaciones_por_numero:
+                Diccionario:
+                    numero -> Obligacion
+
+            gemini:
+                Servicio Gemini o None.
+
+            reportes_cache:
+                Diccionario utilizado para reutilizar
+                reportes durante la misma carga.
 
         Returns:
 
@@ -93,9 +144,9 @@ class CargaMasivaService:
 
         errores = []
 
-        # ----------------------------------------------------
+        # --------------------------------------------------------
         # VALIDAR FILA
-        # ----------------------------------------------------
+        # --------------------------------------------------------
 
         if not isinstance(
             fila,
@@ -111,9 +162,9 @@ class CargaMasivaService:
                 'evidencia': None
             }
 
-        # ----------------------------------------------------
-        # NÚMERO DE FILA EXCEL
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # NÚMERO DE FILA
+        # --------------------------------------------------------
 
         numero_fila = (
             self._obtener_numero_fila(
@@ -122,9 +173,9 @@ class CargaMasivaService:
             )
         )
 
-        # ----------------------------------------------------
-        # DATOS DEL EXCEL
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # DATOS
+        # --------------------------------------------------------
 
         numero_obligacion = (
             fila.get(
@@ -132,12 +183,15 @@ class CargaMasivaService:
             )
         )
 
-        anuncio = str(
-            fila.get(
-                'anuncio'
+        anuncio = (
+            str(
+                fila.get(
+                    'anuncio'
+                )
+                or ''
             )
-            or ''
-        ).strip()
+            .strip()
+        )
 
         fecha = (
             fila.get(
@@ -145,16 +199,55 @@ class CargaMasivaService:
             )
         )
 
-        nombre_imagen = str(
-            fila.get(
-                'nombre_imagen'
+        nombre_imagen = (
+            str(
+                fila.get(
+                    'nombre_imagen'
+                )
+                or ''
             )
-            or ''
-        ).strip()
+            .strip()
+        )
 
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # VALIDAR PERIODO
+        # --------------------------------------------------------
+
+        periodo_error = (
+            self._validar_periodo(
+                mes,
+                anio
+            )
+        )
+
+        if periodo_error:
+
+            return {
+                'exitoso': False,
+                'errores': [
+                    (
+                        f'Fila {numero_fila}: '
+                        f'{periodo_error}'
+                    )
+                ],
+                'evidencia': None
+            }
+
+        # --------------------------------------------------------
+        # NORMALIZAR MES / AÑO
+        # --------------------------------------------------------
+
+        mes = int(
+            mes
+        )
+
+        anio = int(
+            anio
+        )
+
+        # --------------------------------------------------------
         # VALIDAR OBLIGACIÓN
-        # ----------------------------------------------------
+        # --------------------------------------------------------
 
         obligacion = (
             self._buscar_obligacion(
@@ -178,9 +271,51 @@ class CargaMasivaService:
                 'evidencia': None
             }
 
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # VALIDAR QUE LA OBLIGACIÓN PERTENEZCA AL CONTRATO
+        # --------------------------------------------------------
+
+        if contrato is not None:
+
+            contrato_id = getattr(
+                contrato,
+                'id',
+                None
+            )
+
+            obligacion_contrato_id = getattr(
+                obligacion,
+                'contrato_id',
+                None
+            )
+
+            if (
+                contrato_id is not None
+                and
+                obligacion_contrato_id is not None
+                and
+                contrato_id
+                !=
+                obligacion_contrato_id
+            ):
+
+                return {
+                    'exitoso': False,
+                    'errores': [
+                        (
+                            f'Fila {numero_fila}: '
+                            f'La obligación '
+                            f'{numero_obligacion} '
+                            f'no pertenece al contrato '
+                            f'seleccionado.'
+                        )
+                    ],
+                    'evidencia': None
+                }
+
+        # --------------------------------------------------------
         # VALIDAR ANUNCIO
-        # ----------------------------------------------------
+        # --------------------------------------------------------
 
         if not anuncio:
 
@@ -196,12 +331,78 @@ class CargaMasivaService:
                 'evidencia': None
             }
 
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # NORMALIZAR FECHA
+        # --------------------------------------------------------
+
+        try:
+
+            fecha_actividad = (
+                self._normalizar_fecha(
+                    fecha
+                )
+            )
+
+        except ValueError as exc:
+
+            return {
+                'exitoso': False,
+                'errores': [
+                    (
+                        f'Fila {numero_fila}: '
+                        f'{str(exc)}'
+                    )
+                ],
+                'evidencia': None
+            }
+
+        # --------------------------------------------------------
+        # FECHA POR DEFECTO
+        # --------------------------------------------------------
+
+        if fecha_actividad is None:
+
+            fecha_actividad = date(
+                anio,
+                mes,
+                15
+            )
+
+        # --------------------------------------------------------
+        # VALIDAR FECHA DEL MES
+        # --------------------------------------------------------
+
+        fecha_error = (
+            self._validar_fecha_periodo(
+                fecha_actividad,
+                mes,
+                anio
+            )
+        )
+
+        if fecha_error:
+
+            return {
+                'exitoso': False,
+                'errores': [
+                    (
+                        f'Fila {numero_fila}: '
+                        f'{fecha_error}'
+                    )
+                ],
+                'evidencia': None
+            }
+
+        # ========================================================
         # REPORTE
-        # ----------------------------------------------------
+        # ========================================================
 
         cache_key = (
-            obligacion.id,
+            getattr(
+                obligacion,
+                'id',
+                None
+            ),
             mes,
             anio
         )
@@ -236,6 +437,21 @@ class CargaMasivaService:
                     'evidencia': None
                 }
 
+            if reporte is None:
+
+                return {
+                    'exitoso': False,
+                    'errores': [
+                        (
+                            f'Fila {numero_fila}: '
+                            f'No fue posible obtener o crear '
+                            f'el reporte para la obligación '
+                            f'{numero_obligacion}.'
+                        )
+                    ],
+                    'evidencia': None
+                }
+
             reportes_cache[
                 cache_key
             ] = reporte
@@ -246,24 +462,9 @@ class CargaMasivaService:
             ]
         )
 
-        if reporte is None:
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    (
-                        f'Fila {numero_fila}: '
-                        f'No fue posible obtener o crear '
-                        f'el reporte para la obligación '
-                        f'{numero_obligacion}.'
-                    )
-                ],
-                'evidencia': None
-            }
-
-        # ----------------------------------------------------
-        # IMAGEN TEMPORAL
-        # ----------------------------------------------------
+        # ========================================================
+        # IMAGEN
+        # ========================================================
 
         imagen_temporal = None
 
@@ -281,72 +482,88 @@ class CargaMasivaService:
 
             except Exception as exc:
 
-                errores.append(
-                    (
-                        f'Fila {numero_fila}: '
-                        f'Error buscando imagen '
-                        f'"{nombre_imagen}": '
-                        f'{str(exc)}'
-                    )
-                )
+                return {
+                    'exitoso': False,
+                    'errores': [
+                        (
+                            f'Fila {numero_fila}: '
+                            f'Error buscando imagen '
+                            f'"{nombre_imagen}": '
+                            f'{str(exc)}'
+                        )
+                    ],
+                    'evidencia': None
+                }
+
+            # ----------------------------------------------------
+            # IMPORTANTE
+            #
+            # Si el Excel indica una imagen y esa imagen no existe,
+            # NO se debe crear una evidencia sin imagen.
+            # ----------------------------------------------------
 
             if not imagen_temporal:
 
-                errores.append(
-                    (
-                        f'Fila {numero_fila}: '
-                        f'Imagen "{nombre_imagen}" '
-                        f'no encontrada.'
-                    )
-                )
+                return {
+                    'exitoso': False,
+                    'errores': [
+                        (
+                            f'Fila {numero_fila}: '
+                            f'Imagen "{nombre_imagen}" '
+                            f'no encontrada entre los '
+                            f'archivos cargados.'
+                        )
+                    ],
+                    'evidencia': None
+                }
 
-        # ----------------------------------------------------
+        # ========================================================
         # GEMINI
-        # ----------------------------------------------------
+        # ========================================================
 
         descripcion = None
 
-        if imagen_temporal and gemini:
+        if (
+            imagen_temporal
+            and
+            gemini is not None
+        ):
 
             try:
 
                 descripcion = (
-                    gemini
-                    .analizar_imagen_con_reintentos(
-                        imagen_temporal,
-                        contexto={
-                            'contrato': contrato,
-                            'obligacion': obligacion,
-                            'mes': mes,
-                            'anio': anio,
-                            'anuncio': anuncio
-                        }
+                    self._analizar_con_gemini(
+                        gemini=gemini,
+                        imagen=imagen_temporal,
+                        contrato=contrato,
+                        obligacion=obligacion,
+                        mes=mes,
+                        anio=anio,
+                        anuncio=anuncio
                     )
                 )
 
             except Exception as exc:
 
+                # ------------------------------------------------
+                # Gemini NO debe impedir la creación
+                # de la evidencia.
+                # ------------------------------------------------
+
                 errores.append(
                     (
                         f'Fila {numero_fila}: '
                         f'Error analizando imagen '
-                        f'{nombre_imagen}: '
+                        f'"{nombre_imagen}" con IA: '
                         f'{str(exc)}'
                     )
                 )
 
-                # --------------------------------------------
-                # IMPORTANTE
-                #
-                # Un error de Gemini NO impide crear
-                # la evidencia.
-                # --------------------------------------------
-
                 descripcion = None
 
-        # ----------------------------------------------------
+        # ========================================================
         # CREAR EVIDENCIA
-        # ----------------------------------------------------
+        # ========================================================
 
         try:
 
@@ -356,7 +573,7 @@ class CargaMasivaService:
                     reporte=reporte,
                     imagen=imagen_temporal,
                     anuncio=anuncio,
-                    fecha=fecha,
+                    fecha=fecha_actividad,
                     descripcion=descripcion
                 )
             )
@@ -369,7 +586,7 @@ class CargaMasivaService:
                     (
                         f'Fila {numero_fila}: '
                         f'Error creando evidencia '
-                        f'para obligación '
+                        f'para la obligación '
                         f'{numero_obligacion}: '
                         f'{str(exc)}'
                     )
@@ -392,19 +609,19 @@ class CargaMasivaService:
                 'evidencia': None
             }
 
-        # ----------------------------------------------------
-        # IMPORTANTE
+        # --------------------------------------------------------
+        # NO MOVER LA IMAGEN NUEVAMENTE
         #
-        # NO llamar aquí a:
+        # EvidenciaService.crear_evidencia() ya llama a:
         #
-        # guardar_imagen_evidencia()
+        #     _guardar_imagen()
         #
-        # porque crear_evidencia() ya guarda/mueve
-        # la imagen mediante _guardar_imagen().
+        # Por tanto NO se debe llamar aquí:
         #
-        # Si se llama nuevamente se intenta mover
-        # una imagen que ya fue movida.
-        # ----------------------------------------------------
+        #     guardar_imagen_evidencia()
+        #
+        # porque la ruta temporal ya fue consumida.
+        # --------------------------------------------------------
 
         return {
             'exitoso': True,
@@ -412,9 +629,93 @@ class CargaMasivaService:
             'evidencia': evidencia
         }
 
-    # ========================================================
+    # ============================================================
+    # ANALIZAR CON GEMINI
+    # ============================================================
+
+    @staticmethod
+    def _analizar_con_gemini(
+        gemini,
+        imagen,
+        contrato,
+        obligacion,
+        mes,
+        anio,
+        anuncio
+    ):
+        """
+        Ejecuta el análisis de Gemini.
+
+        Se intenta primero utilizar la interfaz actual:
+
+            analizar_imagen_con_reintentos()
+
+        Si el servicio expone una interfaz alternativa
+        compatible, se intenta utilizarla.
+
+        Returns:
+            str | None
+        """
+
+        contexto = {
+            'contrato': contrato,
+            'obligacion': obligacion,
+            'mes': mes,
+            'anio': anio,
+            'anuncio': anuncio
+        }
+
+        metodo = getattr(
+            gemini,
+            'analizar_imagen_con_reintentos',
+            None
+        )
+
+        if callable(
+            metodo
+        ):
+
+            return metodo(
+                imagen,
+                contexto=contexto
+            )
+
+        # --------------------------------------------------------
+        # Compatibilidad con posibles implementaciones
+        # anteriores.
+        # --------------------------------------------------------
+
+        metodo = getattr(
+            gemini,
+            'analizar_imagen',
+            None
+        )
+
+        if callable(
+            metodo
+        ):
+
+            try:
+
+                return metodo(
+                    imagen,
+                    contexto=contexto
+                )
+
+            except TypeError:
+
+                return metodo(
+                    imagen
+                )
+
+        raise AttributeError(
+            'GeminiService no dispone de un método compatible '
+            'para analizar imágenes.'
+        )
+
+    # ============================================================
     # BUSCAR OBLIGACIÓN
-    # ========================================================
+    # ============================================================
 
     @staticmethod
     def _buscar_obligacion(
@@ -422,10 +723,10 @@ class CargaMasivaService:
         obligaciones_por_numero
     ):
         """
-        Busca una obligación utilizando el número
-        normalizado.
+        Busca una obligación utilizando diferentes
+        representaciones del número.
 
-        Soporta valores como:
+        Soporta:
 
             1
             1.0
@@ -433,6 +734,7 @@ class CargaMasivaService:
             "1.0"
             " 1 "
             "01"
+            "1,0"
 
         Returns:
 
@@ -449,9 +751,9 @@ class CargaMasivaService:
 
             return None
 
-        # ----------------------------------------------------
+        # --------------------------------------------------------
         # COINCIDENCIA DIRECTA
-        # ----------------------------------------------------
+        # --------------------------------------------------------
 
         try:
 
@@ -473,31 +775,174 @@ class CargaMasivaService:
 
             pass
 
-        # ----------------------------------------------------
-        # CONVERTIR A ENTERO
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # NORMALIZAR NÚMERO
+        # --------------------------------------------------------
 
-        try:
-
-            texto_numero = str(
+        numero_normalizado = (
+            CargaMasivaService
+            ._normalizar_numero_obligacion(
                 numero_obligacion
-            ).strip()
+            )
+        )
 
-            numero = int(
-                float(
-                    texto_numero.replace(
-                        ',',
-                        '.'
+        # --------------------------------------------------------
+        # BÚSQUEDA DIRECTA NORMALIZADA
+        # --------------------------------------------------------
+
+        if numero_normalizado is not None:
+
+            try:
+
+                if (
+                    numero_normalizado
+                    in obligaciones_por_numero
+                ):
+
+                    return (
+                        obligaciones_por_numero[
+                            numero_normalizado
+                        ]
                     )
+
+            except (
+                TypeError,
+                AttributeError
+            ):
+
+                pass
+
+        # --------------------------------------------------------
+        # COMPARAR TODAS LAS CLAVES NORMALIZADAS
+        # --------------------------------------------------------
+
+        for clave, obligacion in (
+            obligaciones_por_numero.items()
+        ):
+
+            clave_normalizada = (
+                CargaMasivaService
+                ._normalizar_numero_obligacion(
+                    clave
                 )
             )
 
-            if numero in obligaciones_por_numero:
+            if (
+                numero_normalizado
+                is not None
+                and
+                clave_normalizada
+                ==
+                numero_normalizado
+            ):
 
-                return (
-                    obligaciones_por_numero[
-                        numero
-                    ]
+                return obligacion
+
+            # ----------------------------------------------------
+            # Comparación textual de respaldo.
+            # ----------------------------------------------------
+
+            texto_clave = str(
+                clave
+            ).strip()
+
+            texto_buscado = str(
+                numero_obligacion
+            ).strip()
+
+            if (
+                texto_clave
+                ==
+                texto_buscado
+            ):
+
+                return obligacion
+
+        return None
+
+    # ============================================================
+    # NORMALIZAR NÚMERO DE OBLIGACIÓN
+    # ============================================================
+
+    @staticmethod
+    def _normalizar_numero_obligacion(
+        valor
+    ):
+        """
+        Convierte diferentes representaciones de un número
+        de obligación a entero cuando es posible.
+
+        Ejemplos:
+
+            1       -> 1
+            1.0     -> 1
+            "1"     -> 1
+            "1.0"   -> 1
+            "01"    -> 1
+            "1,0"   -> 1
+
+        Si no representa un entero válido, retorna
+        el texto limpio.
+        """
+
+        if valor is None:
+
+            return None
+
+        if isinstance(
+            valor,
+            bool
+        ):
+
+            return int(
+                valor
+            )
+
+        if isinstance(
+            valor,
+            int
+        ):
+
+            return valor
+
+        if isinstance(
+            valor,
+            float
+        ):
+
+            if valor.is_integer():
+
+                return int(
+                    valor
+                )
+
+            return valor
+
+        texto = str(
+            valor
+        ).strip()
+
+        if not texto:
+
+            return None
+
+        texto_numerico = (
+            texto.replace(
+                ',',
+                '.'
+            )
+        )
+
+        try:
+
+            numero = float(
+                texto_numerico
+            )
+
+            if numero.is_integer():
+
+                return int(
+                    numero
                 )
 
         except (
@@ -508,93 +953,236 @@ class CargaMasivaService:
 
             pass
 
-        # ----------------------------------------------------
-        # COMPARACIÓN TEXTUAL
-        # ----------------------------------------------------
+        return texto
+
+    # ============================================================
+    # NORMALIZAR FECHA
+    # ============================================================
+
+    @staticmethod
+    def _normalizar_fecha(
+        valor
+    ):
+        """
+        Normaliza una fecha recibida desde Excel.
+
+        Soporta:
+
+            None
+            date
+            datetime
+            YYYY-MM-DD
+            DD/MM/YYYY
+            DD-MM-YYYY
+            YYYY/MM/DD
+
+        Returns:
+
+            date | None
+
+        Raises:
+
+            ValueError
+        """
+
+        if valor is None:
+
+            return None
+
+        if isinstance(
+            valor,
+            datetime
+        ):
+
+            return valor.date()
+
+        if isinstance(
+            valor,
+            date
+        ):
+
+            return valor
 
         texto = str(
-            numero_obligacion
+            valor
         ).strip()
 
         if not texto:
 
             return None
 
-        for clave, obligacion in (
-            obligaciones_por_numero.items()
-        ):
+        formatos = [
+            '%Y-%m-%d',
+            '%d/%m/%Y',
+            '%d-%m-%Y',
+            '%Y/%m/%d'
+        ]
 
-            if (
-                str(
-                    clave
-                ).strip()
-                ==
-                texto
-            ):
-
-                return obligacion
-
-        # ----------------------------------------------------
-        # COMPARACIÓN NUMÉRICA FINAL
-        # ----------------------------------------------------
-
-        try:
-
-            numero_buscado = int(
-                float(
-                    texto.replace(
-                        ',',
-                        '.'
-                    )
-                )
-            )
-
-        except (
-            ValueError,
-            TypeError,
-            OverflowError
-        ):
-
-            return None
-
-        for clave, obligacion in (
-            obligaciones_por_numero.items()
-        ):
+        for formato in formatos:
 
             try:
 
-                numero_clave = int(
-                    float(
-                        str(
-                            clave
-                        ).strip().replace(
-                            ',',
-                            '.'
-                        )
-                    )
-                )
+                return datetime.strptime(
+                    texto,
+                    formato
+                ).date()
 
-            except (
-                ValueError,
-                TypeError,
-                OverflowError
-            ):
+            except ValueError:
 
                 continue
 
-            if (
-                numero_clave
-                ==
-                numero_buscado
-            ):
+        raise ValueError(
+            f'Fecha no válida: {valor}. '
+            f'Use YYYY-MM-DD o DD/MM/YYYY.'
+        )
 
-                return obligacion
+    # ============================================================
+    # VALIDAR PERIODO
+    # ============================================================
+
+    @staticmethod
+    def _validar_periodo(
+        mes,
+        anio
+    ):
+        """
+        Valida mes y año del proceso.
+
+        Returns:
+
+            None si es válido.
+
+            str con mensaje si es inválido.
+        """
+
+        try:
+
+            mes_int = int(
+                mes
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            return (
+                f'El mes "{mes}" no es válido.'
+            )
+
+        try:
+
+            anio_int = int(
+                anio
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            return (
+                f'El año "{anio}" no es válido.'
+            )
+
+        if not (
+            1
+            <=
+            mes_int
+            <=
+            12
+        ):
+
+            return (
+                f'El mes "{mes}" debe estar '
+                f'entre 1 y 12.'
+            )
+
+        if not (
+            1900
+            <=
+            anio_int
+            <=
+            2100
+        ):
+
+            return (
+                f'El año "{anio}" debe estar '
+                f'entre 1900 y 2100.'
+            )
 
         return None
 
-    # ========================================================
+    # ============================================================
+    # VALIDAR FECHA DEL PERIODO
+    # ============================================================
+
+    @staticmethod
+    def _validar_fecha_periodo(
+        fecha,
+        mes,
+        anio
+    ):
+        """
+        Verifica que una fecha pertenezca al mes/año
+        seleccionado.
+
+        Returns:
+
+            None si es válida.
+
+            str con mensaje si está fuera del periodo.
+        """
+
+        if not isinstance(
+            fecha,
+            date
+        ):
+
+            return (
+                'La fecha de actividad no es válida.'
+            )
+
+        try:
+
+            mes_int = int(
+                mes
+            )
+
+            anio_int = int(
+                anio
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            return (
+                'El mes o año del proceso no es válido.'
+            )
+
+        if (
+            fecha.year
+            !=
+            anio_int
+            or
+            fecha.month
+            !=
+            mes_int
+        ):
+
+            return (
+                f'La fecha {fecha.strftime("%Y-%m-%d")} '
+                f'no pertenece al periodo '
+                f'{mes_int:02d}/{anio_int}.'
+            )
+
+        return None
+
+    # ============================================================
     # NÚMERO DE FILA
-    # ========================================================
+    # ============================================================
 
     @staticmethod
     def _obtener_numero_fila(
@@ -608,8 +1196,7 @@ class CargaMasivaService:
 
             '_fila_excel': numero_fila
 
-        Si por alguna razón no existe esa propiedad,
-        se utiliza el índice recibido.
+        Si no existe, utiliza el índice recibido.
         """
 
         if isinstance(
@@ -626,3 +1213,21 @@ class CargaMasivaService:
                 return numero_fila
 
         return indice
+
+
+# ================================================================
+# INSTANCIA POR DEFECTO
+# ================================================================
+
+# No se crea una instancia global aquí porque los servicios
+# ReporteService, EvidenciaService y GeminiService pueden ser
+# inicializados/configurados por la aplicación.
+#
+# Ejemplo de utilización:
+#
+#     carga_service = CargaMasivaService(
+#         reporte_service=reporte_service,
+#         evidencia_service=evidencia_service
+#     )
+#
+# La instancia debe construirse donde se conozcan las dependencias.
