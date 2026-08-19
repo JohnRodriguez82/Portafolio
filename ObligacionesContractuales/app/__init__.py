@@ -16,9 +16,11 @@ Responsabilidades:
 
 import os
 
+from pathlib import Path
 from flask import (
     Flask
 )
+
 
 from flask_login import (
     LoginManager
@@ -63,7 +65,7 @@ def create_app():
 
     app = Flask(
         __name__,
-        template_folder='../templates',
+        template_folder=str(Path(__file__).resolve().parent / "templates"),
         static_folder='../static'
     )
 
