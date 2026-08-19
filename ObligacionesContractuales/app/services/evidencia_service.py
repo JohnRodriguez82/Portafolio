@@ -3,13 +3,11 @@ Servicio para procesamiento de evidencias.
 
 Responsabilidades:
 - Buscar imágenes cargadas temporalmente.
-- Consumir cada imagen una sola vez.
 - Mover imágenes al almacenamiento definitivo.
-- Analizar imágenes mediante Gemini cuando esté disponible.
-- Crear registros de Evidencia.
+- Analizar imágenes mediante Gemini.
+- Crear registros Evidencia.
+- Generar descripción de la actividad.
 - Mantener la lógica de evidencias fuera del Blueprint.
-
-Este servicio NO contiene rutas Flask.
 """
 
 import os
@@ -31,10 +29,6 @@ from models import (
 # ============================================================
 
 class EvidenciaService:
-    """
-    Servicio encargado de gestionar las evidencias
-    asociadas a un reporte.
-    """
 
     # ========================================================
     # OBTENER IMAGEN TEMPORAL
@@ -46,26 +40,13 @@ class EvidenciaService:
         imagenes_disponibles
     ):
         """
-        Busca una imagen por nombre y la consume
-        del diccionario de imágenes disponibles.
-
-        La imagen se elimina del diccionario mediante pop()
-        para evitar que pueda utilizarse nuevamente.
-
-        Args:
-            nombre_imagen:
-                Nombre indicado en el Excel.
-
-            imagenes_disponibles:
-                Diccionario:
-                    nombre_archivo -> ruta_temporal
-
-        Returns:
-            str | None:
-                Ruta temporal de la imagen.
+        Obtiene una imagen del conjunto de archivos
+        cargados y la elimina del diccionario para
+        evitar reutilizarla.
         """
 
         if not nombre_imagen:
+
             return None
 
         # ----------------------------------------------------
@@ -105,30 +86,13 @@ class EvidenciaService:
         nombre_imagen
     ):
         """
-        Mueve una imagen temporal al almacenamiento definitivo.
-
-        Args:
-            imagen_temporal:
-                Ruta temporal de la imagen.
-
-            reporte_id:
-                ID del reporte asociado.
-
-            nombre_imagen:
-                Nombre original de la imagen.
-
-        Returns:
-            str:
-                Ruta definitiva de la imagen.
-
-        Raises:
-            FileNotFoundError:
-                Si la imagen temporal no existe.
+        Mueve una imagen temporal al almacenamiento
+        definitivo.
         """
 
         if not imagen_temporal:
 
-            return ''
+            return None
 
         if not os.path.exists(
             imagen_temporal
@@ -141,10 +105,6 @@ class EvidenciaService:
                 )
             )
 
-        # ----------------------------------------------------
-        # CARPETA DESTINO
-        # ----------------------------------------------------
-
         upload_folder = current_app.config.get(
             'UPLOAD_FOLDER'
         )
@@ -155,13 +115,23 @@ class EvidenciaService:
                 'UPLOAD_FOLDER no está configurado.'
             )
 
-        os.makedirs(
+        # ----------------------------------------------------
+        # CARPETA DEL REPORTE
+        # ----------------------------------------------------
+
+        carpeta_reporte = os.path.join(
             upload_folder,
+            'evidencias',
+            str(reporte_id)
+        )
+
+        os.makedirs(
+            carpeta_reporte,
             exist_ok=True
         )
 
         # ----------------------------------------------------
-        # NOMBRE DEFINITIVO
+        # NOMBRE
         # ----------------------------------------------------
 
         nombre_original = secure_filename(
@@ -172,22 +142,17 @@ class EvidenciaService:
             '%Y%m%d_%H%M%S_%f'
         )
 
-        nombre_final = secure_filename(
-            (
-                f'evidencia_'
-                f'{reporte_id}_'
-                f'{timestamp}_'
-                f'{nombre_original}'
-            )
+        nombre_final = (
+            f'{timestamp}_{nombre_original}'
         )
 
         ruta_final = os.path.join(
-            upload_folder,
+            carpeta_reporte,
             nombre_final
         )
 
         # ----------------------------------------------------
-        # MOVER ARCHIVO
+        # MOVER
         # ----------------------------------------------------
 
         os.replace(
@@ -207,22 +172,7 @@ class EvidenciaService:
         gemini
     ):
         """
-        Analiza una imagen mediante Gemini.
-
-        El servicio Gemini se recibe como dependencia para
-        evitar que EvidenciaService conozca directamente
-        la implementación de la IA.
-
-        Args:
-            imagen_path:
-                Ruta de la imagen.
-
-            gemini:
-                Instancia de GeminiService.
-
-        Returns:
-            str | None:
-                Descripción generada por IA.
+        Analiza una imagen utilizando GeminiService.
         """
 
         if not imagen_path:
@@ -243,11 +193,42 @@ class EvidenciaService:
 
             print(
                 '[ADVERTENCIA] '
-                f'No fue posible analizar la imagen '
+                'No fue posible analizar la imagen '
                 f'con Gemini: {exc}'
             )
 
             return None
+
+    # ========================================================
+    # SIGUIENTE NÚMERO DE ACTIVIDAD
+    # ========================================================
+
+    @staticmethod
+    def obtener_siguiente_numero(
+        reporte
+    ):
+        """
+        Obtiene el siguiente número consecutivo
+        de actividad dentro del reporte.
+        """
+
+        actividades = reporte.evidencias
+
+        if not actividades:
+
+            return 1
+
+        numeros = [
+            evidencia.numero_actividad
+            for evidencia in actividades
+            if evidencia.numero_actividad is not None
+        ]
+
+        if not numeros:
+
+            return 1
+
+        return max(numeros) + 1
 
     # ========================================================
     # CREAR EVIDENCIA
@@ -256,51 +237,73 @@ class EvidenciaService:
     @staticmethod
     def crear_evidencia(
         reporte,
-        obligacion,
         anuncio,
         fecha,
-        ruta_imagen=None,
-        descripcion_ia=None
+        ruta_imagen,
+        descripcion_visual_ia=''
     ):
         """
-        Crea un registro de Evidencia.
-
-        Esta función concentra la creación del objeto
-        SQLAlchemy para evitar que CargaMasivaService
-        conozca la estructura interna del modelo.
-
-        Args:
-            reporte:
-                Reporte al que pertenece la evidencia.
-
-            obligacion:
-                Obligación contractual.
-
-            anuncio:
-                Contexto o anuncio de la actividad.
-
-            fecha:
-                Fecha de la actividad.
-
-            ruta_imagen:
-                Ruta definitiva de la imagen.
-
-            descripcion_ia:
-                Descripción generada por Gemini.
-
-        Returns:
-            Evidencia:
-                Objeto creado.
+        Crea una evidencia utilizando exactamente
+        las columnas definidas en el modelo Evidencia.
         """
 
-        evidencia = Evidencia(
-            reporte_id=reporte.id,
-            obligacion_id=obligacion.id,
-            anuncio=anuncio or '',
-            fecha=fecha,
-            imagen=ruta_imagen or '',
-            descripcion=descripcion_ia or ''
+        numero_actividad = (
+            EvidenciaService.obtener_siguiente_numero(
+                reporte
+            )
         )
+
+        # ----------------------------------------------------
+        # CREAR OBJETO
+        # ----------------------------------------------------
+
+        evidencia = Evidencia(
+            numero_actividad=numero_actividad,
+
+            imagen_path=ruta_imagen,
+
+            anuncio_usuario=(
+                anuncio or ''
+            ),
+
+            descripcion_visual_ia=(
+                descripcion_visual_ia or ''
+            ),
+
+            descripcion_actividad='',
+
+            fecha_actividad=fecha,
+
+            reporte_id=reporte.id
+        )
+
+        # ----------------------------------------------------
+        # GENERAR DESCRIPCIÓN
+        # ----------------------------------------------------
+
+        try:
+
+            obligacion = reporte.obligacion
+
+            evidencia.descripcion_actividad = (
+                evidencia.generar_descripcion_automatica(
+                    obligacion
+                )
+            )
+
+        except Exception as exc:
+
+            print(
+                '[ADVERTENCIA] '
+                'No fue posible generar la descripción '
+                f'automática: {exc}'
+            )
+
+            evidencia.descripcion_actividad = (
+                anuncio or
+                'Actividad realizada durante '
+                'el periodo reportado.'
+            )
 
         db.session.add(
             evidencia
@@ -327,61 +330,14 @@ def procesar_evidencia(
     """
     Procesa una evidencia individual.
 
-    Esta es la función utilizada actualmente por
+    Es la función principal consumida por
     CargaMasivaService.
-
-    Flujo:
-
-        1. Busca la imagen.
-        2. Consume la imagen del diccionario.
-        3. La mueve al almacenamiento definitivo.
-        4. Analiza con Gemini si está disponible.
-        5. Crea el registro Evidencia.
-        6. Retorna resultado estructurado.
-
-    Args:
-        reporte:
-            Reporte mensual.
-
-        obligacion:
-            Obligación contractual.
-
-        anuncio:
-            Contexto/anuncio de la actividad.
-
-        fecha:
-            Fecha de la evidencia.
-
-        nombre_imagen:
-            Nombre de imagen indicado en Excel.
-
-        imagenes:
-            Diccionario nombre -> ruta temporal.
-
-        gemini:
-            Instancia de GeminiService.
-
-        actualizar_progreso:
-            Callback opcional de progreso.
-
-        job_id:
-            Identificador del trabajo.
-
-    Returns:
-        dict:
-            {
-                'creada': bool,
-                'errores': list,
-                'evidencia': Evidencia | None
-            }
     """
 
     errores = []
 
-    evidencia = None
-
     # ========================================================
-    # VALIDACIÓN
+    # VALIDACIONES
     # ========================================================
 
     if reporte is None:
@@ -394,16 +350,6 @@ def procesar_evidencia(
             'evidencia': None
         }
 
-    if obligacion is None:
-
-        return {
-            'creada': False,
-            'errores': [
-                'No se recibió una obligación válida.'
-            ],
-            'evidencia': None
-        }
-
     # ========================================================
     # SIN IMAGEN
     # ========================================================
@@ -412,13 +358,14 @@ def procesar_evidencia(
 
         try:
 
-            evidencia = EvidenciaService.crear_evidencia(
-                reporte=reporte,
-                obligacion=obligacion,
-                anuncio=anuncio,
-                fecha=fecha,
-                ruta_imagen=None,
-                descripcion_ia=None
+            evidencia = (
+                EvidenciaService.crear_evidencia(
+                    reporte=reporte,
+                    anuncio=anuncio,
+                    fecha=fecha,
+                    ruta_imagen='',
+                    descripcion_visual_ia=''
+                )
             )
 
             return {
@@ -435,8 +382,8 @@ def procesar_evidencia(
                 'creada': False,
                 'errores': [
                     (
-                        'No fue posible crear la actividad '
-                        f'sin imagen: {str(exc)}'
+                        'No fue posible crear la actividad: '
+                        f'{str(exc)}'
                     )
                 ],
                 'evidencia': None
@@ -448,8 +395,8 @@ def procesar_evidencia(
 
     imagen_temporal = (
         EvidenciaService.obtener_imagen_temporal(
-            nombre_imagen=nombre_imagen,
-            imagenes_disponibles=imagenes
+            nombre_imagen,
+            imagenes
         )
     )
 
@@ -458,51 +405,18 @@ def procesar_evidencia(
         errores.append(
             (
                 f'No se encontró la imagen '
-                f'"{nombre_imagen}" '
-                'entre los archivos cargados.'
+                f'"{nombre_imagen}".'
             )
         )
 
-        # ----------------------------------------------------
-        # CREAR ACTIVIDAD SIN IMAGEN
-        # ----------------------------------------------------
-
-        try:
-
-            evidencia = EvidenciaService.crear_evidencia(
-                reporte=reporte,
-                obligacion=obligacion,
-                anuncio=anuncio,
-                fecha=fecha,
-                ruta_imagen=None,
-                descripcion_ia=None
-            )
-
-            return {
-                'creada': True,
-                'errores': errores,
-                'evidencia': evidencia
-            }
-
-        except Exception as exc:
-
-            db.session.rollback()
-
-            errores.append(
-                (
-                    'No fue posible crear la actividad: '
-                    f'{str(exc)}'
-                )
-            )
-
-            return {
-                'creada': False,
-                'errores': errores,
-                'evidencia': None
-            }
+        return {
+            'creada': False,
+            'errores': errores,
+            'evidencia': None
+        }
 
     # ========================================================
-    # MOVER IMAGEN
+    # GUARDAR IMAGEN
     # ========================================================
 
     try:
@@ -531,20 +445,21 @@ def procesar_evidencia(
         }
 
     # ========================================================
-    # ANALIZAR IMAGEN
+    # ANALIZAR CON GEMINI
     # ========================================================
 
-    descripcion_ia = None
+    descripcion_visual_ia = ''
 
     if gemini:
 
         try:
 
-            descripcion_ia = (
+            descripcion_visual_ia = (
                 EvidenciaService.analizar_con_ia(
                     imagen_path=ruta_imagen,
                     gemini=gemini
                 )
+                or ''
             )
 
         except Exception as exc:
@@ -562,14 +477,23 @@ def procesar_evidencia(
 
     try:
 
-        evidencia = EvidenciaService.crear_evidencia(
-            reporte=reporte,
-            obligacion=obligacion,
-            anuncio=anuncio,
-            fecha=fecha,
-            ruta_imagen=ruta_imagen,
-            descripcion_ia=descripcion_ia
+        evidencia = (
+            EvidenciaService.crear_evidencia(
+                reporte=reporte,
+                anuncio=anuncio,
+                fecha=fecha,
+                ruta_imagen=ruta_imagen,
+                descripcion_visual_ia=(
+                    descripcion_visual_ia
+                )
+            )
         )
+
+        return {
+            'creada': True,
+            'errores': errores,
+            'evidencia': evidencia
+        }
 
     except Exception as exc:
 
@@ -588,37 +512,6 @@ def procesar_evidencia(
             'evidencia': None
         }
 
-    # ========================================================
-    # PROGRESO
-    # ========================================================
-
-    if actualizar_progreso:
-
-        try:
-
-            actualizar_progreso(
-                job_id,
-                'procesando',
-                0,
-                (
-                    f'Evidencia procesada: '
-                    f'{nombre_imagen}'
-                )
-            )
-
-        except Exception:
-            pass
-
-    # ========================================================
-    # RESULTADO
-    # ========================================================
-
-    return {
-        'creada': True,
-        'errores': errores,
-        'evidencia': evidencia
-    }
-
 
 # ============================================================
 # FUNCIONES DE COMPATIBILIDAD
@@ -629,10 +522,7 @@ def obtener_imagen_temporal(
     imagenes_disponibles
 ):
     """
-    Wrapper de compatibilidad.
-
-    Permite mantener llamadas antiguas mientras
-    la aplicación termina la refactorización.
+    Compatibilidad con código anterior.
     """
 
     return EvidenciaService.obtener_imagen_temporal(
@@ -647,7 +537,7 @@ def guardar_imagen_evidencia(
     nombre_imagen
 ):
     """
-    Wrapper de compatibilidad para código existente.
+    Compatibilidad con código anterior.
     """
 
     return EvidenciaService.guardar_imagen_evidencia(
@@ -662,10 +552,7 @@ def analizar_evidencia_con_ia(
     gemini
 ):
     """
-    Wrapper de compatibilidad.
-
-    Nota:
-        La nueva implementación utiliza GeminiService.
+    Compatibilidad con código anterior.
     """
 
     return EvidenciaService.analizar_con_ia(
