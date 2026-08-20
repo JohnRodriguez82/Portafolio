@@ -8,8 +8,16 @@ Responsabilidades:
 - Eliminar la API Key.
 - Mantener la configuración independiente de autenticación.
 
-La autenticación y Google OAuth pertenecen exclusivamente
-al Blueprint autenticacion.py.
+La API Key de Gemini es GLOBAL para todo el sistema.
+
+La API Key:
+    - Se almacena en la base de datos.
+    - Se almacena cifrada.
+    - No se guarda en texto plano.
+    - Es compartida por todos los usuarios autenticados.
+
+La clave utilizada para cifrar/desencriptar la API Key
+se obtiene desde GEMINI_ENCRYPTION_KEY.
 """
 
 import os
@@ -23,8 +31,16 @@ from flask import (
     flash
 )
 
-from flask_login import (
-    login_required
+from flask_login import login_required
+
+from cryptography.fernet import (
+    Fernet,
+    InvalidToken
+)
+
+from app.models import (
+    db,
+    ConfiguracionSistema
 )
 
 
@@ -39,19 +55,146 @@ configuracion_bp = Blueprint(
 
 
 # ============================================================
-# CONFIGURACIÓN
+# CLAVE DE CIFRADO
 # ============================================================
 
-_ENV_FILE = os.path.join(
-    os.path.dirname(
-        os.path.dirname(
-            os.path.dirname(
-                os.path.abspath(__file__)
-            )
+def _obtener_clave_cifrado():
+    """
+    Obtiene la clave maestra utilizada para cifrar
+    y descifrar la API Key de Gemini.
+
+    Esta clave NO se almacena en la base de datos.
+
+    Debe existir en:
+
+        GEMINI_ENCRYPTION_KEY
+
+    """
+
+    clave = os.environ.get(
+        'GEMINI_ENCRYPTION_KEY',
+        ''
+    ).strip()
+
+    if not clave:
+
+        raise RuntimeError(
+            'No está configurada GEMINI_ENCRYPTION_KEY.'
         )
-    ),
-    '.env'
-)
+
+    try:
+
+        return Fernet(
+            clave.encode('utf-8')
+        )
+
+    except Exception as exc:
+
+        raise RuntimeError(
+            'GEMINI_ENCRYPTION_KEY no tiene '
+            'un formato Fernet válido.'
+        ) from exc
+
+
+# ============================================================
+# OBTENER CONFIGURACIÓN GLOBAL
+# ============================================================
+
+def _obtener_configuracion():
+    """
+    Obtiene el único registro de configuración del sistema.
+
+    Si no existe, lo crea.
+    """
+
+    configuracion = (
+        ConfiguracionSistema.query
+        .order_by(
+            ConfiguracionSistema.id.asc()
+        )
+        .first()
+    )
+
+    if configuracion is None:
+
+        configuracion = (
+            ConfiguracionSistema()
+        )
+
+        db.session.add(
+            configuracion
+        )
+
+        db.session.commit()
+
+    return configuracion
+
+
+# ============================================================
+# CIFRAR API KEY
+# ============================================================
+
+def _cifrar_api_key(
+    api_key
+):
+    """
+    Cifra una API Key utilizando Fernet.
+    """
+
+    fernet = (
+        _obtener_clave_cifrado()
+    )
+
+    return (
+        fernet.encrypt(
+            api_key.encode('utf-8')
+        )
+        .decode('utf-8')
+    )
+
+
+# ============================================================
+# DESCIFRAR API KEY
+# ============================================================
+
+def _descifrar_api_key(
+    api_key_cifrada
+):
+    """
+    Descifra una API Key almacenada en la base de datos.
+
+    Retorna:
+        str: API Key original.
+
+    Retorna cadena vacía si no existe.
+    """
+
+    if not api_key_cifrada:
+
+        return ''
+
+    try:
+
+        fernet = (
+            _obtener_clave_cifrado()
+        )
+
+        return (
+            fernet.decrypt(
+                api_key_cifrada.encode('utf-8')
+            )
+            .decode('utf-8')
+            .strip()
+        )
+
+    except (
+        InvalidToken,
+        ValueError,
+        TypeError,
+        UnicodeDecodeError
+    ):
+
+        return ''
 
 
 # ============================================================
@@ -60,99 +203,44 @@ _ENV_FILE = os.path.join(
 
 def _obtener_api_key():
     """
-    Obtiene la API Key de Gemini.
+    Obtiene la API Key GLOBAL de Gemini.
 
-    Primero intenta obtenerla desde las variables de entorno.
-    Si no existe, intenta leerla desde el archivo .env.
+    La API Key se almacena cifrada en:
+
+        configuracion_sistema.gemini_api_key
 
     Retorna:
-        str: API Key o cadena vacía si no está configurada.
+        str: API Key descifrada.
+
+        '' si no existe o no puede descifrarse.
     """
-
-    # ========================================================
-    # VARIABLES DE ENTORNO
-    # ========================================================
-
-    api_key = os.environ.get(
-        'GEMINI_API_KEY',
-        ''
-    ).strip()
-
-    if api_key:
-        return api_key
-
-    # ========================================================
-    # ARCHIVO .ENV
-    # ========================================================
-
-    if not os.path.exists(
-        _ENV_FILE
-    ):
-        return ''
 
     try:
 
-        with open(
-            _ENV_FILE,
-            'r',
-            encoding='utf-8'
-        ) as archivo:
+        configuracion = (
+            ConfiguracionSistema.query
+            .order_by(
+                ConfiguracionSistema.id.asc()
+            )
+            .first()
+        )
 
-            for linea in archivo:
+        if not configuracion:
 
-                linea = linea.strip()
+            return ''
 
-                # ------------------------------------------------
-                # Ignorar comentarios y líneas vacías
-                # ------------------------------------------------
+        return _descifrar_api_key(
+            configuracion.gemini_api_key
+        )
 
-                if (
-                    not linea
-                    or
-                    linea.startswith('#')
-                ):
-                    continue
+    except Exception as exc:
 
-                # ------------------------------------------------
-                # Buscar GEMINI_API_KEY
-                # ------------------------------------------------
-
-                if linea.startswith(
-                    'GEMINI_API_KEY='
-                ):
-
-                    valor = linea.split(
-                        '=',
-                        1
-                    )[1].strip()
-
-                    # --------------------------------------------
-                    # Eliminar comillas
-                    # --------------------------------------------
-
-                    if (
-                        len(valor) >= 2
-                        and
-                        valor[0] == valor[-1]
-                        and
-                        valor[0] in (
-                            '"',
-                            "'"
-                        )
-                    ):
-
-                        valor = valor[1:-1]
-
-                    return valor.strip()
-
-    except (
-        OSError,
-        UnicodeError
-    ):
+        print(
+            '[Configuracion] '
+            f'No fue posible obtener la API Key: {exc}'
+        )
 
         return ''
-
-    return ''
 
 
 # ============================================================
@@ -163,117 +251,61 @@ def _guardar_api_key(
     api_key
 ):
     """
-    Guarda o actualiza la API Key de Gemini en .env.
+    Guarda la API Key GLOBAL de Gemini.
 
-    También actualiza os.environ para que la nueva clave
-    esté disponible inmediatamente sin reiniciar la aplicación.
-
-    Parámetros:
-        api_key (str): API Key de Gemini.
-
-    Retorna:
-        bool: True si se guardó correctamente.
+    La API Key se cifra antes de almacenarla.
     """
 
     api_key = (
         api_key or ''
     ).strip()
 
-    # ========================================================
-    # VALIDACIÓN
-    # ========================================================
-
     if not api_key:
+
         return False
 
     try:
 
-        # ====================================================
-        # LEER .ENV EXISTENTE
-        # ====================================================
+        api_key_cifrada = (
+            _cifrar_api_key(
+                api_key
+            )
+        )
 
-        lineas = []
+        configuracion = (
+            ConfiguracionSistema.query
+            .order_by(
+                ConfiguracionSistema.id.asc()
+            )
+            .first()
+        )
 
-        if os.path.exists(
-            _ENV_FILE
-        ):
+        if configuracion is None:
 
-            with open(
-                _ENV_FILE,
-                'r',
-                encoding='utf-8'
-            ) as archivo:
-
-                lineas = archivo.readlines()
-
-        # ====================================================
-        # ACTUALIZAR VARIABLE
-        # ====================================================
-
-        encontrada = False
-
-        nuevas_lineas = []
-
-        for linea in lineas:
-
-            linea_sin_espacios = (
-                linea.strip()
+            configuracion = (
+                ConfiguracionSistema()
             )
 
-            if linea_sin_espacios.startswith(
-                'GEMINI_API_KEY='
-            ):
-
-                nuevas_lineas.append(
-                    f'GEMINI_API_KEY={api_key}\n'
-                )
-
-                encontrada = True
-
-            else:
-
-                nuevas_lineas.append(
-                    linea
-                )
-
-        # ====================================================
-        # AGREGAR SI NO EXISTÍA
-        # ====================================================
-
-        if not encontrada:
-
-            nuevas_lineas.append(
-                f'GEMINI_API_KEY={api_key}\n'
+            db.session.add(
+                configuracion
             )
 
-        # ====================================================
-        # ESCRIBIR .ENV
-        # ====================================================
+        configuracion.gemini_api_key = (
+            api_key_cifrada
+        )
 
-        with open(
-            _ENV_FILE,
-            'w',
-            encoding='utf-8'
-        ) as archivo:
-
-            archivo.writelines(
-                nuevas_lineas
-            )
-
-        # ====================================================
-        # ACTUALIZAR ENTORNO
-        # ====================================================
-
-        os.environ[
-            'GEMINI_API_KEY'
-        ] = api_key
+        db.session.commit()
 
         return True
 
-    except (
-        OSError,
-        UnicodeError
-    ):
+    except Exception as exc:
+
+        db.session.rollback()
+
+        print(
+            '[Configuracion] '
+            f'No fue posible guardar API Key: {exc}'
+        )
 
         return False
 
@@ -284,79 +316,40 @@ def _guardar_api_key(
 
 def _eliminar_api_key():
     """
-    Elimina GEMINI_API_KEY del archivo .env y del entorno.
+    Elimina la API Key GLOBAL de Gemini.
 
-    Retorna:
-        bool: True si la operación fue exitosa.
+    No elimina el registro de configuración;
+    simplemente elimina la clave almacenada.
     """
 
     try:
 
-        # ====================================================
-        # LEER .ENV
-        # ====================================================
-
-        lineas = []
-
-        if os.path.exists(
-            _ENV_FILE
-        ):
-
-            with open(
-                _ENV_FILE,
-                'r',
-                encoding='utf-8'
-            ) as archivo:
-
-                lineas = archivo.readlines()
-
-        # ====================================================
-        # ELIMINAR VARIABLE
-        # ====================================================
-
-        nuevas_lineas = []
-
-        for linea in lineas:
-
-            if linea.strip().startswith(
-                'GEMINI_API_KEY='
-            ):
-
-                continue
-
-            nuevas_lineas.append(
-                linea
+        configuracion = (
+            ConfiguracionSistema.query
+            .order_by(
+                ConfiguracionSistema.id.asc()
             )
-
-        # ====================================================
-        # ESCRIBIR .ENV
-        # ====================================================
-
-        with open(
-            _ENV_FILE,
-            'w',
-            encoding='utf-8'
-        ) as archivo:
-
-            archivo.writelines(
-                nuevas_lineas
-            )
-
-        # ====================================================
-        # ELIMINAR DEL ENTORNO
-        # ====================================================
-
-        os.environ.pop(
-            'GEMINI_API_KEY',
-            None
+            .first()
         )
+
+        if configuracion is None:
+
+            return True
+
+        configuracion.gemini_api_key = None
+
+        db.session.commit()
 
         return True
 
-    except (
-        OSError,
-        UnicodeError
-    ):
+    except Exception as exc:
+
+        db.session.rollback()
+
+        print(
+            '[Configuracion] '
+            f'No fue posible eliminar API Key: {exc}'
+        )
 
         return False
 
@@ -378,7 +371,7 @@ def configuracion():
         Muestra el estado de la API Key.
 
     POST:
-        Guarda la API Key proporcionada.
+        Guarda la API Key global.
     """
 
     # ========================================================
@@ -393,7 +386,7 @@ def configuracion():
         ).strip()
 
         # ----------------------------------------------------
-        # Validar API Key
+        # Validar
         # ----------------------------------------------------
 
         if not api_key:
@@ -426,8 +419,8 @@ def configuracion():
 
             flash(
                 (
-                    'No fue posible guardar la API Key. '
-                    'Verifique los permisos del archivo .env.'
+                    'No fue posible guardar la API Key '
+                    'en la base de datos.'
                 ),
                 'danger'
             )
@@ -442,7 +435,9 @@ def configuracion():
     # GET
     # ========================================================
 
-    api_key = _obtener_api_key()
+    api_key = (
+        _obtener_api_key()
+    )
 
     api_key_configurada = bool(
         api_key
@@ -474,8 +469,12 @@ def configuracion():
 
     return render_template(
         'config.html',
-        api_key_configurada=api_key_configurada,
-        api_key_mostrable=api_key_mostrable
+        api_key_configurada=(
+            api_key_configurada
+        ),
+        api_key_mostrable=(
+            api_key_mostrable
+        )
     )
 
 
@@ -490,7 +489,7 @@ def configuracion():
 @login_required
 def eliminar_api_key():
     """
-    Elimina la API Key de Gemini.
+    Elimina la API Key GLOBAL de Gemini.
     """
 
     if _eliminar_api_key():
@@ -523,7 +522,7 @@ def api_key_configurada():
     Indica si existe una API Key configurada.
 
     Retorna:
-        bool: True si existe una API Key.
+        bool
     """
 
     return bool(
