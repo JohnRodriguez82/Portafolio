@@ -79,7 +79,9 @@ from vision_analyzer import (
 from app.blueprints.configuracion import (
     _obtener_api_key
 )
-
+from app.services.evidencia_service import (
+    EvidenciaService
+)
 
 # ============================================================
 # BLUEPRINT
@@ -1116,9 +1118,23 @@ def subir_evidencia(id):
     """
     Registra una evidencia de actividad.
 
-    La imagen puede ser analizada mediante Gemini si el
-    usuario tiene una API Key configurada.
+    El Blueprint se encarga de:
+    - autenticación;
+    - autorización;
+    - validaciones HTTP;
+    - validación del período;
+    - análisis mediante IA.
+
+    EvidenciaService se encarga de:
+    - obtener número de actividad;
+    - guardar imagen;
+    - generar descripción;
+    - crear la evidencia.
     """
+
+    # --------------------------------------------------------
+    # OBTENER REPORTE
+    # --------------------------------------------------------
 
     reporte = (
         ReporteMensual.query
@@ -1137,7 +1153,7 @@ def subir_evidencia(id):
     )
 
     # --------------------------------------------------------
-    # Seguridad
+    # SEGURIDAD
     # --------------------------------------------------------
 
     if (
@@ -1157,7 +1173,7 @@ def subir_evidencia(id):
         )
 
     # --------------------------------------------------------
-    # Contrato finalizado
+    # CONTRATO FINALIZADO
     # --------------------------------------------------------
 
     if contrato.etapa == 'Reporte Cerrado':
@@ -1177,13 +1193,13 @@ def subir_evidencia(id):
         )
 
     # --------------------------------------------------------
-    # API Key
+    # API KEY
     # --------------------------------------------------------
 
     api_key = _obtener_api_key()
 
     # --------------------------------------------------------
-    # Guardar datos temporalmente
+    # GUARDAR DATOS TEMPORALMENTE
     # --------------------------------------------------------
 
     session[
@@ -1201,7 +1217,7 @@ def subir_evidencia(id):
     )
 
     # --------------------------------------------------------
-    # Verificar archivo
+    # VERIFICAR ARCHIVO
     # --------------------------------------------------------
 
     if 'imagen' not in request.files:
@@ -1228,7 +1244,7 @@ def subir_evidencia(id):
     ).strip()
 
     # --------------------------------------------------------
-    # Validar anuncio
+    # VALIDAR ANUNCIO
     # --------------------------------------------------------
 
     if not anuncio_usuario:
@@ -1246,7 +1262,7 @@ def subir_evidencia(id):
         )
 
     # --------------------------------------------------------
-    # Validar nombre
+    # VALIDAR NOMBRE
     # --------------------------------------------------------
 
     if file.filename == '':
@@ -1264,7 +1280,7 @@ def subir_evidencia(id):
         )
 
     # --------------------------------------------------------
-    # Validar extensión
+    # VALIDAR EXTENSIÓN
     # --------------------------------------------------------
 
     if not allowed_file(
@@ -1283,71 +1299,16 @@ def subir_evidencia(id):
             )
         )
 
-    # ========================================================
-    # PROCESAR IMAGEN
-    # ========================================================
+    # --------------------------------------------------------
+    # FECHA DE ACTIVIDAD
+    # --------------------------------------------------------
+
+    fecha_actividad_str = request.form.get(
+        'fecha_actividad',
+        ''
+    ).strip()
 
     try:
-
-        # ----------------------------------------------------
-        # Nombre seguro
-        # ----------------------------------------------------
-
-        timestamp = datetime.now().strftime(
-            '%Y%m%d_%H%M%S'
-        )
-
-        filename = secure_filename(
-            f'evidencia_'
-            f'{reporte.id}_'
-            f'{timestamp}_'
-            f'{file.filename}'
-        )
-
-        filepath = os.path.join(
-            current_app.config[
-                'UPLOAD_FOLDER'
-            ],
-            filename
-        )
-
-        # ----------------------------------------------------
-        # Guardar archivo
-        # ----------------------------------------------------
-
-        file.save(
-            filepath
-        )
-
-        # ----------------------------------------------------
-        # Obtener número de actividad
-        # ----------------------------------------------------
-
-        ultima_evidencia = (
-            Evidencia.query
-            .filter_by(
-                reporte_id=reporte.id
-            )
-            .order_by(
-                Evidencia.numero_actividad.desc()
-            )
-            .first()
-        )
-
-        numero_actividad = (
-            ultima_evidencia.numero_actividad + 1
-            if ultima_evidencia
-            else 1
-        )
-
-        # ----------------------------------------------------
-        # Fecha de actividad
-        # ----------------------------------------------------
-
-        fecha_actividad_str = request.form.get(
-            'fecha_actividad',
-            ''
-        ).strip()
 
         if fecha_actividad_str:
 
@@ -1360,74 +1321,57 @@ def subir_evidencia(id):
 
             fecha_actividad = date.today()
 
-        # ----------------------------------------------------
-        # Validar fecha contra el período del reporte
-        # ----------------------------------------------------
+    except ValueError:
 
-        if (
-            fecha_actividad
-            < reporte.fecha_inicio_reporte
-            or
-            fecha_actividad
-            > reporte.fecha_fin_reporte
-        ):
-
-            flash(
-                f'La fecha de la actividad '
-                f'({fecha_actividad.strftime("%d/%m/%Y")}) '
-                f'debe estar dentro del periodo del reporte: '
-                f'{reporte.fecha_inicio_reporte.strftime("%d/%m/%Y")}'
-                f' a '
-                f'{reporte.fecha_fin_reporte.strftime("%d/%m/%Y")}.',
-                'danger'
-            )
-
-            # El archivo ya fue guardado. Lo eliminamos para
-            # evitar dejar archivos huérfanos.
-
-            try:
-
-                if os.path.exists(
-                    filepath
-                ):
-
-                    os.remove(
-                        filepath
-                    )
-
-            except Exception:
-
-                pass
-
-            return redirect(
-                url_for(
-                    'reportes.ver_reporte',
-                    id=id
-                )
-            )
-
-        # ====================================================
-        # CREAR EVIDENCIA
-        # ====================================================
-
-        evidencia = Evidencia(
-            numero_actividad=numero_actividad,
-
-            imagen_path=filepath,
-
-            anuncio_usuario=anuncio_usuario,
-
-            descripcion_visual_ia=None,
-
-            descripcion_actividad='',
-
-            fecha_actividad=fecha_actividad,
-
-            reporte_id=reporte.id
+        flash(
+            'La fecha de actividad no es válida.',
+            'danger'
         )
 
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
+            )
+        )
+
+    # --------------------------------------------------------
+    # VALIDAR FECHA CONTRA PERÍODO DEL REPORTE
+    # --------------------------------------------------------
+
+    if (
+        fecha_actividad
+        < reporte.fecha_inicio_reporte
+        or
+        fecha_actividad
+        > reporte.fecha_fin_reporte
+    ):
+
+        flash(
+            f'La fecha de la actividad '
+            f'({fecha_actividad.strftime("%d/%m/%Y")}) '
+            f'debe estar dentro del periodo del reporte: '
+            f'{reporte.fecha_inicio_reporte.strftime("%d/%m/%Y")}'
+            f' a '
+            f'{reporte.fecha_fin_reporte.strftime("%d/%m/%Y")}.',
+            'danger'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
+            )
+        )
+
+    # ========================================================
+    # CREAR EVIDENCIA MEDIANTE SERVICE
+    # ========================================================
+
+    try:
+
         # ----------------------------------------------------
-        # Análisis mediante IA
+        # ANÁLISIS MEDIANTE IA
         # ----------------------------------------------------
 
         descripcion_visual = None
@@ -1440,15 +1384,11 @@ def subir_evidencia(id):
             )
 
             descripcion_visual = analizar_imagen(
-                filepath,
+                file,
                 api_key
             )
 
             if descripcion_visual:
-
-                evidencia.descripcion_visual_ia = (
-                    descripcion_visual
-                )
 
                 flash(
                     f'IA detectó: '
@@ -1464,27 +1404,29 @@ def subir_evidencia(id):
                 )
 
         # ----------------------------------------------------
-        # Generar descripción automática
+        # CREAR EVIDENCIA
         # ----------------------------------------------------
 
-        evidencia.descripcion_actividad = (
-            evidencia.generar_descripcion_automatica(
-                obligacion
+        evidencia_service = EvidenciaService()
+
+        evidencia = (
+            evidencia_service.crear_evidencia(
+                reporte=reporte,
+                imagen=file,
+                anuncio=anuncio_usuario,
+                fecha=fecha_actividad,
+                descripcion=descripcion_visual
             )
         )
 
         # ----------------------------------------------------
-        # Guardar
+        # GUARDAR
         # ----------------------------------------------------
-
-        db.session.add(
-            evidencia
-        )
 
         db.session.commit()
 
         # ----------------------------------------------------
-        # Limpiar sesión
+        # LIMPIAR SESIÓN
         # ----------------------------------------------------
 
         session.pop(
@@ -1498,11 +1440,15 @@ def subir_evidencia(id):
         )
 
         flash(
-            f'Actividad {numero_actividad} registrada.',
+            f'Actividad '
+            f'{evidencia.numero_actividad} '
+            f'registrada.',
             'success'
         )
 
     except RequestEntityTooLarge:
+
+        db.session.rollback()
 
         flash(
             'El archivo es demasiado grande. '
@@ -1512,26 +1458,7 @@ def subir_evidencia(id):
 
     except Exception as e:
 
-        # ----------------------------------------------------
-        # Si ocurrió un error después de guardar la imagen,
-        # intentar eliminar el archivo.
-        # ----------------------------------------------------
-
-        try:
-
-            if 'filepath' in locals():
-
-                if os.path.exists(
-                    filepath
-                ):
-
-                    os.remove(
-                        filepath
-                    )
-
-        except Exception:
-
-            pass
+        db.session.rollback()
 
         flash(
             f'Error: {str(e)}',
@@ -2094,7 +2021,6 @@ def eliminar_reporte(id):
 @reportes_bp.route(
     '/uploads/<path:filename>'
 )
-@login_required
 def uploaded_file(filename):
     """
     Sirve las imágenes de evidencias almacenadas
@@ -2102,9 +2028,7 @@ def uploaded_file(filename):
     """
 
     return send_from_directory(
-        current_app.config[
-            'UPLOAD_FOLDER'
-        ],
+        current_app.config['UPLOAD_FOLDER'],
         filename
     )
 
