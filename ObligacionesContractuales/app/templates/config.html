@@ -6,9 +6,14 @@
 
 <div class="row">
     <div class="col-12">
-        <h2 class="section-title">Configuración del Sistema</h2>
+
+        <h2 class="section-title">
+            Configuración del Sistema
+        </h2>
+
     </div>
 </div>
+
 
 <!-- ============================================================
      API KEY DE GEMINI
@@ -23,13 +28,22 @@
             <div class="card-header bg-white border-0 pt-4 px-4">
 
                 <h5 class="mb-0">
+
                     <i class="bi bi-robot me-2"></i>
+
                     Inteligencia Artificial - Visión por Imagen
+
                 </h5>
 
             </div>
 
+
             <div class="card-body px-4 pb-4">
+
+
+                <!-- ====================================================
+                     INFORMACIÓN
+                     ==================================================== -->
 
                 <div class="alert alert-info">
 
@@ -39,34 +53,39 @@
 
                     Al cargar una imagen como evidencia, el sistema puede
                     analizarla automáticamente con Google Gemini para
-                    describir lo que ve, y combinar esa descripción con
-                    su anuncio para generar un párrafo mucho más preciso.
+                    describir lo que observa y combinar esa descripción
+                    con el anuncio de la actividad.
 
                 </div>
 
 
                 <!-- ====================================================
-                     API KEY CONFIGURADA
+                     ESTADO DE LA API KEY
                      ==================================================== -->
 
-                {% if api_key_valida %}
+                {% if api_key_configurada %}
 
                 <div class="alert alert-success">
 
                     <i class="bi bi-check-circle me-2"></i>
 
-                    <strong>API key configurada.</strong>
-
-                    El sistema utilizará Gemini cuando sea necesario
-                    analizar las imágenes cargadas.
-
-                    {% if modelo_disponible %}
+                    <strong>API Key configurada.</strong>
 
                     <br>
 
-                    <span class="small">
-                        Modelo detectado:
-                        <code>{{ modelo_disponible }}</code>
+                    El sistema tiene una API Key de Google Gemini
+                    almacenada de forma segura.
+
+                    {% if api_key_mostrable %}
+
+                    <br>
+
+                    <span class="small text-muted">
+
+                        Clave configurada:
+
+                        <code>{{ api_key_mostrable }}</code>
+
                     </span>
 
                     {% endif %}
@@ -74,53 +93,12 @@
                     <br>
 
                     <span class="small text-muted">
-                        La validez de la API Key se comprueba cuando
-                        se guarda o actualiza la clave.
+
+                        La API Key completa no se muestra por seguridad.
+
                     </span>
 
                 </div>
-
-
-                <!-- ====================================================
-                     API KEY CON ERROR
-                     ==================================================== -->
-
-                {% elif api_key %}
-
-                <div class="alert alert-warning">
-
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-
-                    <strong>API key configurada.</strong>
-
-                    <br>
-
-                    Si la clave presenta problemas, vuelva a
-                    guardarla para realizar una nueva verificación.
-
-                    {% if api_key_error %}
-
-                    <br>
-
-                    <span class="small">
-                        {{ api_key_error }}
-                    </span>
-
-                    {% endif %}
-
-                    <br>
-
-                    <span class="small">
-                        Verifique la clave o deje el campo vacío
-                        para utilizar únicamente el anuncio manual.
-                    </span>
-
-                </div>
-
-
-                <!-- ====================================================
-                     SIN API KEY
-                     ==================================================== -->
 
                 {% else %}
 
@@ -128,10 +106,12 @@
 
                     <i class="bi bi-slash-circle me-2"></i>
 
-                    <strong>Sin API key.</strong>
+                    <strong>Sin API Key configurada.</strong>
 
-                    El sistema generará descripciones únicamente
-                    con el anuncio que usted escriba.
+                    <br>
+
+                    El sistema generará las descripciones utilizando
+                    únicamente la información suministrada manualmente.
 
                 </div>
 
@@ -139,36 +119,53 @@
 
 
                 <!-- ====================================================
-                     FORMULARIO API KEY
+                     FORMULARIO PARA GUARDAR / ACTUALIZAR
                      ==================================================== -->
 
-                <form method="POST" action="{{ url_for('configuracion.config') }}">
-
-                    <input
-                        type="hidden"
-                        name="action"
-                        value="guardar_api_key"
-                    >
-
+                <form
+                    method="POST"
+                    action="{{ url_for('configuracion.configuracion') }}"
+                >
 
                     <div class="mb-3">
 
-                        <label class="form-label">
+                        <label
+                            for="gemini_api_key"
+                            class="form-label"
+                        >
+
                             API Key de Google Gemini
+
                         </label>
+
 
                         <input
                             type="password"
+                            id="gemini_api_key"
                             name="gemini_api_key"
                             class="form-control"
-                            placeholder="Ingrese su API key de Gemini..."
-                            value="{{ api_key if api_key else '' }}"
+                            placeholder="{% if api_key_configurada %}Ingrese una nueva API Key para reemplazar la actual...{% else %}Ingrese su API Key de Gemini...{% endif %}"
                             autocomplete="new-password"
                         >
 
+
                         <div class="form-text">
 
-                            Obtenga su key gratuita en
+                            {% if api_key_configurada %}
+
+                            La clave actual está almacenada de forma
+                            cifrada. Para cambiarla, introduzca una nueva
+                            API Key.
+
+                            {% else %}
+
+                            Introduzca la API Key de Google Gemini.
+
+                            {% endif %}
+
+                            <br>
+
+                            Puede obtenerla en
 
                             <a
                                 href="https://aistudio.google.com/app/apikey"
@@ -178,18 +175,13 @@
                                 Google AI Studio
                             </a>.
 
-                            <br>
-
-                            La API Key se verificará únicamente
-                            cuando presione el botón para guardarla.
-
                         </div>
 
                     </div>
 
 
                     <!-- ==================================================
-                         BOTONES
+                         GUARDAR / ACTUALIZAR
                          ================================================== -->
 
                     <div class="d-grid gap-2">
@@ -201,21 +193,40 @@
 
                             <i class="bi bi-save me-2"></i>
 
-                            {% if api_key %}
+                            {% if api_key_configurada %}
+
                                 Actualizar API Key
+
                             {% else %}
+
                                 Configurar API Key
+
                             {% endif %}
 
                         </button>
 
+                    </div>
 
-                        {% if api_key %}
+                </form>
+
+
+                <!-- ====================================================
+                     ELIMINAR API KEY
+                     ==================================================== -->
+
+                {% if api_key_configurada %}
+
+                <form
+                    method="POST"
+                    action="{{ url_for('configuracion.eliminar_api_key') }}"
+                    class="mt-2"
+                    onsubmit="return confirm('¿Está seguro de que desea eliminar la API Key de Google Gemini?');"
+                >
+
+                    <div class="d-grid">
 
                         <button
                             type="submit"
-                            name="gemini_api_key"
-                            value=""
                             class="btn btn-outline-danger"
                         >
 
@@ -225,11 +236,12 @@
 
                         </button>
 
-                        {% endif %}
-
                     </div>
 
                 </form>
+
+                {% endif %}
+
 
             </div>
 
@@ -239,52 +251,5 @@
 
 </div>
 
-
-<!-- ================================================================
-     JAVASCRIPT DE EDICIÓN DE OBLIGACIONES
-     ================================================================ -->
-
-{% if contrato %}
-
-<script>
-
-function toggleEditObl(id) {
-
-    const desc = document.getElementById(
-        'obl-desc-' + id
-    );
-
-    const form = document.getElementById(
-        'obl-form-' + id
-    );
-
-    const btn = document.getElementById(
-        'obl-btn-' + id
-    );
-
-
-    if (form.classList.contains('d-none')) {
-
-        desc.classList.add('d-none');
-
-        form.classList.remove('d-none');
-
-        btn.classList.add('d-none');
-
-    } else {
-
-        desc.classList.remove('d-none');
-
-        form.classList.add('d-none');
-
-        btn.classList.remove('d-none');
-
-    }
-
-}
-
-</script>
-
-{% endif %}
 
 {% endblock %}
