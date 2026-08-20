@@ -1,13 +1,23 @@
 """
 Analizador de imagenes con Google Gemini Vision API.
-Genera descripciones automaticas del contenido visual de las evidencias.
+
+Genera descripciones automaticas orientadas a la
+actividad contractual realizada y consolida las
+actividades de un periodo en un texto ejecutivo.
 """
+
 import os
 import re
+
 import google.generativeai as genai
+
 from PIL import Image
 
-# Modelos probados y funcionales (ordenados por preferencia)
+
+# ============================================================
+# MODELOS GEMINI
+# ============================================================
+
 MODELOS_GEMINI = [
     'gemini-flash-latest',
     'gemini-2.5-flash',
@@ -21,214 +31,140 @@ MODELOS_GEMINI = [
 ]
 
 
+# ============================================================
+# UTILIDADES
+# ============================================================
+
 def _limpiar_key(api_key):
-    """Limpia espacios y saltos de linea de la API key."""
+    """
+    Limpia espacios y saltos de linea de la API key.
+    """
+
     if not api_key:
         return None
-    return api_key.strip().replace("\n", "").replace("\r", "").replace(" ", "")
 
-
-def _encontrar_modelo_funcional(key):
-    """Encuentra el primer modelo de Gemini que funcione con imagenes."""
-    try:
-        genai.configure(api_key=key)
-        models = list(genai.list_models())
-        disponibles = [m.name for m in models if 'gemini' in m.name.lower()]
-
-        for modelo_nombre in MODELOS_GEMINI:
-            nombre_completo = f"models/{modelo_nombre}"
-            if nombre_completo not in disponibles:
-                continue
-            try:
-                model = genai.GenerativeModel(modelo_nombre)
-                model.generate_content("Hola")
-                return modelo_nombre
-            except Exception:
-                continue
-
-        for m in models:
-            if 'gemini' in m.name.lower() and 'generateContent' in m.supported_generation_methods:
-                nombre_corto = m.name.replace("models/", "")
-                try:
-                    model = genai.GenerativeModel(nombre_corto)
-                    model.generate_content("Hola")
-                    return nombre_corto
-                except Exception:
-                    continue
-
-        return None
-    except Exception:
-        return None
-
-
-def verificar_api_key(api_key):
-    """
-    Verifica si una API key de Gemini es valida.
-    Retorna (bool, str) donde str es el mensaje de error o el modelo disponible.
-    """
-    key = _limpiar_key(api_key)
-    if not key:
-        return False, "La API key esta vacia."
-
-    if len(key) < 10:
-        return False, "La API key parece muy corta."
-
-    modelo = _encontrar_modelo_funcional(key)
-    if modelo:
-        return True, modelo
-
-    return False, (
-        "No se encontro ningun modelo funcional. Verifique que la API "
-        "'Generative Language API' este habilitada en su proyecto de Google Cloud."
+    return (
+        api_key
+        .strip()
+        .replace("\n", "")
+        .replace("\r", "")
+        .replace(" ", "")
     )
 
 
-def analizar_imagen(image_path, api_key=None):
+def _encontrar_modelo_funcional(key):
     """
-    Analiza una imagen usando Google Gemini Vision.
-    Detecta automaticamente el primer modelo disponible.
+    Encuentra el primer modelo de Gemini que funcione
+    para generación de contenido.
     """
-    key = _limpiar_key(api_key) or os.environ.get('GEMINI_API_KEY')
-    if not key:
-        return None
-
-    modelo = _encontrar_modelo_funcional(key)
-    if not modelo:
-        print("[VisionAnalyzer] No hay modelos funcionales disponibles.")
-        return None
 
     try:
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel(modelo)
-        img = Image.open(image_path)
 
-        prompt = (
-            "Eres un asistente de redaccion de informes contractuales. "
-            "Analiza esta imagen y describe UNICAMENTE la actividad funcional o accion que representa, "
-            "como si fuera parte de un informe ejecutivo. "
-            "REGLAS ESTRICTAS: "
-            "1. NO digas 'en la imagen', 'se observa', 'se ve', 'la imagen muestra', 'pantallazo de'. "
-            "2. NO describas elementos visuales, colores, disposicion de elementos o interfaz grafica. "
-            "3. Describe la ACCION o RESULTADO funcional: que se hizo, que se reviso, que se aprobo, que se entrego. "
-            "4. Maximo 2 oraciones. Se conciso y profesional. "
-            "5. Ejemplo bueno: 'Revision y ajuste de casos de prueba para el modulo de gestion de usuarios.' "
-            "6. Ejemplo malo: 'En la imagen se ve un pantallazo de una hoja de Excel con casos de prueba.' "
-            "7. No inventes datos que no se vean en la imagen."
+        genai.configure(
+            api_key=key
         )
 
-        response = model.generate_content([prompt, img])
-        descripcion = response.text.strip() if response.text else None
-        print(f"[VisionAnalyzer] Usando modelo: {modelo}")
-        return descripcion
+        models = list(
+            genai.list_models()
+        )
 
-    except Exception as e:
-        print(f"[VisionAnalyzer] Error con modelo {modelo}: {e}")
-        return None
+        disponibles = [
+            m.name
+            for m in models
+            if 'gemini' in m.name.lower()
+        ]
 
+        # ----------------------------------------------------
+        # Modelos preferidos
+        # ----------------------------------------------------
 
-def consolidar_textos_ejecutivo(descripciones, api_key=None):
-    """
-    Consolida multiples descripciones de actividades en un texto ejecutivo fluido.
-    Usa Gemini si hay API key disponible; si no, usa un enfoque de union inteligente.
-    """
-    if not descripciones:
-        return "Sin actividades reportadas."
+        for modelo_nombre in MODELOS_GEMINI:
 
-    key = _limpiar_key(api_key) or os.environ.get('GEMINI_API_KEY')
+            nombre_completo = (
+                f"models/{modelo_nombre}"
+            )
 
-    if key:
-        modelo = _encontrar_modelo_funcional(key)
-        if modelo:
+            if nombre_completo not in disponibles:
+                continue
+
             try:
-                genai.configure(api_key=key)
-                model = genai.GenerativeModel(modelo)
 
-                texto_base = "\n\n".join([f"- {d}" for d in descripciones])
-
-                prompt = (
-                    "Eres un redactor profesional de informes contractuales. "
-                    "A partir de las siguientes descripciones de actividades realizadas durante un mes, "
-                    "redacta UN SOLO texto ejecutivo fluido, profesional y coherente. "
-                    "REGLAS ESTRICTAS: "
-                    "1. NO menciones imagenes, fotografias, pantallazos, evidencias visuales ni archivos adjuntos. "
-                    "2. NO uses frases como 'se observa', 'se evidencia', 'la imagen muestra', 'como se ve en'. "
-                    "3. Escribe en parrafos conectados con conectores logicos (Una vez..., Posteriormente..., Finalmente...). "
-                    "4. El tono debe ser formal, de informe ejecutivo contractual. "
-                    "5. Agrupa actividades relacionadas en parrafos tematicos. "
-                    "6. Maximo 3-4 parrafos. "
-                    "\n\nDESCRIPCIONES DE ACTIVIDADES:\n"
-                    + texto_base
+                model = genai.GenerativeModel(
+                    modelo_nombre
                 )
 
-                response = model.generate_content(prompt)
-                if response.text:
-                    return response.text.strip()
-            except Exception as e:
-                print(f"[VisionAnalyzer] Error al consolidar con Gemini: {e}")
+                model.generate_content(
+                    "Hola"
+                )
 
-    return _consolidar_manual(descripciones)
+                return modelo_nombre
 
+            except Exception:
 
-def _consolidar_manual(descripciones):
-    """Consolida descripciones manualmente cuando no hay Gemini."""
-    if len(descripciones) == 1:
-        return _limpiar_texto(descripciones[0])
+                continue
 
-    limpias = [_limpiar_texto(d) for d in descripciones]
+        # ----------------------------------------------------
+        # Cualquier modelo compatible
+        # ----------------------------------------------------
 
-    conectores_inicio = [
-        "Durante el mes reportado, ",
-        "En el marco de las actividades contractuales, ",
-        "Como parte del cumplimiento de las obligaciones pactadas, ",
-    ]
+        for model_info in models:
 
-    conectores_medio = [
-        "Posteriormente, ",
-        "De manera complementaria, ",
-        "En paralelo, ",
-        "Asimismo, ",
-        "En otro frente de trabajo, ",
-    ]
+            if (
+                'gemini'
+                in model_info.name.lower()
+                and
+                'generateContent'
+                in model_info.supported_generation_methods
+            ):
 
-    conectores_cierre = [
-        "Finalmente, ",
-        "Para cerrar el periodo, ",
-        "Como cierre de las actividades del mes, ",
-    ]
+                nombre_corto = (
+                    model_info.name
+                    .replace(
+                        "models/",
+                        ""
+                    )
+                )
 
-    import random
+                try:
 
-    n = len(limpias)
-    if n <= 2:
-        partes = [limpias]
-    elif n <= 4:
-        mitad = n // 2
-        partes = [limpias[:mitad], limpias[mitad:]]
-    else:
-        tercio = n // 3
-        partes = [limpias[:tercio], limpias[tercio:2*tercio], limpias[2*tercio:]]
+                    model = genai.GenerativeModel(
+                        nombre_corto
+                    )
 
-    parrafos = []
+                    model.generate_content(
+                        "Hola"
+                    )
 
-    for i, grupo in enumerate(partes):
-        if i == 0:
-            conector = random.choice(conectores_inicio)
-        elif i == len(partes) - 1:
-            conector = random.choice(conectores_cierre)
-        else:
-            conector = random.choice(conectores_medio)
+                    return nombre_corto
 
-        texto_grupo = " ".join(grupo)
-        texto_grupo = texto_grupo[0].lower() + texto_grupo[1:]
-        parrafo = conector + texto_grupo
-        parrafos.append(parrafo)
+                except Exception:
 
-    return "\n\n".join(parrafos)
+                    continue
+
+        return None
+
+    except Exception:
+
+        return None
 
 
 def _limpiar_texto(texto):
-    """Elimina referencias a imagenes y evidencias del texto."""
+    """
+    Limpia referencias innecesarias a imágenes,
+    fotografías y evidencias visuales.
+
+    También normaliza espacios y puntuación.
+    """
+
+    if not texto:
+        return ''
+
+    resultado = str(
+        texto
+    ).strip()
+
     frases_a_eliminar = [
+
         r'[Ee]n la imagen[^.]*\.',
         r'[Ss]e observa[^.]*\.',
         r'[Ss]e visualiza[^.]*\.',
@@ -252,23 +188,682 @@ def _limpiar_texto(texto):
         r'[Ss]e adjunta evidencia documental[^.]*\.',
         r'[Ee]videnciado en la imagen[^,]*,\s*',
         r'[Dd]onde se observa[^.]*\.',
-        r'[Ss]e observa[^.]*\.',
-        r'[Ll]a imagen muestra[^.]*\.',
-        r'[Cc]omo se ve en[^.]*\.',
         r'[Pp]antallazo de[^,]*,\s*',
         r'[Ff]otografia de[^,]*,\s*',
     ]
 
-    resultado = texto
     for patron in frases_a_eliminar:
-        resultado = re.sub(patron, ' ', resultado)
 
-    resultado = re.sub(r'\s+', ' ', resultado)
-    resultado = re.sub(r'\.\.', '.', resultado)
-    resultado = re.sub(r'\.\s*\.', '.', resultado)
+        resultado = re.sub(
+            patron,
+            ' ',
+            resultado
+        )
+
+    # --------------------------------------------------------
+    # Eliminar markdown accidental
+    # --------------------------------------------------------
+
+    resultado = re.sub(
+        r'^\s*[-*•]\s*',
+        '',
+        resultado
+    )
+
+    resultado = re.sub(
+        r'\*\*',
+        '',
+        resultado
+    )
+
+    resultado = re.sub(
+        r'__',
+        '',
+        resultado
+    )
+
+    # --------------------------------------------------------
+    # Normalizar espacios
+    # --------------------------------------------------------
+
+    resultado = re.sub(
+        r'\s+',
+        ' ',
+        resultado
+    )
+
+    resultado = re.sub(
+        r'\.\.',
+        '.',
+        resultado
+    )
+
+    resultado = re.sub(
+        r'\.\s*\.',
+        '.',
+        resultado
+    )
+
     resultado = resultado.strip()
 
-    if resultado and not resultado.endswith('.'):
+    if (
+        resultado
+        and
+        not resultado.endswith(('.', '!', '?'))
+    ):
+
         resultado += '.'
 
     return resultado
+
+
+# ============================================================
+# VERIFICAR API KEY
+# ============================================================
+
+def verificar_api_key(api_key):
+    """
+    Verifica si una API key de Gemini es valida.
+
+    Retorna:
+
+        (bool, str)
+
+    donde str corresponde al modelo disponible
+    o al mensaje de error.
+    """
+
+    key = _limpiar_key(
+        api_key
+    )
+
+    if not key:
+
+        return (
+            False,
+            "La API key esta vacia."
+        )
+
+    if len(key) < 10:
+
+        return (
+            False,
+            "La API key parece muy corta."
+        )
+
+    modelo = _encontrar_modelo_funcional(
+        key
+    )
+
+    if modelo:
+
+        return (
+            True,
+            modelo
+        )
+
+    return (
+        False,
+        (
+            "No se encontro ningun modelo funcional. "
+            "Verifique que la API "
+            "'Generative Language API' "
+            "este habilitada en su proyecto de Google Cloud."
+        )
+    )
+
+
+# ============================================================
+# ANALIZAR IMAGEN
+# ============================================================
+
+def analizar_imagen(
+    image_path,
+    api_key=None,
+    contexto_obligacion=None,
+    anuncio_usuario=None
+):
+    """
+    Analiza una imagen mediante Gemini.
+
+    La IA recibe tres elementos:
+
+    1. La imagen.
+    2. La obligación contractual.
+    3. El contexto escrito por el usuario.
+
+    Esto permite que la descripción no sea solamente
+    una descripción visual, sino una interpretación
+    orientada a la actividad contractual.
+    """
+
+    key = (
+        _limpiar_key(api_key)
+        or
+        os.environ.get(
+            'GEMINI_API_KEY'
+        )
+    )
+
+    if not key:
+
+        return None
+
+    modelo = _encontrar_modelo_funcional(
+        key
+    )
+
+    if not modelo:
+
+        print(
+            '[VisionAnalyzer] '
+            'No hay modelos funcionales disponibles.'
+        )
+
+        return None
+
+    try:
+
+        genai.configure(
+            api_key=key
+        )
+
+        model = genai.GenerativeModel(
+            modelo
+        )
+
+        # ----------------------------------------------------
+        # Abrir imagen
+        # ----------------------------------------------------
+
+        img = Image.open(
+            image_path
+        )
+
+        contexto = (
+            contexto_obligacion
+            or
+            'No se proporcionó la descripción de la obligación.'
+        )
+
+        anuncio = (
+            anuncio_usuario
+            or
+            'No se proporcionó contexto adicional.'
+        )
+
+        # ----------------------------------------------------
+        # Prompt contractual
+        # ----------------------------------------------------
+
+        prompt = f"""
+Eres un profesional encargado de redactar
+informes de ejecución contractual para una
+entidad pública.
+
+Debes analizar una actividad utilizando:
+
+1. La información contenida en la imagen.
+2. La obligación contractual.
+3. El contexto proporcionado por el usuario.
+
+OBLIGACIÓN CONTRACTUAL:
+
+{contexto}
+
+CONTEXTO PROPORCIONADO POR EL USUARIO:
+
+{anuncio}
+
+OBJETIVO:
+
+Redacta una descripción profesional de la actividad
+realizada y relaciónala con la obligación contractual
+cuando exista información suficiente para hacerlo.
+
+La descripción debe responder, en la medida en que
+la información disponible lo permita:
+
+- ¿Qué actividad se realizó?
+- ¿Qué gestión se desarrolló?
+- ¿Qué se revisó, elaboró, actualizó, validó,
+  gestionó, implementó o coordinó?
+- ¿Qué resultado, avance o producto puede
+  identificarse?
+- ¿Cómo contribuye la actividad al cumplimiento
+  de la obligación?
+
+REGLAS OBLIGATORIAS:
+
+1. NO digas:
+   "en la imagen",
+   "se observa",
+   "se ve",
+   "la imagen muestra",
+   "pantallazo",
+   "captura de pantalla",
+   "fotografía",
+   "evidencia visual".
+
+2. NO describas colores, posiciones, botones,
+   ventanas o elementos gráficos que no aporten
+   información sobre la actividad.
+
+3. Describe la actividad funcional y contractual.
+
+4. Utiliza lenguaje formal, técnico y administrativo.
+
+5. No inventes datos.
+
+6. No inventes cantidades, porcentajes, nombres,
+   fechas, resultados, usuarios, reuniones,
+   entregables o aprobaciones.
+
+7. Si la información únicamente demuestra un
+   avance o una gestión, no afirmes que existe
+   cumplimiento total.
+
+8. Utiliza verbos de acción como:
+   revisión, análisis, elaboración, actualización,
+   seguimiento, validación, configuración,
+   implementación, documentación, coordinación,
+   verificación, atención, gestión, consolidación,
+   socialización, ajuste y preparación.
+
+9. La descripción debe tener entre 1 y 3 oraciones.
+
+10. No utilices listas.
+
+11. La descripción debe poder copiarse directamente
+    en un informe de actividades contractuales.
+
+12. Entrega únicamente la descripción final.
+"""
+
+        response = model.generate_content(
+            [
+                prompt,
+                img
+            ]
+        )
+
+        descripcion = (
+            response.text.strip()
+            if response.text
+            else None
+        )
+
+        if descripcion:
+
+            descripcion = _limpiar_texto(
+                descripcion
+            )
+
+        print(
+            f'[VisionAnalyzer] '
+            f'Usando modelo: {modelo}'
+        )
+
+        return descripcion
+
+    except Exception as e:
+
+        print(
+            f'[VisionAnalyzer] '
+            f'Error con modelo {modelo}: {e}'
+        )
+
+        return None
+
+
+# ============================================================
+# CONSOLIDAR ACTIVIDADES
+# ============================================================
+
+def consolidar_textos_ejecutivo(
+    descripciones,
+    api_key=None,
+    obligacion=None,
+    periodo=None
+):
+    """
+    Consolida las actividades de un reporte mensual
+    en un único párrafo ejecutivo.
+
+    La obligación contractual se utiliza como contexto
+    para que el resumen explique la relación entre las
+    actividades y el cumplimiento contractual.
+    """
+
+    if not descripciones:
+
+        return (
+            'Durante el periodo reportado no se '
+            'registraron actividades.'
+        )
+
+    # --------------------------------------------------------
+    # Limpiar descripciones
+    # --------------------------------------------------------
+
+    descripciones_limpias = []
+
+    for descripcion in descripciones:
+
+        if not descripcion:
+
+            continue
+
+        texto = _limpiar_texto(
+            descripcion
+        )
+
+        if texto:
+
+            descripciones_limpias.append(
+                texto
+            )
+
+    if not descripciones_limpias:
+
+        return (
+            'Durante el periodo reportado no se '
+            'registraron actividades.'
+        )
+
+    # --------------------------------------------------------
+    # Una sola actividad
+    # --------------------------------------------------------
+
+    if len(descripciones_limpias) == 1:
+
+        return descripciones_limpias[0]
+
+    # --------------------------------------------------------
+    # API KEY
+    # --------------------------------------------------------
+
+    key = (
+        _limpiar_key(api_key)
+        or
+        os.environ.get(
+            'GEMINI_API_KEY'
+        )
+    )
+
+    if not key:
+
+        return _consolidar_manual(
+            descripciones_limpias
+        )
+
+    modelo = _encontrar_modelo_funcional(
+        key
+    )
+
+    if not modelo:
+
+        return _consolidar_manual(
+            descripciones_limpias
+        )
+
+    try:
+
+        genai.configure(
+            api_key=key
+        )
+
+        model = genai.GenerativeModel(
+            modelo
+        )
+
+        contexto_obligacion = (
+            obligacion
+            or
+            'No especificada.'
+        )
+
+        contexto_periodo = (
+            periodo
+            or
+            'Periodo reportado.'
+        )
+
+        actividades = "\n".join(
+            [
+                f'{i + 1}. {texto}'
+                for i, texto
+                in enumerate(
+                    descripciones_limpias
+                )
+            ]
+        )
+
+        prompt = f"""
+Eres un redactor especializado en informes
+de ejecución contractual para entidades públicas.
+
+Debes consolidar las actividades realizadas durante
+un periodo en UN SOLO PÁRRAFO EJECUTIVO.
+
+OBLIGACIÓN CONTRACTUAL:
+
+{contexto_obligacion}
+
+PERIODO:
+
+{contexto_periodo}
+
+ACTIVIDADES REGISTRADAS:
+
+{actividades}
+
+OBJETIVO:
+
+Redacta un único párrafo que explique de manera
+clara, profesional y coherente las principales
+actividades desarrolladas y su contribución al
+cumplimiento de la obligación contractual.
+
+REGLAS:
+
+1. Escribe UN SOLO PÁRRAFO.
+
+2. Utiliza lenguaje formal, técnico y administrativo.
+
+3. Integra las actividades en una narrativa coherente.
+
+4. NO enumeres las actividades.
+
+5. Evita repetir las mismas palabras.
+
+6. Agrupa actividades relacionadas.
+
+7. Utiliza conectores naturales:
+   "Durante el periodo...",
+   "Asimismo...",
+   "De manera complementaria...",
+   "Posteriormente...",
+   "Como resultado...",
+   "Finalmente...".
+
+8. Prioriza:
+   - acciones realizadas;
+   - gestiones adelantadas;
+   - avances;
+   - productos;
+   - resultados;
+   - seguimiento;
+   - contribución contractual.
+
+9. NO inventes información.
+
+10. NO inventes cantidades, porcentajes,
+    fechas, resultados, nombres, reuniones,
+    entregables o aprobaciones.
+
+11. NO menciones:
+    imágenes,
+    fotografías,
+    capturas,
+    pantallazos,
+    evidencias,
+    archivos adjuntos.
+
+12. NO utilices:
+    "se observa",
+    "se evidencia",
+    "la imagen muestra",
+    "como se ve".
+
+13. Evita frases vacías como:
+    "se realizaron las actividades correspondientes",
+    cuando no aporten información concreta.
+
+14. No exageres el cumplimiento.
+
+15. Si la información demuestra solamente un avance,
+    revisión, gestión o seguimiento, utiliza ese
+    nivel de certeza.
+
+16. El texto debe parecer redactado por un profesional
+    responsable de un informe contractual.
+
+17. Cuando exista información suficiente,
+    procura una extensión aproximada de 100 a 180 palabras.
+
+18. Entrega únicamente el párrafo final.
+"""
+
+        response = model.generate_content(
+            prompt
+        )
+
+        if response.text:
+
+            resultado = _limpiar_texto(
+                response.text
+            )
+
+            # ------------------------------------------------
+            # Convertir saltos de línea en espacio para
+            # garantizar un único párrafo.
+            # ------------------------------------------------
+
+            resultado = re.sub(
+                r'\s+',
+                ' ',
+                resultado
+            ).strip()
+
+            return resultado
+
+    except Exception as e:
+
+        print(
+            '[VisionAnalyzer] '
+            'Error al consolidar con Gemini: '
+            f'{e}'
+        )
+
+    return _consolidar_manual(
+        descripciones_limpias
+    )
+
+
+# ============================================================
+# CONSOLIDACIÓN SIN IA
+# ============================================================
+
+def _consolidar_manual(
+    descripciones
+):
+    """
+    Consolida actividades sin utilizar IA.
+
+    La salida es determinística: no utiliza random,
+    de modo que el mismo conjunto de actividades
+    produce siempre el mismo resultado.
+    """
+
+    limpias = []
+
+    for descripcion in descripciones:
+
+        texto = _limpiar_texto(
+            descripcion
+        )
+
+        if texto:
+
+            limpias.append(
+                texto
+            )
+
+    if not limpias:
+
+        return (
+            'Durante el periodo reportado no se '
+            'registraron actividades.'
+        )
+
+    if len(limpias) == 1:
+
+        return limpias[0]
+
+    partes = []
+
+    for indice, texto in enumerate(
+        limpias
+    ):
+
+        texto = texto.strip()
+
+        if not texto:
+
+            continue
+
+        # ----------------------------------------------------
+        # Primera actividad
+        # ----------------------------------------------------
+
+        if indice == 0:
+
+            prefijo = (
+                'Durante el periodo reportado, '
+            )
+
+        # ----------------------------------------------------
+        # Última actividad
+        # ----------------------------------------------------
+
+        elif indice == len(limpias) - 1:
+
+            prefijo = (
+                'Finalmente, '
+            )
+
+        # ----------------------------------------------------
+        # Actividades intermedias
+        # ----------------------------------------------------
+
+        else:
+
+            prefijo = (
+                'Asimismo, '
+            )
+
+        if texto:
+
+            texto = (
+                texto[0].lower()
+                + texto[1:]
+            )
+
+        partes.append(
+            prefijo + texto
+        )
+
+    return _limpiar_texto(
+        ' '.join(partes)
+    )
