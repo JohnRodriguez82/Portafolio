@@ -34,7 +34,8 @@ from config import Config
 
 from models import (
     db,
-    Usuario
+    Usuario,
+    ConfiguracionSistema
 )
 
 
@@ -373,7 +374,22 @@ def _inicializar_base_datos(app):
         tables = (
             inspector.get_table_names()
         )
+        
+        # ====================================================
+        # CONFIGURACIÓN DEL SISTEMA
+        # ====================================================
 
+        if 'configuracion_sistema' not in tables:
+
+            ConfiguracionSistema.__table__.create(
+                bind=db.engine,
+                checkfirst=True
+            )
+
+            print(
+                '[INFO] Tabla configuracion_sistema '
+                'creada correctamente.'
+            )
         # ====================================================
         # CREAR TABLAS
         # ====================================================
