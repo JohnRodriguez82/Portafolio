@@ -3,7 +3,6 @@ from flask_login import UserMixin
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import random
-from cryptography.fernet import Fernet
 
 db = SQLAlchemy()
 
