@@ -21,8 +21,7 @@ from werkzeug.utils import secure_filename
 
 from app import db
 
-from app.models.evidencia import Evidencia
-
+from models import Evidencia
 
 class EvidenciaService:
     """
