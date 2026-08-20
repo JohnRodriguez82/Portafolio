@@ -18,12 +18,12 @@ La clave maestra de cifrado se obtiene desde:
     GEMINI_CONFIG_ENCRYPTION_KEY
 
 IMPORTANTE:
-La clave maestra NO debe almacenarse en la base de datos.
+La clave maestra NO se almacena en la base de datos.
 
-La API Key antigua almacenada en .env se mantiene como
-compatibilidad temporal. Una vez guardada nuevamente desde
-Configuración del Sistema, la nueva copia queda almacenada
-en la base de datos.
+Compatibilidad temporal:
+    GEMINI_API_KEY puede permanecer en .env.
+    Si existe allí y todavía no hay una API Key almacenada
+    en la base de datos, será utilizada como respaldo.
 """
 
 import os
@@ -66,10 +66,12 @@ configuracion_bp = Blueprint(
 # CONSTANTES
 # ============================================================
 
-CLAVE_GEMINI = 'GEMINI_API_KEY'
+CLAVE_GEMINI = (
+    'GEMINI_API_KEY'
+)
 
 CLAVE_ENCRIPTACION = (
-    'GEMINI_CONFIG_ENCRYPTION_KEY'
+    'APP_ENCRYPTION_KEY'
 )
 
 
@@ -90,79 +92,6 @@ _ENV_FILE = os.path.join(
 
 
 # ============================================================
-# CLAVE MAESTRA DE ENCRIPTACIÓN
-# ============================================================
-
-def _obtener_clave_encriptacion():
-    """
-    Obtiene la clave maestra utilizada para cifrar y descifrar
-    la configuración sensible.
-
-    La clave debe estar en:
-
-        GEMINI_CONFIG_ENCRYPTION_KEY
-
-    Esta clave NO se almacena en la base de datos.
-
-    Retorna:
-        bytes: clave Fernet válida.
-
-    Raises:
-        RuntimeError:
-            Si la clave no está configurada o no es válida.
-    """
-
-    clave = os.environ.get(
-        CLAVE_ENCRIPTACION,
-        ''
-    ).strip()
-
-    # --------------------------------------------------------
-    # Si no está en el entorno, intentar leer .env
-    # --------------------------------------------------------
-
-    if not clave:
-
-        clave = _leer_variable_env(
-            CLAVE_ENCRIPTACION
-        )
-
-    if not clave:
-
-        raise RuntimeError(
-            'No está configurada la clave maestra '
-            f'{CLAVE_ENCRIPTACION}. '
-            'Debe configurarse en el entorno o en el archivo .env.'
-        )
-
-    try:
-
-        clave_bytes = clave.encode(
-            'utf-8'
-        )
-
-        # ----------------------------------------------------
-        # Validar que sea una clave Fernet válida.
-        # ----------------------------------------------------
-
-        Fernet(
-            clave_bytes
-        )
-
-        return clave_bytes
-
-    except (
-        ValueError,
-        TypeError
-    ) as exc:
-
-        raise RuntimeError(
-            f'La variable {CLAVE_ENCRIPTACION} '
-            'no contiene una clave Fernet válida.'
-        ) from exc
-
-
-# ============================================================
 # LEER VARIABLE DESDE .ENV
 # ============================================================
 
@@ -170,13 +99,11 @@ def _leer_variable_env(
     nombre_variable
 ):
     """
-    Lee una variable específica desde .env.
-
-    Se utiliza únicamente como compatibilidad/respaldo.
+    Lee una variable específica desde el archivo .env.
 
     Args:
         nombre_variable:
-            Nombre de la variable.
+            Nombre de la variable que se desea obtener.
 
     Returns:
         str:
@@ -201,6 +128,10 @@ def _leer_variable_env(
 
                 linea = linea.strip()
 
+                # ------------------------------------------------
+                # Ignorar comentarios y líneas vacías
+                # ------------------------------------------------
+
                 if (
                     not linea
                     or
@@ -222,9 +153,9 @@ def _leer_variable_env(
                         1
                     )[1].strip()
 
-                    # ----------------------------------------
+                    # ------------------------------------------------
                     # Eliminar comillas
-                    # ----------------------------------------
+                    # ------------------------------------------------
 
                     if (
                         len(valor) >= 2
@@ -252,7 +183,89 @@ def _leer_variable_env(
 
 
 # ============================================================
-# ENCRIPTAR
+# OBTENER CLAVE MAESTRA DE ENCRIPTACIÓN
+# ============================================================
+
+def _obtener_clave_encriptacion():
+    """
+    Obtiene la clave maestra utilizada por Fernet.
+
+    Prioridad:
+
+        1. Variable de entorno.
+        2. Archivo .env.
+
+    La clave maestra NO se almacena en la base de datos.
+
+    Returns:
+        bytes:
+            Clave Fernet válida.
+
+    Raises:
+        RuntimeError:
+            Si la clave no está configurada o no es válida.
+    """
+
+    # ========================================================
+    # VARIABLES DE ENTORNO
+    # ========================================================
+
+    clave = os.environ.get(
+        CLAVE_ENCRIPTACION,
+        ''
+    ).strip()
+
+    # ========================================================
+    # ARCHIVO .ENV
+    # ========================================================
+
+    if not clave:
+
+        clave = _leer_variable_env(
+            CLAVE_ENCRIPTACION
+        )
+
+    # ========================================================
+    # VALIDAR EXISTENCIA
+    # ========================================================
+
+    if not clave:
+
+        raise RuntimeError(
+            'No está configurada la clave maestra '
+            f'{CLAVE_ENCRIPTACION}. '
+            'Debe configurarse en el entorno o en el archivo .env.'
+        )
+
+    try:
+
+        clave_bytes = clave.encode(
+            'utf-8'
+        )
+
+        # ----------------------------------------------------
+        # Validar clave Fernet
+        # ----------------------------------------------------
+
+        Fernet(
+            clave_bytes
+        )
+
+        return clave_bytes
+
+    except (
+        ValueError,
+        TypeError
+    ) as exc:
+
+        raise RuntimeError(
+            f'La variable {CLAVE_ENCRIPTACION} '
+            'no contiene una clave Fernet válida.'
+        ) from exc
+
+
+# ============================================================
+# ENCRIPTAR VALOR
 # ============================================================
 
 def _encriptar_valor(
@@ -267,7 +280,7 @@ def _encriptar_valor(
 
     Returns:
         str:
-            Valor cifrado.
+            Texto cifrado.
     """
 
     if valor is None:
@@ -302,14 +315,14 @@ def _encriptar_valor(
 
 
 # ============================================================
-# DESENCRIPTAR
+# DESENCRIPTAR VALOR
 # ============================================================
 
 def _desencriptar_valor(
     valor_encriptado
 ):
     """
-    Descifra un valor previamente almacenado mediante Fernet.
+    Descifra un valor almacenado mediante Fernet.
 
     Args:
         valor_encriptado:
@@ -321,7 +334,7 @@ def _desencriptar_valor(
 
     Raises:
         RuntimeError:
-            Si el valor no puede ser descifrado.
+            Si no se puede descifrar.
     """
 
     if not valor_encriptado:
@@ -359,18 +372,14 @@ def _desencriptar_valor(
 
 
 # ============================================================
-# BUSCAR CONFIGURACIÓN
+# OBTENER CONFIGURACIÓN GLOBAL
 # ============================================================
 
-def _obtener_configuracion(
-    clave
-):
+def _obtener_configuracion():
     """
-    Busca una configuración global por su nombre.
+    Obtiene la configuración global del sistema.
 
-    Args:
-        clave:
-            Nombre de la configuración.
+    La aplicación utiliza una única fila de configuración.
 
     Returns:
         ConfiguracionSistema | None
@@ -378,9 +387,7 @@ def _obtener_configuracion(
 
     try:
 
-        return ConfiguracionSistema.query.filter_by(
-            clave=clave
-        ).first()
+        return ConfiguracionSistema.query.first()
 
     except Exception as exc:
 
@@ -408,7 +415,7 @@ def _obtener_api_key():
 
     Returns:
         str:
-            API Key o cadena vacía si no está configurada.
+            API Key o cadena vacía.
     """
 
     # ========================================================
@@ -417,14 +424,12 @@ def _obtener_api_key():
 
     try:
 
-        configuracion = _obtener_configuracion(
-            CLAVE_GEMINI
-        )
+        configuracion = _obtener_configuracion()
 
         if configuracion:
 
             valor_encriptado = (
-                configuracion.valor_encriptado
+                configuracion.gemini_api_key_encriptada
             )
 
             if valor_encriptado:
@@ -455,7 +460,7 @@ def _obtener_api_key():
         )
 
     # ========================================================
-    # COMPATIBILIDAD CON ENTORNO
+    # COMPATIBILIDAD CON VARIABLE DE ENTORNO
     # ========================================================
 
     api_key = os.environ.get(
@@ -490,13 +495,14 @@ def _guardar_api_key(
     api_key
 ):
     """
-    Guarda la API Key global de Gemini en la base de datos.
+    Guarda la API Key global de Gemini.
 
-    La API Key se almacena cifrada mediante Fernet.
+    La API Key se cifra mediante Fernet antes de almacenarla
+    en la base de datos.
 
-    Args:
-        api_key:
-            API Key de Gemini.
+    Utiliza:
+
+        ConfiguracionSistema.gemini_api_key_encriptada
 
     Returns:
         bool:
@@ -518,7 +524,7 @@ def _guardar_api_key(
     try:
 
         # ====================================================
-        # CIFRAR
+        # CIFRAR API KEY
         # ====================================================
 
         valor_encriptado = _encriptar_valor(
@@ -530,25 +536,20 @@ def _guardar_api_key(
             return False
 
         # ====================================================
-        # BUSCAR CONFIGURACIÓN EXISTENTE
+        # OBTENER CONFIGURACIÓN EXISTENTE
         # ====================================================
 
-        configuracion = _obtener_configuracion(
-            CLAVE_GEMINI
-        )
+        configuracion = _obtener_configuracion()
 
         # ====================================================
-        # CREAR O ACTUALIZAR
+        # CREAR CONFIGURACIÓN
         # ====================================================
 
         if configuracion is None:
 
-            configuracion = (
-                ConfiguracionSistema(
-                    clave=CLAVE_GEMINI,
-                    valor_encriptado=(
-                        valor_encriptado
-                    )
+            configuracion = ConfiguracionSistema(
+                gemini_api_key_encriptada=(
+                    valor_encriptado
                 )
             )
 
@@ -556,9 +557,13 @@ def _guardar_api_key(
                 configuracion
             )
 
+        # ====================================================
+        # ACTUALIZAR CONFIGURACIÓN
+        # ====================================================
+
         else:
 
-            configuracion.valor_encriptado = (
+            configuracion.gemini_api_key_encriptada = (
                 valor_encriptado
             )
 
@@ -571,9 +576,8 @@ def _guardar_api_key(
         # ====================================================
         # ACTUALIZAR ENTORNO EN MEMORIA
         #
-        # Esto permite que partes antiguas de la aplicación
-        # que todavía consulten GEMINI_API_KEY sigan
-        # funcionando durante la transición.
+        # Esto mantiene compatibilidad con código antiguo
+        # que todavía consulte GEMINI_API_KEY.
         # ====================================================
 
         os.environ[
@@ -603,8 +607,8 @@ def _eliminar_api_key():
     """
     Elimina la API Key global de la base de datos.
 
-    También elimina la variable de entorno de la memoria
-    del proceso actual.
+    También elimina GEMINI_API_KEY del entorno del proceso
+    actual.
 
     No modifica el archivo .env.
 
@@ -615,15 +619,11 @@ def _eliminar_api_key():
 
     try:
 
-        configuracion = _obtener_configuracion(
-            CLAVE_GEMINI
-        )
+        configuracion = _obtener_configuracion()
 
         if configuracion:
 
-            db.session.delete(
-                configuracion
-            )
+            configuracion.gemini_api_key_encriptada = None
 
             db.session.commit()
 
@@ -672,7 +672,7 @@ def configuracion():
     """
 
     # ========================================================
-    # GUARDAR CONFIGURACIÓN
+    # GUARDAR
     # ========================================================
 
     if request.method == 'POST':
@@ -683,7 +683,7 @@ def configuracion():
         ).strip()
 
         # ----------------------------------------------------
-        # Validar API Key
+        # VALIDAR
         # ----------------------------------------------------
 
         if not api_key:
@@ -700,7 +700,7 @@ def configuracion():
             )
 
         # ----------------------------------------------------
-        # Guardar
+        # GUARDAR
         # ----------------------------------------------------
 
         if _guardar_api_key(
@@ -742,9 +742,9 @@ def configuracion():
         api_key
     )
 
-    # --------------------------------------------------------
-    # No enviar la clave completa a la plantilla.
-    # --------------------------------------------------------
+    # ========================================================
+    # MÁSCARA DE API KEY
+    # ========================================================
 
     api_key_mostrable = ''
 
@@ -765,6 +765,10 @@ def configuracion():
                 +
                 api_key[-4:]
             )
+
+    # ========================================================
+    # PLANTILLA
+    # ========================================================
 
     return render_template(
         'config.html',
