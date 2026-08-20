@@ -3,8 +3,31 @@ from flask_login import UserMixin
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import random
+from cryptography.fernet import Fernet
 
 db = SQLAlchemy()
+
+class ConfiguracionSistema(db.Model):
+    __tablename__ = 'configuracion_sistema'
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    gemini_api_key_encriptada = db.Column(
+        db.Text,
+        nullable=True
+    )
+
+    fecha_actualizacion = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+    def __repr__(self):
+        return '<ConfiguracionSistema>'
 
 class Usuario(UserMixin, db.Model):
     __tablename__ = 'usuario'
@@ -29,6 +52,12 @@ class Usuario(UserMixin, db.Model):
     def __repr__(self):
         return f'<Usuario {self.email}>'
 
+        
+class ConfiguracionSistema(db.Model):
+    __tablename__ = 'configuracion_sistema'
+
+    id = db.Column(db.Integer, primary_key=True)
+    gemini_api_key = db.Column(db.Text, nullable=True)
 
 class Contrato(db.Model):
     __tablename__ = 'contrato'
