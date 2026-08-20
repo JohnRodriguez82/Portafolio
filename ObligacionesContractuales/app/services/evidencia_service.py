@@ -120,12 +120,35 @@ class EvidenciaService:
         # DESCRIPCIÓN DE ACTIVIDAD
         # ----------------------------------------------------
 
-        descripcion_actividad = (
-            self._generar_descripcion_actividad(
-                reporte=reporte,
-                anuncio=anuncio
+        # Si Gemini logró analizar la imagen, utilizamos
+        # directamente esa descripción como descripción
+        # principal de la actividad.
+
+        descripcion_visual = str(
+            descripcion or ''
+        ).strip()
+
+        if descripcion_visual:
+
+            descripcion_actividad = (
+                descripcion_visual
             )
-        )
+
+        else:
+
+            # ------------------------------------------------
+            # RESPALDO
+            # ------------------------------------------------
+            # Si Gemini no está disponible o no pudo analizar
+            # la imagen, conservamos la lógica anterior.
+            # ------------------------------------------------
+
+            descripcion_actividad = (
+                self._generar_descripcion_actividad(
+                    reporte=reporte,
+                    anuncio=anuncio
+                )
+            )
 
         # ----------------------------------------------------
         # CREAR EVIDENCIA
