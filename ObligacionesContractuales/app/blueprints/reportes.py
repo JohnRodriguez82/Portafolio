@@ -1385,7 +1385,9 @@ def subir_evidencia(id):
 
             descripcion_visual = analizar_imagen(
                 file,
-                api_key
+                api_key,
+                contexto_obligacion=obligacion.descripcion,
+                anuncio_usuario=anuncio_usuario
             )
 
             if descripcion_visual:
@@ -2795,7 +2797,9 @@ def generar_excel_consolidado():
                         texto_ejecutivo = (
                             consolidar_textos_ejecutivo(
                                 actividades_textos,
-                                api_key
+                                api_key,
+                                obligacion=obligacion.descripcion,
+                                periodo=f'{nombre_mes} {anio}'
                             )
                         )
 
