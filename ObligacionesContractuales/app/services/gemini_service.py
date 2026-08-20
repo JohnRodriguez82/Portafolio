@@ -2,15 +2,26 @@
 Servicio de integración con Google Gemini.
 
 Responsabilidades:
-- Obtener y validar la API Key de Gemini.
+- Obtener la API Key global desde la base de datos.
+- Desencriptar la API Key utilizando APP_ENCRYPTION_KEY.
 - Analizar imágenes de evidencias.
 - Generar descripciones de las evidencias.
 - Manejar errores de comunicación con Gemini.
 - Mantener aislada la dependencia de Gemini del resto de la aplicación.
 
+La API Key de Gemini se almacena de forma global en:
+
+    configuracion_sistema.gemini_api_key_encriptada
+
+La clave utilizada para desencriptarla se obtiene desde:
+
+    APP_ENCRYPTION_KEY
+
+La API Key NO se almacena en texto plano en la base de datos.
+
 Este servicio NO maneja:
 - Flask
-- SQLAlchemy
+- SQLAlchemy directamente desde las rutas
 - archivos Excel
 - reportes
 - contratos
@@ -35,6 +46,179 @@ ESPERA_ENTRE_IMAGENES = (
     60 / MAX_IMAGENES_POR_MINUTO
 )
 
+VARIABLE_CLAVE_ENCRIPTACION = (
+    "APP_ENCRYPTION_KEY"
+)
+
+
+# ============================================================
+# OBTENER API KEY DESDE BASE DE DATOS
+# ============================================================
+
+def _obtener_api_key_desde_bd():
+    """
+    Obtiene la API Key global de Gemini desde la base de datos
+    y la desencripta utilizando APP_ENCRYPTION_KEY.
+
+    La API Key se encuentra almacenada en:
+
+        configuracion_sistema.gemini_api_key_encriptada
+
+    Retorna:
+        str:
+            API Key desencriptada.
+
+        '':
+            Si no existe configuración o no puede
+            desencriptarse.
+
+    Importante:
+        Nunca devuelve ni imprime la clave de encriptación.
+    """
+
+    try:
+
+        # ====================================================
+        # IMPORTACIONES LOCALES
+        # ====================================================
+
+        from flask import has_app_context
+
+        if not has_app_context():
+            return ''
+
+        from models import ConfiguracionSistema
+
+        from cryptography.fernet import (
+            Fernet,
+            InvalidToken
+        )
+
+        # ====================================================
+        # OBTENER CLAVE DE ENCRIPTACIÓN
+        # ====================================================
+
+        clave_encriptacion = (
+            os.environ.get(
+                VARIABLE_CLAVE_ENCRIPTACION,
+                ''
+            )
+            .strip()
+        )
+
+        if not clave_encriptacion:
+
+            print(
+                '[ADVERTENCIA] '
+                'APP_ENCRYPTION_KEY no está configurada.'
+            )
+
+            return ''
+
+        # ====================================================
+        # OBTENER CONFIGURACIÓN GLOBAL
+        # ====================================================
+
+        configuracion = (
+            ConfiguracionSistema.query
+            .order_by(
+                ConfiguracionSistema.id.asc()
+            )
+            .first()
+        )
+
+        if not configuracion:
+
+            return ''
+
+        # ====================================================
+        # OBTENER VALOR ENCRIPTADO
+        # ====================================================
+
+        api_key_encriptada = (
+            configuracion.gemini_api_key_encriptada
+            or ''
+        ).strip()
+
+        if not api_key_encriptada:
+
+            return ''
+
+        # ====================================================
+        # CREAR FERNET
+        # ====================================================
+
+        try:
+
+            fernet = Fernet(
+                clave_encriptacion.encode(
+                    'utf-8'
+                )
+            )
+
+        except Exception as exc:
+
+            print(
+                '[ERROR] '
+                'APP_ENCRYPTION_KEY no es una clave Fernet válida.'
+            )
+
+            return ''
+
+        # ====================================================
+        # DESENCRIPTAR
+        # ====================================================
+
+        try:
+
+            api_key = fernet.decrypt(
+                api_key_encriptada.encode(
+                    'utf-8'
+                )
+            ).decode(
+                'utf-8'
+            ).strip()
+
+        except InvalidToken:
+
+            print(
+                '[ERROR] '
+                'No fue posible desencriptar la API Key de Gemini. '
+                'Verifique APP_ENCRYPTION_KEY.'
+            )
+
+            return ''
+
+        except Exception as exc:
+
+            print(
+                '[ERROR] '
+                'Error al desencriptar la API Key de Gemini: '
+                f'{type(exc).__name__}'
+            )
+
+            return ''
+
+        # ====================================================
+        # VALIDAR
+        # ====================================================
+
+        if not api_key:
+
+            return ''
+
+        return api_key
+
+    except Exception as exc:
+
+        print(
+            '[ERROR] '
+            'No fue posible obtener la API Key de Gemini '
+            f'desde la base de datos: {type(exc).__name__}'
+        )
+
+        return ''
+
 
 # ============================================================
 # SERVICIO GEMINI
@@ -55,20 +239,30 @@ class GeminiService:
 
         Args:
             api_key:
-                API Key de Gemini. Si no se proporciona,
-                se intenta obtener desde GEMINI_API_KEY.
+                API Key opcional.
+
+                Si se proporciona explícitamente, se utiliza
+                esa clave.
+
+                Si no se proporciona, se obtiene la API Key
+                global desde la base de datos.
 
             modelo:
                 Nombre del modelo Gemini.
         """
 
+        # ====================================================
+        # API KEY
+        # ====================================================
+
         self.api_key = (
             api_key
-            or os.environ.get(
-                "GEMINI_API_KEY",
-                ""
-            ).strip()
+            or _obtener_api_key_desde_bd()
         )
+
+        # ====================================================
+        # MODELO
+        # ====================================================
 
         self.modelo = (
             modelo
@@ -77,6 +271,10 @@ class GeminiService:
                 DEFAULT_MODEL
             ).strip()
         )
+
+        # ====================================================
+        # CLIENTE
+        # ====================================================
 
         self.client = None
 
@@ -94,6 +292,7 @@ class GeminiService:
         """
 
         if not self.api_key:
+
             return
 
         try:
@@ -111,6 +310,36 @@ class GeminiService:
                 "google-genai. Ejecute: "
                 "pip install google-genai"
             ) from exc
+
+    # ========================================================
+    # RECARGAR API KEY
+    # ========================================================
+
+    def recargar_api_key(self):
+        """
+        Vuelve a cargar la API Key global desde la base de datos.
+
+        Este método permite que una API Key guardada desde la
+        pantalla de Configuración del Sistema sea utilizada
+        sin necesidad de reiniciar manualmente la aplicación.
+
+        Retorna:
+            bool:
+                True si la API Key está disponible.
+        """
+
+        self.api_key = (
+            _obtener_api_key_desde_bd()
+        )
+
+        self.client = None
+
+        self._inicializar_cliente()
+
+        return bool(
+            self.api_key
+            and self.client
+        )
 
     # ========================================================
     # ESTADO
@@ -162,8 +391,25 @@ class GeminiService:
                 Si ocurre un error al comunicarse con Gemini.
         """
 
+        # ====================================================
+        # ASEGURAR API KEY ACTUALIZADA
+        # ====================================================
+
         if not self.activo:
+
+            self.recargar_api_key()
+
+        # ====================================================
+        # VALIDAR GEMINI
+        # ====================================================
+
+        if not self.activo:
+
             return None
+
+        # ====================================================
+        # VALIDAR ARCHIVO
+        # ====================================================
 
         ruta = Path(
             ruta_imagen
@@ -180,6 +426,10 @@ class GeminiService:
             raise FileNotFoundError(
                 f"La ruta no corresponde a un archivo: {ruta}"
             )
+
+        # ====================================================
+        # ANALIZAR
+        # ====================================================
 
         try:
 
@@ -281,6 +531,7 @@ No inventes información que contradiga la imagen.
         """
 
         if response is None:
+
             return ""
 
         texto = getattr(
@@ -345,6 +596,7 @@ No inventes información que contradiga la imagen.
                 ultimo_error = exc
 
                 if intento >= max_reintentos:
+
                     break
 
                 tiempo_espera = (
