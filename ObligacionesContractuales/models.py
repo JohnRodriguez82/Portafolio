@@ -7,6 +7,28 @@ from cryptography.fernet import Fernet
 
 db = SQLAlchemy()
 
+class Usuario(UserMixin, db.Model):
+    __tablename__ = 'usuario'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    nombre = db.Column(db.String(100), nullable=True)
+    password_hash = db.Column(db.String(256), nullable=True)
+    auth_google = db.Column(db.Boolean, default=False)
+    google_id = db.Column(db.String(100), unique=True, nullable=True)
+    avatar_url = db.Column(db.String(500), nullable=True)
+    activo = db.Column(db.Boolean, default=True)
+    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)   
+    contratos = db.relationship('Contrato', backref='usuario', lazy=True, cascade='all, delete-orphan')
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f'<Usuario {self.email}>'
+
 class ConfiguracionSistema(db.Model):
     __tablename__ = 'configuracion_sistema'
 
@@ -28,30 +50,6 @@ class ConfiguracionSistema(db.Model):
 
     def __repr__(self):
         return '<ConfiguracionSistema>'
-
-class Usuario(UserMixin, db.Model):
-    __tablename__ = 'usuario'
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    nombre = db.Column(db.String(100), nullable=True)
-    password_hash = db.Column(db.String(256), nullable=True)
-    auth_google = db.Column(db.Boolean, default=False)
-    google_id = db.Column(db.String(100), unique=True, nullable=True)
-    avatar_url = db.Column(db.String(500), nullable=True)
-    activo = db.Column(db.Boolean, default=True)
-    fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
-    gemini_api_key = db.Column(db.String(500), nullable=True)
-    contratos = db.relationship('Contrato', backref='usuario', lazy=True, cascade='all, delete-orphan')
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-
-    def __repr__(self):
-        return f'<Usuario {self.email}>'
-
         
 class ConfiguracionSistema(db.Model):
     __tablename__ = 'configuracion_sistema'
