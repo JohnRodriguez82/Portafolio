@@ -3616,7 +3616,7 @@ def nuevo_reporte_selector():
     methods=['POST']
 )
 @login_required
-def crear_evidencia(id):
+def subir_evidencia_ajax(id):
     """
     Subida de evidencia via AJAX (sin recargar pagina).
     """
