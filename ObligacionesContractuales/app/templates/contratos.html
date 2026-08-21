@@ -115,7 +115,7 @@
                 </p>
             </div>
             <div class="card-body px-4 pb-4">
-                <form method="POST" action="{{ url_for('configuracion.config') }}" class="row g-3 mb-4">
+                <form method="POST" action="{{ url_for('contratos.agregar_obligacion') }}" class="row g-3 mb-4">
                     <input type="hidden" name="action" value="agregar_obligacion">
                     <div class="col-md-2">
                         <label class="form-label">No. Obligacion <span class="text-danger">*</span></label>
@@ -174,7 +174,7 @@
                                 <td><span class="badge bg-primary fs-6">{{ obl.numero }}</span></td>
                                 <td>
                                     <span id="obl-desc-{{ obl.id }}">{{ obl.descripcion }}</span>
-                                    <form method="POST" action="{{ url_for('contratos.editar_obligacion', id=obl.id) }}" 
+                                    <form method="POST" action="{{ url_for('contratos.contrato_editar', id=obl.id) }}" 
                                           class="mt-2 d-none" id="obl-form-{{ obl.id }}">
                                         <textarea name="descripcion" class="form-control form-control-sm" rows="3" required>{{ obl.descripcion }}</textarea>
                                         <div class="mt-2">
@@ -193,7 +193,7 @@
                                             onclick="toggleEditObl({{ obl.id }})" id="obl-btn-{{ obl.id }}">
                                         <i class="bi bi-pencil me-1"></i>Editar
                                     </button>
-                                    <form method="POST" action="{{ url_for('contratos.eliminar_obligacion', id=obl.id) }}" class="d-inline" 
+                                    <form method="POST" action="{{ url_for('contratos.contrato_eliminar', id=obl.id) }}" class="d-inline" 
                                           data-confirm="Eliminar esta obligacion y todos sus reportes?">
                                         <button type="submit" class="btn btn-danger-custom btn-sm">
                                             <i class="bi bi-trash me-1"></i>Eliminar
