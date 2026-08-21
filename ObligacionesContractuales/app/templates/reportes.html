@@ -1,355 +1,268 @@
 {% extends "base.html" %}
 
-{% block title %}Reportes - Reportes Contractuales{% endblock %}
+{% block title %}Reporte {{ reporte.nombre_mes }} {{ reporte.anio }} - Obligacion {{ obligacion.numero }}{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <h2 class="section-title">Reportes Mensuales Generados</h2>
+        <h2 class="section-title">Detalle del Reporte Mensual</h2>
     </div>
 </div>
 
-{% if contrato %}
-<!-- Descarga Masiva por Mes -->
+<!-- Informacion del reporte -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card card-custom">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1 text-muted">Contratista</p>
+                        <h5 class="mb-3">{{ contrato.contratista or 'No especificado' }}</h5>
+
+                        <p class="mb-1 text-muted">Numero de contrato</p>
+                        <h5 class="mb-3">{{ contrato.numero_contrato or 'No especificado' }}</h5>
+
+                        <p class="mb-1 text-muted">Mes reportado</p>
+                        <h4 class="mb-3">{{ reporte.nombre_mes }} {{ reporte.anio }}</h4>
+
+                        <p class="mb-1 text-muted">Obligacion No.</p>
+                        <h5 class="mb-3"><span class="badge bg-primary">{{ obligacion.numero }}</span></h5>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1 text-muted">Periodo del reporte</p>
+                        <p class="mb-3">
+                            <i class="bi bi-calendar-event me-2 text-primary"></i>
+                            {{ reporte.fecha_inicio_reporte.strftime('%d/%m/%Y') }} - {{ reporte.fecha_fin_reporte.strftime('%d/%m/%Y') }}
+                        </p>
+
+                        <p class="mb-1 text-muted">Fecha de creacion</p>
+                        <p>{{ reporte.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</p>
+                    </div>
+                </div>
+                <hr>
+                <p class="mb-1 text-muted">Descripcion de la obligacion</p>
+                <p class="mb-0">{{ obligacion.descripcion }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-custom h-100">
+            <div class="card-body d-flex flex-column justify-content-center">
+                <div class="text-center mb-3">
+                    <i class="bi bi-file-earmark-pdf fs-1 text-danger"></i>
+                </div>
+                <h5 class="text-center mb-3">Generar PDF</h5>
+                <p class="text-muted text-center small mb-3">Descargue el reporte en formato PDF con todas las evidencias cargadas.</p>
+                <a href="{{ url_for('reportes.generar_pdf', id=reporte.id) }}" class="btn pdf-btn w-100 mb-2">
+                    <i class="bi bi-download me-2"></i>Descargar PDF
+                </a>
+                <a href="{{ url_for('cargas.carga_masiva_evidencias', id=reporte.id) }}" class="btn btn-outline-success w-100">
+                    <i class="bi bi-file-earmark-excel me-2"></i>Carga Masiva Excel
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alerta si contrato cerrado -->
+{% if contrato.etapa == 'Reporte Cerrado' %}
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card card-custom">
-            <div class="card-header bg-white border-0 pt-4 px-4">
-                <h5 class="mb-0"><i class="bi bi-file-zip me-2"></i>Descarga Masiva de PDFs por Mes</h5>
-            </div>
-            <div class="card-body px-4 pb-4">
-                <form id="formDescargaZip" class="row g-3 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label">Mes</label>
-                        <select name="mes" id="zipMes" class="form-select" required>
-                            <option value="">Seleccione...</option>
-                            <option value="1">Enero</option>
-                            <option value="2">Febrero</option>
-                            <option value="3">Marzo</option>
-                            <option value="4">Abril</option>
-                            <option value="5">Mayo</option>
-                            <option value="6">Junio</option>
-                            <option value="7">Julio</option>
-                            <option value="8">Agosto</option>
-                            <option value="9">Septiembre</option>
-                            <option value="10">Octubre</option>
-                            <option value="11">Noviembre</option>
-                            <option value="12">Diciembre</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Anio</label>
-                        <input type="number" name="anio" id="zipAnio" class="form-control" placeholder="2026" min="2020" max="2050" required>
-                    </div>
-                    <div class="col-md-3">
-                        <button type="submit" id="btnDescargarZip" class="btn btn-danger w-100">
-                            <i class="bi bi-file-earmark-zip me-2"></i>Descargar ZIP de PDFs
-                        </button>
-                    </div>
-                </form>
+        <div class="alert alert-warning d-flex align-items-center">
+            <i class="bi bi-lock-fill fs-4 me-3"></i>
+            <div>
+                <strong>Contrato finalizado.</strong> Este contrato se encuentra en etapa "Reporte Cerrado". 
+                No se pueden agregar ni editar evidencias. Solo puede descargar los reportes generados.
             </div>
         </div>
     </div>
 </div>
-
-<!-- Modal de Progreso Descarga ZIP -->
-<div class="modal fade" id="modalProgresoZip" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="bi bi-gear-wide-connected me-2"></i>Generando ZIP de PDFs</h5>
-            </div>
-            <div class="modal-body p-4 text-center">
-                <div class="spinner-border text-danger mb-3" role="status" id="spinnerZip" style="width: 3rem; height: 3rem;">
-                    <span class="visually-hidden">Procesando...</span>
-                </div>
-                <h5 id="tituloZip" class="mb-2">Procesando...</h5>
-                <p class="text-muted mb-3" id="mensajeZip">Validando obligaciones y generando PDFs. Por favor espere...</p>
-                <div class="progress" style="height: 20px;">
-                    <div id="barraZip" class="progress-bar progress-bar-striped progress-bar-animated bg-danger"
-                         role="progressbar" style="width: 100%"></div>
-                </div>
-                <div id="errorZip" class="alert alert-danger mt-3 d-none">
-                    <i class="bi bi-x-circle-fill me-2"></i>
-                    <span id="textoErrorZip"></span>
-                </div>
-            </div>
-            <div class="modal-footer justify-content-center" id="footerZip">
-                <span class="text-muted small">Por favor no cierre esta ventana.</span>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('formDescargaZip');
-    const btn = document.getElementById('btnDescargarZip');
-    const modalProgresoEl = document.getElementById('modalProgresoZip');
-    const spinner = document.getElementById('spinnerZip');
-    const titulo = document.getElementById('tituloZip');
-    const mensaje = document.getElementById('mensajeZip');
-    const barra = document.getElementById('barraZip');
-    const errorDiv = document.getElementById('errorZip');
-    const textoError = document.getElementById('textoErrorZip');
-    const footer = document.getElementById('footerZip');
-
-    if (!form) return;
-
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-
-        const mes = document.getElementById('zipMes').value;
-        const anio = document.getElementById('zipAnio').value;
-
-        if (!mes || !anio) {
-            alert('Seleccione mes y año.');
-            return;
-        }
-
-        // Limpiar backdrops residuales
-        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-        document.body.classList.remove('modal-open');
-        document.body.style.overflow = '';
-        document.body.style.paddingRight = '';
-
-        await new Promise(r => setTimeout(r, 150));
-
-        const modalProgreso = new bootstrap.Modal(modalProgresoEl, { backdrop: 'static', keyboard: false });
-        modalProgreso.show();
-
-        // Resetear estado
-        spinner.className = 'spinner-border text-danger mb-3';
-        spinner.style.cssText = 'width: 3rem; height: 3rem;';
-        spinner.innerHTML = '<span class="visually-hidden">Procesando...</span>';
-        titulo.textContent = 'Procesando...';
-        titulo.className = 'mb-2';
-        mensaje.textContent = 'Validando obligaciones y generando PDFs. Por favor espere...';
-        barra.className = 'progress-bar progress-bar-striped progress-bar-animated bg-danger';
-        barra.style.width = '100%';
-        errorDiv.classList.add('d-none');
-        footer.innerHTML = '<span class="text-muted small">Por favor no cierre esta ventana.</span>';
-        btn.disabled = true;
-
-        try {
-            const formData = new FormData();
-            formData.append('mes', mes);
-            formData.append('anio', anio);
-
-            const response = await fetch('{{ url_for("reportes.descargar_masivo_mes") }}', {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-
-            const contentType = response.headers.get('content-type') || '';
-
-            if (!response.ok) {
-                let errorMsg = 'Error del servidor (' + response.status + ')';
-                try {
-                    if (contentType.includes('application/json')) {
-                        const data = await response.json();
-                        if (data.error) errorMsg = data.error;
-                    } else {
-                        const text = await response.text();
-                        if (text.trim().startsWith('<')) {
-                            errorMsg = 'Error del servidor. Revise la consola para mas detalles.';
-                        } else {
-                            errorMsg = text.substring(0, 200);
-                        }
-                    }
-                } catch (e) {}
-                throw new Error(errorMsg);
-            }
-
-            if (contentType.includes('application/json')) {
-                const data = await response.json();
-                if (data.error) throw new Error(data.error);
-            }
-
-            // Descargar ZIP
-            const blob = await response.blob();
-            const disposition = response.headers.get('content-disposition');
-            let filename = 'Reportes_' + mes + '_' + anio + '.zip';
-            if (disposition) {
-                const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-                if (match) filename = match[1].replace(/['"]/g, '');
-            }
-
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(downloadUrl);
-
-            // Exito
-            spinner.className = 'bi bi-check-circle-fill text-success fs-1 mb-3';
-            spinner.innerHTML = '';
-            titulo.textContent = 'Descarga completada!';
-            titulo.classList.add('text-success');
-            mensaje.textContent = 'El ZIP con los PDFs se ha descargado exitosamente.';
-            barra.classList.remove('progress-bar-animated');
-            footer.innerHTML = '<button type="button" class="btn btn-success" data-bs-dismiss="modal"><i class="bi bi-check-lg me-2"></i>Aceptar</button>';
-
-        } catch (error) {
-            spinner.className = 'bi bi-x-circle-fill text-danger fs-1 mb-3';
-            spinner.innerHTML = '';
-            titulo.textContent = 'No se pudo generar el ZIP';
-            titulo.classList.add('text-danger');
-            mensaje.textContent = 'Revise los detalles del error:';
-            barra.className = 'progress-bar bg-danger';
-            barra.style.width = '100%';
-            errorDiv.classList.remove('d-none');
-            textoError.innerHTML = error.message;
-            footer.innerHTML = '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-2"></i>Cerrar</button>';
-        }
-
-        btn.disabled = false;
-    });
-});
-</script>
 {% endif %}
 
+<!-- Estado de IA -->
+{% if not api_key_configurada %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-secondary d-flex align-items-center">
+            <i class="bi bi-robot fs-4 me-3"></i>
+            <div>
+                <strong>Analisis visual con IA desactivado.</strong> 
+                Configure una API key de Gemini en la <a href="{{ url_for('configuracion.configuracion') }}">Configuracion</a>.
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-success d-flex align-items-center">
+            <i class="bi bi-robot fs-4 me-3"></i>
+            <div>
+                <strong>Analisis visual con IA activo.</strong> 
+                Cada imagen sera analizada automaticamente por Google Gemini.
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Cargar evidencia individual -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card card-custom {% if contrato.etapa == 'Reporte Cerrado' %}opacity-50{% endif %}">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="mb-0"><i class="bi bi-cloud-upload me-2"></i>Cargar Nueva Evidencia (Actividad)</h5>
+            </div>
+            <div class="card-body px-4 pb-4">
+                {% if contrato.etapa == 'Reporte Cerrado' %}
+                <div class="alert alert-secondary">
+                    <i class="bi bi-lock me-2"></i>La carga de evidencias esta deshabilitada porque el contrato esta finalizado.
+                </div>
+                {% else %}
+                <form method="POST" action="{{ url_for('reportes.subir_evidencia', id=reporte.id) }}" enctype="multipart/form-data">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">Anuncio / Contexto <span class="text-muted">(solo para el sistema)</span></label>
+                            <textarea name="anuncio_usuario" class="form-control" rows="3"
+                                      placeholder="Ej: Presentacion del estado de avance..." 
+                                      required>{{ form_data.anuncio_usuario }}</textarea>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Fecha de la actividad</label>
+                            <input type="date" name="fecha_actividad" class="form-control" 
+                                   value="{{ form_data.fecha_actividad }}"
+                                   required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Imagen de evidencia</label>
+                            <input type="file" name="imagen" class="form-control" accept="image/*" required>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary-custom w-100">
+                                <i class="bi bi-cloud-upload me-2"></i>Subir
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cuadricula de actividades/evidencias -->
 <div class="row">
     <div class="col-12">
         <div class="card card-custom">
             <div class="card-header bg-white border-0 pt-4 px-4">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="bi bi-folder me-2"></i>Historial de Reportes</h5>
-                    {% if contrato %}
-                    <a href="{{ url_for('cargas.carga_masiva_mes') }}" class="btn btn-warning btn-sm me-2">
-                        <i class="bi bi-cloud-upload me-1"></i>Carga Masiva por Mes
-                    </a>
-                    <a href="{{ url_for('inicio.index') }}" class="btn btn-primary-custom btn-sm">
-                        <i class="bi bi-plus-lg me-1"></i>Nuevo Reporte
-                    </a>
-                    {% endif %}
-                </div>
+                <h5 class="mb-0"><i class="bi bi-grid-3x3 me-2"></i>Actividades y Evidencias</h5>
             </div>
             <div class="card-body px-4 pb-4">
-                <!-- Filtros -->
-                <div class="card bg-light border-0 mb-3">
-                    <div class="card-body">
-                        <form method="GET" action="{{ url_for('reportes.reportes') }}">
-                            <div class="row g-2 align-items-end">
-                                <div class="col-md-3">
-                                    <label class="form-label small fw-bold text-muted">Buscar</label>
-                                    <div class="input-group input-group-sm">
-                                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-                                        <input type="text" name="search" class="form-control" placeholder="Número o descripción..." value="{{ search }}">
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-muted">Mes</label>
-                                    <select name="filtro_mes" class="form-select form-select-sm">
-                                        <option value="">Todos</option>
-                                        <option value="1" {% if filtro_mes == '1' %}selected{% endif %}>Enero</option>
-                                        <option value="2" {% if filtro_mes == '2' %}selected{% endif %}>Febrero</option>
-                                        <option value="3" {% if filtro_mes == '3' %}selected{% endif %}>Marzo</option>
-                                        <option value="4" {% if filtro_mes == '4' %}selected{% endif %}>Abril</option>
-                                        <option value="5" {% if filtro_mes == '5' %}selected{% endif %}>Mayo</option>
-                                        <option value="6" {% if filtro_mes == '6' %}selected{% endif %}>Junio</option>
-                                        <option value="7" {% if filtro_mes == '7' %}selected{% endif %}>Julio</option>
-                                        <option value="8" {% if filtro_mes == '8' %}selected{% endif %}>Agosto</option>
-                                        <option value="9" {% if filtro_mes == '9' %}selected{% endif %}>Septiembre</option>
-                                        <option value="10" {% if filtro_mes == '10' %}selected{% endif %}>Octubre</option>
-                                        <option value="11" {% if filtro_mes == '11' %}selected{% endif %}>Noviembre</option>
-                                        <option value="12" {% if filtro_mes == '12' %}selected{% endif %}>Diciembre</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label small fw-bold text-muted">Año</label>
-                                    <select name="filtro_anio" class="form-select form-select-sm">
-                                        <option value="">Todos</option>
-                                        {% set years = [] %}
-                                        {% if contrato %}
-                                            {% for y in range(contrato.fecha_inicio.year, contrato.fecha_fin.year + 1) %}
-                                                <option value="{{ y }}" {% if filtro_anio == y|string %}selected{% endif %}>{{ y }}</option>
-                                            {% endfor %}
-                                        {% endif %}
-                                    </select>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label small fw-bold text-muted">Obligación</label>
-                                    <select name="filtro_obligacion" class="form-select form-select-sm">
-                                        <option value="">Todas</option>
-                                        {% for obl in obligaciones_list %}
-                                        <option value="{{ obl.id }}" {% if filtro_obligacion == obl.id|string %}selected{% endif %}>No. {{ obl.numero }} - {{ obl.descripcion[:40] }}{% if obl.descripcion|length > 40 %}...{% endif %}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <div class="d-flex gap-1">
-                                        <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
-                                        <a href="{{ url_for('reportes.reportes') }}" class="btn btn-outline-secondary btn-sm" title="Limpiar filtros"><i class="bi bi-x-lg"></i></a>
-                                    </div>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Contador de resultados -->
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="text-muted small">
-                        {% if reportes_pag %}
-                        Mostrando <strong>{{ (reportes_pag.page - 1) * reportes_pag.per_page + 1 }} - {{ (reportes_pag.page - 1) * reportes_pag.per_page + reportes|length }}</strong>
-                        de <strong>{{ reportes_pag.total }}</strong> reportes
-                        {% endif %}
-                    </span>
-                    <div class="btn-group btn-group-sm">
-                        <span class="btn btn-outline-secondary disabled">Mostrar:</span>
-                        <a href="{{ url_for('reportes.reportes', per_page=10, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}" class="btn btn-outline-secondary {% if per_page == 10 %}active{% endif %}">10</a>
-                        <a href="{{ url_for('reportes.reportes', per_page=25, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}" class="btn btn-outline-secondary {% if per_page == 25 %}active{% endif %}">25</a>
-                        <a href="{{ url_for('reportes.reportes', per_page=50, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}" class="btn btn-outline-secondary {% if per_page == 50 %}active{% endif %}">50</a>
-                    </div>
-                </div>
-
-                {% if not reportes %}
+                {% if not evidencias %}
                 <div class="empty-state py-5">
-                    <i class="bi bi-folder-x"></i>
-                    <h5 class="mt-3">No hay reportes generados</h5>
-                    <p class="text-muted">
-                        {% if search or filtro_mes or filtro_anio or filtro_obligacion %}
-                        No se encontraron reportes con los filtros aplicados.
-                        {% else %}
-                        Vaya al Dashboard y seleccione una obligacion para crear un reporte mensual.
-                        {% endif %}
-                    </p>
-                    <a href="{{ url_for('inicio.index') }}" class="btn btn-primary-custom">Ir a Obligaciones</a>
+                    <i class="bi bi-images"></i>
+                    <h5 class="mt-3">No hay actividades registradas</h5>
+                    <p class="text-muted">Use el formulario superior o la carga masiva para registrar actividades.</p>
                 </div>
                 {% else %}
-                <div class="table-responsive">
+
+                <div class="table-responsive mb-4">
                     <table class="table table-hover table-custom">
                         <thead>
                             <tr>
-                                <th>Mes</th>
-                                <th>Anio</th>
-                                <th>Obligacion No.</th>
-                                <th>Periodo Reportado</th>
-                                <th>Actividades</th>
-                                <th style="width: 250px;">Acciones</th>
+                                <th style="width: 60px;">#</th>
+                                <th>Actividad realizada</th>
+                                <th style="width: 120px;">Fecha</th>
+                                <th style="width: 220px;">Evidencia</th>
+                                <th style="width: 100px;"></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for rep in reportes %}
+                            {% for ev in evidencias %}
                             <tr>
-                                <td><span class="badge bg-info">{{ rep.nombre_mes }}</span></td>
-                                <td>{{ rep.anio }}</td>
-                                <td><span class="badge bg-primary">{{ rep.obligacion.numero }}</span></td>
-                                <td>{{ rep.fecha_inicio_reporte.strftime('%d/%m/%Y') }} - {{ rep.fecha_fin_reporte.strftime('%d/%m/%Y') }}</td>
-                                <td><span class="badge bg-secondary">{{ rep.evidencias|length }} actividades</span></td>
-                                <td>
-                                    <a href="{{ url_for('reportes.ver_reporte', id=rep.id) }}" class="btn btn-outline-primary btn-sm me-1">
-                                        <i class="bi bi-eye me-1"></i>Ver
-                                    </a>
-                                    <a href="{{ url_for('reportes.generar_pdf', id=rep.id) }}" class="btn pdf-btn btn-sm me-1">
-                                        <i class="bi bi-file-earmark-pdf me-1"></i>PDF
-                                    </a>
-                                    <form method="POST" action="{{ url_for('reportes.eliminar_reporte', id=rep.id) }}" class="d-inline" data-confirm="Eliminar este reporte y todas sus evidencias?">
+                                <td class="align-middle text-center">
+                                    <span class="badge bg-primary fs-6">{{ ev.numero_actividad }}</span>
+                                </td>
+                                <td class="align-middle">
+                                    <div id="ev-desc-{{ ev.id }}">
+                                        <p class="mb-0 small text-justify">{{ ev.descripcion_actividad }}</p>
+                                        {% if ev.descripcion_visual_ia %}
+                                        <div class="mt-2 p-2 bg-light rounded">
+                                            <small class="text-muted">
+                                                <i class="bi bi-robot me-1 text-success"></i>
+                                                <strong>IA vio:</strong> {{ ev.descripcion_visual_ia }}
+                                            </small>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+
+                                    <form method="POST" action="{{ url_for('reportes.editar_evidencia', id=reporte.id, evidencia_id=ev.id) }}" 
+                                          class="mt-2 d-none" id="ev-form-{{ ev.id }}">
+                                        <div class="mb-2">
+                                            <label class="form-label small text-muted">Fecha de la actividad</label>
+                                            <input type="date" name="fecha_actividad" class="form-control form-control-sm" 
+                                                   value="{{ ev.fecha_actividad.strftime('%Y-%m-%d') if ev.fecha_actividad else '' }}" required>
+                                        </div>
+                                        <textarea name="descripcion_actividad" class="form-control form-control-sm" rows="4" required>{{ ev.descripcion_actividad }}</textarea>
+                                        <div class="mt-2">
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="bi bi-check-lg me-1"></i>Guardar
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm ms-1" 
+                                                    onclick="toggleEditEv({{ ev.id }})">
+                                                <i class="bi bi-x-lg me-1"></i>Cancelar
+                                            </button>
+                                        </div>
+                                    </form>
+                                </td>
+                                <td class="align-middle text-center">
+                                    {% if ev.fecha_actividad %}
+                                        {{ ev.fecha_actividad.strftime('%d-%m-%Y') }}
+                                    {% else %}
+                                        {{ ev.fecha_carga.strftime('%d-%m-%Y') }}
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle">
+                                    {% if ev.imagen_path %}
+										{% set imagen_ruta = ev.imagen_path|string|replace('\\', '/') %}
+										{% set filename = imagen_ruta.split('/')[-1] %}
+
+										{% if filename %}
+											<a href="{{ url_for('reportes.uploaded_file', filename=filename) }}"
+											   target="_blank"
+											   title="Abrir evidencia">
+
+												<img src="{{ url_for('reportes.uploaded_file', filename=filename) }}"
+													 alt="Evidencia de la actividad {{ ev.numero_actividad }}"
+													 class="evidence-img"
+													 style="max-height: 100px; width: auto; object-fit: contain;"
+													 loading="lazy"
+													 onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+
+												<span class="text-danger small" style="display:none;">
+													<i class="bi bi-image"></i>
+													No se pudo cargar la imagen
+												</span>
+
+											</a>
+										{% else %}
+											<span class="badge bg-warning text-dark">
+												Sin imagen
+											</span>
+										{% endif %}
+									{% else %}
+										<span class="badge bg-warning text-dark">
+											Sin imagen
+										</span>
+									{% endif %}
+                                </td>
+                                <td class="align-middle text-center">
+                                    <button type="button" class="btn btn-outline-primary btn-sm mb-1" 
+                                            onclick="toggleEditEv({{ ev.id }})" id="ev-btn-{{ ev.id }}">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <form method="POST" action="{{ url_for('reportes.eliminar_evidencia', id=reporte.id, evidencia_id=ev.id) }}" 
+                                          class="d-inline" data-confirm="Eliminar esta actividad?">
                                         <button type="submit" class="btn btn-outline-danger btn-sm">
                                             <i class="bi bi-trash"></i>
                                         </button>
@@ -361,43 +274,65 @@ document.addEventListener('DOMContentLoaded', function() {
                     </table>
                 </div>
 
-                <!-- Paginación -->
-                {% if reportes_pag and reportes_pag.pages > 1 %}
-                <nav aria-label="Paginación reportes">
-                    <ul class="pagination justify-content-center mt-3">
-                        {% if reportes_pag.has_prev %}
-                        <li class="page-item">
-                            <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.prev_num, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion, per_page=per_page) }}"><i class="bi bi-chevron-left"></i></a>
-                        </li>
-                        {% else %}
-                        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left"></i></span></li>
-                        {% endif %}
-
-                        {% for p in reportes_pag.iter_pages(left_edge=1, left_current=2, right_current=2, right_edge=1) %}
-                            {% if p %}
-                                {% if p == reportes_pag.page %}
-                                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
-                                {% else %}
-                                <li class="page-item"><a class="page-link" href="{{ url_for('reportes.reportes', page=p, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion, per_page=per_page) }}">{{ p }}</a></li>
-                                {% endif %}
+                <hr class="my-4">
+                <h6 class="mb-3 text-muted"><i class="bi bi-grid me-2"></i>Vista en Cuadricula de Evidencias</h6>
+                <div class="row g-3">
+                    {% for ev in evidencias %}
+                    <div class="col-md-4 col-lg-3">
+                        <div class="card h-100 border-0 shadow-sm">
+                            {% if ev.imagen_path %}
+                                {% set filename = ev.imagen_path.replace('\\', '/').split('/')[-1] %}
+                                <a href="{{ url_for('reportes.uploaded_file', filename=filename) }}" target="_blank">
+                                    <img src="{{ url_for('reportes.uploaded_file', filename=filename) }}" 
+                                         class="card-img-top" 
+                                         alt="Evidencia"
+                                         style="height: 160px; object-fit: cover;">
+                                </a>
                             {% else %}
-                                <li class="page-item disabled"><span class="page-link">…</span></li>
+                                <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 160px;">
+                                    <i class="bi bi-image text-muted fs-1"></i>
+                                </div>
                             {% endif %}
-                        {% endfor %}
-
-                        {% if reportes_pag.has_next %}
-                        <li class="page-item">
-                            <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.next_num, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion, per_page=per_page) }}"><i class="bi bi-chevron-right"></i></a>
-                        </li>
-                        {% else %}
-                        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-right"></i></span></li>
-                        {% endif %}
-                    </ul>
-                </nav>
-                {% endif %}
+                            <div class="card-body">
+                                <span class="badge bg-primary mb-2">Actividad {{ ev.numero_actividad }}</span>
+                                <p class="card-text small text-muted mb-1">
+                                    {% if ev.fecha_actividad %}{{ ev.fecha_actividad.strftime('%d-%m-%Y') }}{% else %}{{ ev.fecha_carga.strftime('%d-%m-%Y') }}{% endif %}
+                                </p>
+                                <p class="card-text small text-secondary">{{ ev.descripcion_actividad[:60] }}{% if ev.descripcion_actividad|length > 60 %}...{% endif %}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <a href="{{ url_for('reportes.reportes') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Volver a Reportes
+        </a>
+    </div>
+</div>
+
+<script>
+function toggleEditEv(id) {
+    const desc = document.getElementById('ev-desc-' + id);
+    const form = document.getElementById('ev-form-' + id);
+    const btn = document.getElementById('ev-btn-' + id);
+
+    if (form.classList.contains('d-none')) {
+        desc.classList.add('d-none');
+        form.classList.remove('d-none');
+        btn.classList.add('d-none');
+    } else {
+        desc.classList.remove('d-none');
+        form.classList.add('d-none');
+        btn.classList.remove('d-none');
+    }
+}
+</script>
 {% endblock %}
