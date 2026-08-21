@@ -3356,3 +3356,149 @@ def cerrar_reporte(id):
             id=id
         )
     )
+
+# ============================================================
+# CERRAR MES REPORTADO (TODAS LAS OBLIGACIONES)
+# ============================================================
+
+@reportes_bp.route(
+    '/reportes/cerrar-mes',
+    methods=['POST']
+)
+@login_required
+def cerrar_mes_reportado():
+    """
+    Cierra todos los reportes de un mes específico.
+
+    Validaciones:
+    1. Mes y año son obligatorios.
+    2. Solo se pueden cerrar meses anteriores al actual.
+    3. Todas las obligaciones del contrato deben tener un reporte
+       en ese mes con al menos una evidencia.
+    """
+
+    # --------------------------------------------------------
+    # Mes y año obligatorios
+    # --------------------------------------------------------
+
+    try:
+        mes = int(request.form.get('mes', 0))
+        anio = int(request.form.get('anio', 0))
+    except (TypeError, ValueError):
+        flash('Debe seleccionar mes y año válidos.', 'danger')
+        return redirect(url_for('reportes.reportes'))
+
+    if not mes or not anio:
+        flash('Mes y año son obligatorios.', 'danger')
+        return redirect(url_for('reportes.reportes'))
+
+    if mes < 1 or mes > 12:
+        flash('El mes seleccionado no es válido.', 'danger')
+        return redirect(url_for('reportes.reportes'))
+
+    nombre_mes = obtener_nombre_mes(mes)
+
+    # --------------------------------------------------------
+    # Solo cerrar meses anteriores al actual
+    # --------------------------------------------------------
+
+    hoy = date.today()
+
+    if anio > hoy.year or (anio == hoy.year and mes >= hoy.month):
+        flash(
+            f'Solo se pueden cerrar meses anteriores al actual '
+            f'({obtener_nombre_mes(hoy.month)} {hoy.year}).',
+            'warning'
+        )
+        return redirect(url_for('reportes.reportes'))
+
+    # --------------------------------------------------------
+    # Contrato activo
+    # --------------------------------------------------------
+
+    contrato = (
+        Contrato.query
+        .filter_by(activo=True, user_id=current_user.id)
+        .first()
+    )
+
+    if not contrato:
+        flash('No hay contrato activo.', 'warning')
+        return redirect(url_for('reportes.reportes'))
+
+    # --------------------------------------------------------
+    # Obtener obligaciones
+    # --------------------------------------------------------
+
+    obligaciones = (
+        Obligacion.query
+        .filter_by(contrato_id=contrato.id)
+        .all()
+    )
+
+    if not obligaciones:
+        flash('No hay obligaciones registradas.', 'warning')
+        return redirect(url_for('reportes.reportes'))
+
+    # --------------------------------------------------------
+    # Validar que cada obligación tenga reporte + evidencias
+    # --------------------------------------------------------
+
+    obligaciones_faltantes = []
+
+    for obl in obligaciones:
+        reporte = (
+            ReporteMensual.query
+            .filter_by(
+                mes=mes,
+                anio=anio,
+                obligacion_id=obl.id
+            )
+            .first()
+        )
+
+        if not reporte:
+            obligaciones_faltantes.append(
+                f'Obligación No. {obl.numero} (sin reporte)'
+            )
+        elif not reporte.evidencias:
+            obligaciones_faltantes.append(
+                f'Obligación No. {obl.numero} (sin actividades)'
+            )
+
+    if obligaciones_faltantes:
+        flash(
+            'No se puede cerrar el mes porque faltan reportes o '
+            'actividades en: ' + '; '.join(obligaciones_faltantes),
+            'danger'
+        )
+        return redirect(url_for('reportes.reportes'))
+
+    # --------------------------------------------------------
+    # Cerrar todos los reportes del mes
+    # --------------------------------------------------------
+
+    reportes_mes = (
+        ReporteMensual.query
+        .join(Obligacion)
+        .filter(
+            Obligacion.contrato_id == contrato.id,
+            ReporteMensual.mes == mes,
+            ReporteMensual.anio == anio
+        )
+        .all()
+    )
+
+    for rep in reportes_mes:
+        rep.cerrado = True
+
+    db.session.commit()
+
+    flash(
+        f'Mes {nombre_mes} {anio} cerrado exitosamente. '
+        f'Todos los reportes ({len(reportes_mes)}) son ahora de solo lectura.',
+        'success'
+    )
+
+    return redirect(url_for('reportes.reportes'))
+    
