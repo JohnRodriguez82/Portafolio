@@ -1,338 +1,213 @@
 {% extends "base.html" %}
 
-{% block title %}Reporte {{ reporte.nombre_mes }} {{ reporte.anio }} - Obligacion {{ obligacion.numero }}{% endblock %}
+{% block title %}Reportes Mensuales Generados{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <h2 class="section-title">Detalle del Reporte Mensual</h2>
+        <h2 class="section-title">Reportes Mensuales Generados</h2>
     </div>
 </div>
 
-<!-- Informacion del reporte -->
+<!-- Descarga Masiva de PDFs por Mes -->
 <div class="row mb-4">
-    <div class="col-md-8">
-        <div class="card card-custom">
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <p class="mb-1 text-muted">Contratista</p>
-                        <h5 class="mb-3">{{ contrato.contratista or 'No especificado' }}</h5>
-
-                        <p class="mb-1 text-muted">Numero de contrato</p>
-                        <h5 class="mb-3">{{ contrato.numero_contrato or 'No especificado' }}</h5>
-
-                        <p class="mb-1 text-muted">Mes reportado</p>
-                        <h4 class="mb-3">{{ reporte.nombre_mes }} {{ reporte.anio }}</h4>
-
-                        <p class="mb-1 text-muted">Obligacion No.</p>
-                        <h5 class="mb-3"><span class="badge bg-primary">{{ obligacion.numero }}</span></h5>
-                    </div>
-                    <div class="col-md-6">
-                        <p class="mb-1 text-muted">Periodo del reporte</p>
-                        <p class="mb-3">
-                            <i class="bi bi-calendar-event me-2 text-primary"></i>
-                            {{ reporte.fecha_inicio_reporte.strftime('%d/%m/%Y') }} - {{ reporte.fecha_fin_reporte.strftime('%d/%m/%Y') }}
-                        </p>
-
-                        <p class="mb-1 text-muted">Fecha de creacion</p>
-                        <p>{{ reporte.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</p>
-                    </div>
-                </div>
-                <hr>
-                <p class="mb-1 text-muted">Descripcion de la obligacion</p>
-                <p class="mb-0">{{ obligacion.descripcion }}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card card-custom h-100">
-            <div class="card-body d-flex flex-column justify-content-center">
-                <div class="text-center mb-3">
-                    <i class="bi bi-file-earmark-pdf fs-1 text-danger"></i>
-                </div>
-                <h5 class="text-center mb-3">Generar PDF</h5>
-                <p class="text-muted text-center small mb-3">Descargue el reporte en formato PDF con todas las evidencias cargadas.</p>
-                <a href="{{ url_for('reportes.generar_pdf', id=reporte.id) }}" class="btn pdf-btn w-100 mb-2">
-                    <i class="bi bi-download me-2"></i>Descargar PDF
-                </a>
-                <a href="{{ url_for('cargas.carga_masiva_evidencias', id=reporte.id) }}" class="btn btn-outline-success w-100">
-                    <i class="bi bi-file-earmark-excel me-2"></i>Carga Masiva Excel
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Alerta si contrato cerrado -->
-{% if contrato.etapa == 'Reporte Cerrado' %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="alert alert-warning d-flex align-items-center">
-            <i class="bi bi-lock-fill fs-4 me-3"></i>
+    <div class="col-md-6">
+        <form method="POST" action="{{ url_for('reportes.descargar_masivo_mes') }}" class="d-flex gap-2 align-items-end">
             <div>
-                <strong>Contrato finalizado.</strong> Este contrato se encuentra en etapa "Reporte Cerrado". 
-                No se pueden agregar ni editar evidencias. Solo puede descargar los reportes generados.
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Estado de IA -->
-{% if not api_key_configurada %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="alert alert-secondary d-flex align-items-center">
-            <i class="bi bi-robot fs-4 me-3"></i>
-            <div>
-                <strong>Analisis visual con IA desactivado.</strong> 
-                Configure una API key de Gemini en la <a href="{{ url_for('configuracion.configuracion') }}">Configuracion</a>.
-            </div>
-        </div>
-    </div>
-</div>
-{% else %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="alert alert-success d-flex align-items-center">
-            <i class="bi bi-robot fs-4 me-3"></i>
-            <div>
-                <strong>Analisis visual con IA activo.</strong> 
-                Cada imagen sera analizada automaticamente por Google Gemini.
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Cargar evidencia individual -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card card-custom {% if contrato.etapa == 'Reporte Cerrado' %}opacity-50{% endif %}">
-            <div class="card-header bg-white border-0 pt-4 px-4">
-                <h5 class="mb-0"><i class="bi bi-cloud-upload me-2"></i>Cargar Nueva Evidencia (Actividad)</h5>
-            </div>
-            <div class="card-body px-4 pb-4">
-                {% if contrato.etapa == 'Reporte Cerrado' %}
-                <div class="alert alert-secondary">
-                    <i class="bi bi-lock me-2"></i>La carga de evidencias esta deshabilitada porque el contrato esta finalizado.
-                </div>
-                {% else %}
-                <form method="POST" action="{{ url_for('reportes.subir_evidencia', id=reporte.id) }}" enctype="multipart/form-data">
-                    <div class="row g-3 align-items-end">
-                        <div class="col-md-4">
-                            <label class="form-label">Anuncio / Contexto <span class="text-muted">(solo para el sistema)</span></label>
-                            <textarea name="anuncio_usuario" class="form-control" rows="3"
-                                      placeholder="Ej: Presentacion del estado de avance..." 
-                                      required>{{ form_data.anuncio_usuario }}</textarea>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Fecha de la actividad</label>
-                            <input type="date" name="fecha_actividad" class="form-control" 
-                                   value="{{ form_data.fecha_actividad }}"
-                                   required>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Imagen de evidencia</label>
-                            <input type="file" name="imagen" class="form-control" accept="image/*" required>
-                        </div>
-                        <div class="col-md-2">
-                            <button type="submit" class="btn btn-primary-custom w-100">
-                                <i class="bi bi-cloud-upload me-2"></i>Subir
-                            </button>
-                        </div>
-                    </div>
-                </form>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Cuadricula de actividades/evidencias -->
-<div class="row">
-    <div class="col-12">
-        <div class="card card-custom">
-            <div class="card-header bg-white border-0 pt-4 px-4">
-                <h5 class="mb-0"><i class="bi bi-grid-3x3 me-2"></i>Actividades y Evidencias</h5>
-            </div>
-            <div class="card-body px-4 pb-4">
-                {% if not evidencias %}
-                <div class="empty-state py-5">
-                    <i class="bi bi-images"></i>
-                    <h5 class="mt-3">No hay actividades registradas</h5>
-                    <p class="text-muted">Use el formulario superior o la carga masiva para registrar actividades.</p>
-                </div>
-                {% else %}
-
-                <div class="table-responsive mb-4">
-                    <table class="table table-hover table-custom">
-                        <thead>
-                            <tr>
-                                <th style="width: 60px;">#</th>
-                                <th>Actividad realizada</th>
-                                <th style="width: 120px;">Fecha</th>
-                                <th style="width: 220px;">Evidencia</th>
-                                <th style="width: 100px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for ev in evidencias %}
-                            <tr>
-                                <td class="align-middle text-center">
-                                    <span class="badge bg-primary fs-6">{{ ev.numero_actividad }}</span>
-                                </td>
-                                <td class="align-middle">
-                                    <div id="ev-desc-{{ ev.id }}">
-                                        <p class="mb-0 small text-justify">{{ ev.descripcion_actividad }}</p>
-                                        {% if ev.descripcion_visual_ia %}
-                                        <div class="mt-2 p-2 bg-light rounded">
-                                            <small class="text-muted">
-                                                <i class="bi bi-robot me-1 text-success"></i>
-                                                <strong>IA vio:</strong> {{ ev.descripcion_visual_ia }}
-                                            </small>
-                                        </div>
-                                        {% endif %}
-                                    </div>
-
-                                    <form method="POST" action="{{ url_for('reportes.editar_evidencia', id=reporte.id, evidencia_id=ev.id) }}" 
-                                          class="mt-2 d-none" id="ev-form-{{ ev.id }}">
-                                        <div class="mb-2">
-                                            <label class="form-label small text-muted">Fecha de la actividad</label>
-                                            <input type="date" name="fecha_actividad" class="form-control form-control-sm" 
-                                                   value="{{ ev.fecha_actividad.strftime('%Y-%m-%d') if ev.fecha_actividad else '' }}" required>
-                                        </div>
-                                        <textarea name="descripcion_actividad" class="form-control form-control-sm" rows="4" required>{{ ev.descripcion_actividad }}</textarea>
-                                        <div class="mt-2">
-                                            <button type="submit" class="btn btn-success btn-sm">
-                                                <i class="bi bi-check-lg me-1"></i>Guardar
-                                            </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm ms-1" 
-                                                    onclick="toggleEditEv({{ ev.id }})">
-                                                <i class="bi bi-x-lg me-1"></i>Cancelar
-                                            </button>
-                                        </div>
-                                    </form>
-                                </td>
-                                <td class="align-middle text-center">
-                                    {% if ev.fecha_actividad %}
-                                        {{ ev.fecha_actividad.strftime('%d-%m-%Y') }}
-                                    {% else %}
-                                        {{ ev.fecha_carga.strftime('%d-%m-%Y') }}
-                                    {% endif %}
-                                </td>
-                                <td class="align-middle">
-                                    {% if ev.imagen_path %}
-										{% set imagen_ruta = ev.imagen_path|string|replace('\\', '/') %}
-										{% set filename = imagen_ruta.split('/')[-1] %}
-
-										{% if filename %}
-											<a href="{{ url_for('reportes.uploaded_file', filename=filename) }}"
-											   target="_blank"
-											   title="Abrir evidencia">
-
-												<img src="{{ url_for('reportes.uploaded_file', filename=filename) }}"
-													 alt="Evidencia de la actividad {{ ev.numero_actividad }}"
-													 class="evidence-img"
-													 style="max-height: 100px; width: auto; object-fit: contain;"
-													 loading="lazy"
-													 onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
-
-												<span class="text-danger small" style="display:none;">
-													<i class="bi bi-image"></i>
-													No se pudo cargar la imagen
-												</span>
-
-											</a>
-										{% else %}
-											<span class="badge bg-warning text-dark">
-												Sin imagen
-											</span>
-										{% endif %}
-									{% else %}
-										<span class="badge bg-warning text-dark">
-											Sin imagen
-										</span>
-									{% endif %}
-                                </td>
-                                <td class="align-middle text-center">
-                                    <button type="button" class="btn btn-outline-primary btn-sm mb-1" 
-                                            onclick="toggleEditEv({{ ev.id }})" id="ev-btn-{{ ev.id }}">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                    <form method="POST" action="{{ url_for('reportes.eliminar_evidencia', id=reporte.id, evidencia_id=ev.id) }}" 
-                                          class="d-inline" data-confirm="Eliminar esta actividad?">
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-
-                <hr class="my-4">
-                <h6 class="mb-3 text-muted"><i class="bi bi-grid me-2"></i>Vista en Cuadricula de Evidencias</h6>
-                <div class="row g-3">
-                    {% for ev in evidencias %}
-                    <div class="col-md-4 col-lg-3">
-                        <div class="card h-100 border-0 shadow-sm">
-                            {% if ev.imagen_path %}
-                                {% set filename = ev.imagen_path.replace('\\', '/').split('/')[-1] %}
-                                <a href="{{ url_for('reportes.uploaded_file', filename=filename) }}" target="_blank">
-                                    <img src="{{ url_for('reportes.uploaded_file', filename=filename) }}" 
-                                         class="card-img-top" 
-                                         alt="Evidencia"
-                                         style="height: 160px; object-fit: cover;">
-                                </a>
-                            {% else %}
-                                <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 160px;">
-                                    <i class="bi bi-image text-muted fs-1"></i>
-                                </div>
-                            {% endif %}
-                            <div class="card-body">
-                                <span class="badge bg-primary mb-2">Actividad {{ ev.numero_actividad }}</span>
-                                <p class="card-text small text-muted mb-1">
-                                    {% if ev.fecha_actividad %}{{ ev.fecha_actividad.strftime('%d-%m-%Y') }}{% else %}{{ ev.fecha_carga.strftime('%d-%m-%Y') }}{% endif %}
-                                </p>
-                                <p class="card-text small text-secondary">{{ ev.descripcion_actividad[:60] }}{% if ev.descripcion_actividad|length > 60 %}...{% endif %}</p>
-                            </div>
-                        </div>
-                    </div>
+                <label class="form-label small text-muted">Mes</label>
+                <select name="mes" class="form-select">
+                    <option value="">Seleccione...</option>
+                    {% for i in range(1, 13) %}
+                    <option value="{{ i }}">{{ ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][i-1] }}</option>
                     {% endfor %}
-                </div>
-                {% endif %}
+                </select>
             </div>
-        </div>
+            <div>
+                <label class="form-label small text-muted">Año</label>
+                <select name="anio" class="form-select">
+                    <option value="">Seleccione...</option>
+                    {% for a in range(2024, 2028) %}
+                    <option value="{{ a }}">{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-danger">
+                <i class="bi bi-download me-2"></i>Descargar ZIP de PDFs
+            </button>
+        </form>
     </div>
-</div>
-
-<div class="row mt-4">
-    <div class="col-12">
-        <a href="{{ url_for('reportes.reportes') }}" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left me-2"></i>Volver a Reportes
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('reportes.reportes') }}" class="btn btn-warning">
+            <i class="bi bi-lock me-2"></i>Cerrar mes por Mes
+        </a>
+        <a href="{{ url_for('inicio.inicio') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-2"></i>Nuevo Reporte
         </a>
     </div>
 </div>
 
-<script>
-function toggleEditEv(id) {
-    const desc = document.getElementById('ev-desc-' + id);
-    const form = document.getElementById('ev-form-' + id);
-    const btn = document.getElementById('ev-btn-' + id);
+<!-- Historial de Reportes -->
+<div class="card card-custom">
+    <div class="card-body">
+        <!-- Filtros -->
+        <form method="GET" action="{{ url_for('reportes.reportes') }}" class="row g-2 mb-3 align-items-end">
+            <div class="col-md-3">
+                <input type="text" name="search" class="form-control" placeholder="Nombre o descripcion..." value="{{ search or '' }}">
+            </div>
+            <div class="col-md-2">
+                <select name="filtro_mes" class="form-select">
+                    <option value="">Mes</option>
+                    {% for i in range(1, 13) %}
+                    <option value="{{ i }}" {% if filtro_mes == i|string %}selected{% endif %}>
+                        {{ ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][i-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="filtro_anio" class="form-select">
+                    <option value="">Año</option>
+                    {% for a in range(2024, 2028) %}
+                    <option value="{{ a }}" {% if filtro_anio == a|string %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="filtro_obligacion" class="form-select">
+                    <option value="">Obligacion</option>
+                    {% for obl in obligaciones_list %}
+                    <option value="{{ obl.id }}" {% if filtro_obligacion == obl.id|string %}selected{% endif %}>
+                        No. {{ obl.numero }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 text-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-funnel me-2"></i>Filtrar
+                </button>
+                <a href="{{ url_for('reportes.reportes') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+            </div>
+        </form>
 
-    if (form.classList.contains('d-none')) {
-        desc.classList.add('d-none');
-        form.classList.remove('d-none');
-        btn.classList.add('d-none');
-    } else {
-        desc.classList.remove('d-none');
-        form.classList.add('d-none');
-        btn.classList.remove('d-none');
-    }
-}
-</script>
+        {% if not reportes %}
+        <div class="empty-state py-5 text-center">
+            <i class="bi bi-folder-open fs-1 text-muted"></i>
+            <h5 class="mt-3">No hay reportes registrados</h5>
+            <p class="text-muted">Cree un nuevo reporte para comenzar.</p>
+        </div>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-hover table-custom">
+                <thead>
+                    <tr>
+                        <th>Mes</th>
+                        <th>Año</th>
+                        <th>Obligacion No.</th>
+                        <th>Periodo Reportado</th>
+                        <th>Actividades</th>
+                        <th style="width: 240px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rep in reportes %}
+                    <tr>
+                        <td class="align-middle">{{ rep.nombre_mes }}</td>
+                        <td class="align-middle">{{ rep.anio }}</td>
+                        <td class="align-middle">
+                            <span class="badge bg-primary">{{ rep.obligacion.numero }}</span>
+                        </td>
+                        <td class="align-middle">
+                            {{ rep.fecha_inicio_reporte.strftime('%d/%m/%Y') }} - {{ rep.fecha_fin_reporte.strftime('%d/%m/%Y') }}
+                        </td>
+                        <td class="align-middle">
+                            <span class="badge bg-info text-dark">{{ rep.evidencias|length }} actividades</span>
+                        </td>
+                        <td class="align-middle">
+                            <div class="btn-group btn-group-sm">
+                                <!-- Ver -->
+                                <a href="{{ url_for('reportes.ver_reporte', id=rep.id) }}" class="btn btn-outline-primary" title="Ver">
+                                    <i class="bi bi-eye"></i> Ver
+                                </a>
+                                <!-- PDF -->
+                                <a href="{{ url_for('reportes.generar_pdf', id=rep.id) }}" class="btn btn-outline-danger" title="PDF">
+                                    <i class="bi bi-file-pdf"></i> PDF
+                                </a>
+                                <!-- Cerrar (NUEVO) -->
+                                {% if not rep.cerrado %}
+                                <form method="POST" action="{{ url_for('reportes.cerrar_reporte', id=rep.id) }}" class="d-inline"
+                                      onsubmit="return confirm('Esta accion cerrara el reporte y lo convertira en solo lectura. ¿Esta seguro?');">
+                                    <button type="submit" class="btn btn-outline-dark" title="Cerrar Reporte">
+                                        <i class="bi bi-lock"></i>
+                                    </button>
+                                </form>
+                                {% else %}
+                                <span class="btn btn-outline-secondary disabled" title="Reporte Cerrado">
+                                    <i class="bi bi-lock-fill"></i>
+                                </span>
+                                {% endif %}
+                                <!-- Eliminar -->
+                                <form method="POST" action="{{ url_for('reportes.eliminar_reporte', id=rep.id) }}" class="d-inline"
+                                      onsubmit="return confirm('¿Eliminar este reporte permanentemente?');">
+                                    <button type="submit" class="btn btn-outline-danger" title="Eliminar">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginacion -->
+        {% if reportes_pag and reportes_pag.pages > 1 %}
+        <nav aria-label="Paginacion" class="mt-3">
+            <ul class="pagination justify-content-center">
+                {% if reportes_pag.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.prev_num, per_page=per_page, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left"></i></span></li>
+                {% endif %}
+                
+                {% for p in reportes_pag.iter_pages(left_edge=2, left_current=2, right_current=3, right_edge=2) %}
+                    {% if p %}
+                        {% if p == reportes_pag.page %}
+                        <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                        {% else %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('reportes.reportes', page=p, per_page=per_page, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}">{{ p }}</a>
+                        </li>
+                        {% endif %}
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if reportes_pag.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.next_num, per_page=per_page, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-right"></i></span></li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+        
+        <div class="text-muted small mt-2">
+            Mostrando {{ reportes|length }} de {{ reportes_pag.total if reportes_pag else 0 }} reportes
+        </div>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}
