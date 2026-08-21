@@ -149,7 +149,7 @@
                     <i class="bi bi-lock me-2"></i>La carga de evidencias esta deshabilitada porque el reporte esta cerrado.
                 </div>
                 {% else %}
-                <form method="POST" action="{{ url_for('reportes.subir_evidencia', id=reporte.id) }}" enctype="multipart/form-data" id="formEvidencia">
+                <form id="formEvidencia" onsubmit="return false;">
                     <div class="row g-3 align-items-end">
                         <div class="col-md-4">
                             <label class="form-label">Anuncio / Contexto <span class="text-muted">(solo para el sistema)</span></label>
@@ -415,13 +415,56 @@ function toggleEditEv(id) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Overlay de procesamiento al enviar formulario de evidencia
+    // Subida AJAX de evidencia con overlay de procesamiento
     const formEvidencia = document.getElementById('formEvidencia');
     const overlay = document.getElementById('overlayProcesando');
     
     if (formEvidencia && overlay) {
-        formEvidencia.addEventListener('submit', function() {
+        formEvidencia.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const anuncio = formEvidencia.querySelector('textarea[name="anuncio_usuario"]').value.trim();
+            const fecha = formEvidencia.querySelector('input[name="fecha_actividad"]').value;
+            const imagenInput = formEvidencia.querySelector('input[name="imagen"]');
+            
+            if (!anuncio) {
+                alert('Debe escribir un anuncio/contexto.');
+                return;
+            }
+            if (!imagenInput.files || imagenInput.files.length === 0) {
+                alert('Debe seleccionar una imagen de evidencia.');
+                return;
+            }
+            if (!fecha) {
+                alert('Debe seleccionar una fecha de actividad.');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('anuncio_usuario', anuncio);
+            formData.append('fecha_actividad', fecha);
+            formData.append('imagen', imagenInput.files[0]);
+            
             overlay.style.display = 'flex';
+            
+            fetch("{{ url_for('reportes.subir_evidencia_ajax', id=reporte.id) }}", {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                overlay.style.display = 'none';
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo registrar la evidencia.'));
+                }
+            })
+            .catch(err => {
+                overlay.style.display = 'none';
+                console.error(err);
+                alert('Error de conexion al subir la evidencia. Intente nuevamente.');
+            });
         });
     }
 
