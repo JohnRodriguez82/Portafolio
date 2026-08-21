@@ -340,9 +340,6 @@ def index():
 
         total_meses_contrato = len(meses)
 
-        # Un mes esta "reportado" si TODAS las obligaciones
-        # tienen al menos una evidencia en ese mes
-
         obligaciones_ids_todas = [
             obl.id for obl in
             Obligacion.query.filter_by(
@@ -352,35 +349,43 @@ def index():
 
         meses_completos = 0
 
-        for (
-            mes_num,
-            anio,
-            nombre
-        ) in meses:
+        # ----------------------------------------------------
+        # Si no hay obligaciones, NO puede haber meses completos
+        # ----------------------------------------------------
 
-            mes_completo = True
+        if obligaciones_ids_todas:
 
-            for obl_id in obligaciones_ids_todas:
+            for (
+                mes_num,
+                anio,
+                nombre
+            ) in meses:
 
-                rep = (
-                    ReporteMensual.query
-                    .filter_by(
-                        mes=mes_num,
-                        anio=anio,
-                        obligacion_id=obl_id
+                mes_completo = True
+
+                for obl_id in obligaciones_ids_todas:
+
+                    rep = (
+                        ReporteMensual.query
+                        .filter_by(
+                            mes=mes_num,
+                            anio=anio,
+                            obligacion_id=obl_id
+                        )
+                        .first()
                     )
-                    .first()
-                )
 
-                if not rep or not rep.evidencias:
+                    if not rep or not rep.evidencias:
 
-                    mes_completo = False
+                        mes_completo = False
 
-                    break
+                        break
 
-            if mes_completo:
+                if mes_completo:
 
-                meses_completos += 1
+                    meses_completos += 1
+
+        # Si no hay obligaciones, meses_completos queda en 0
 
         meses_reportados = meses_completos
 
