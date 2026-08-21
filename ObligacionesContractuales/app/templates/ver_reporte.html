@@ -428,14 +428,8 @@ function toggleEditEv(id) {
 function cerrarModalProcesando() {
     const modalEl = document.getElementById('modalProcesandoEvidencia');
     if (!modalEl) return;
-    
-    // Intentar cerrar via Bootstrap
     const modalInstance = bootstrap.Modal.getInstance(modalEl);
-    if (modalInstance) {
-        modalInstance.hide();
-    }
-    
-    // Fallback manual: remover backdrop y clases
+    if (modalInstance) modalInstance.hide();
     setTimeout(function() {
         document.querySelectorAll('.modal-backdrop').forEach(function(el) { el.remove(); });
         modalEl.classList.remove('show');
@@ -447,20 +441,87 @@ function cerrarModalProcesando() {
     }, 200);
 }
 
+// ============================================================
+// POLLING: Actualizar badges "Analizando con IA..." automaticamente
+// ============================================================
+
+function iniciarPollingIA() {
+    // Buscar todos los badges amarillos de IA en proceso
+    const badges = document.querySelectorAll('[id^="ia-badge-"]');
+    if (badges.length === 0) return;
+
+    const ids = [];
+    badges.forEach(function(badge) {
+        const id = badge.id.replace('ia-badge-', '');
+        ids.push(id);
+    });
+
+    let intentos = 0;
+    const maxIntentos = 60; // 60 x 5 segundos = 5 minutos maximo
+
+    const intervalo = setInterval(function() {
+        intentos++;
+        if (intentos > maxIntentos) {
+            clearInterval(intervalo);
+            return;
+        }
+
+        ids.forEach(function(evidenciaId) {
+            fetch("{{ url_for('reportes.ia_status', evidencia_id=0) }}".replace('/0/', '/' + evidenciaId + '/'))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.tiene_ia) {
+                        // IA termino: actualizar el DOM
+                        const badgeEl = document.getElementById('ia-badge-' + evidenciaId);
+                        const descEl = document.getElementById('ev-desc-' + evidenciaId);
+                        
+                        if (badgeEl) badgeEl.remove();
+                        
+                        if (descEl && !descEl.querySelector('.ia-completada')) {
+                            const iaDiv = document.createElement('div');
+                            iaDiv.className = 'mt-2 p-2 bg-light rounded ia-completada';
+                            iaDiv.innerHTML = '<small class="text-muted"><i class="bi bi-robot me-1 text-success"></i><strong>IA vio:</strong> ' + 
+                                (data.descripcion_visual_ia || '').substring(0, 300) + '</small>';
+                            descEl.appendChild(iaDiv);
+                        }
+
+                        // Actualizar tambien la descripcion principal si esta vacia
+                        const pDesc = descEl ? descEl.querySelector('p.small') : null;
+                        if (pDesc && (!pDesc.textContent.trim() || pDesc.textContent.trim() === 'Actividad registrada. Descripcion en proceso...')) {
+                            pDesc.textContent = data.descripcion_actividad || data.descripcion_visual_ia || '';
+                        }
+
+                        // Remover este ID de la lista
+                        const idx = ids.indexOf(evidenciaId);
+                        if (idx > -1) ids.splice(idx, 1);
+                    }
+                })
+                .catch(function(err) {
+                    // Silencioso: reintentar en el siguiente ciclo
+                });
+        });
+
+        // Si ya no quedan IDs, detener polling
+        if (ids.length === 0) {
+            clearInterval(intervalo);
+        }
+    }, 5000); // Cada 5 segundos
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Iniciar polling inmediatamente (por si hay badges de cargas anteriores)
+    iniciarPollingIA();
+
     // Modal de Cerrar Reporte
     const formCerrarReporte = document.getElementById('formCerrarReporte');
     const modalCerrarReporteEl = document.getElementById('modalCerrarReporte');
-    
     if (formCerrarReporte && modalCerrarReporteEl) {
         const modalCerrarReporte = new bootstrap.Modal(modalCerrarReporteEl);
         const btnConfirmar = document.getElementById('btnConfirmarCerrarReporte');
-
         formCerrarReporte.addEventListener('submit', function(e) {
             e.preventDefault();
             modalCerrarReporte.show();
         });
-
         btnConfirmar.addEventListener('click', function() {
             modalCerrarReporte.hide();
             formCerrarReporte.submit();
@@ -470,7 +531,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // ============================================================
     // SUBIDA AJAX DE EVIDENCIA
     // ============================================================
-    
     const formAjax = document.getElementById('formEvidenciaAjax');
     const mensajeDiv = document.getElementById('mensajeEvidencia');
     const emptyState = document.getElementById('emptyStateEvidencias');
@@ -480,6 +540,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnSubir = document.getElementById('btnSubirEvidencia');
 
     if (!formAjax) return;
+
+    const modalProcesando = new bootstrap.Modal(
+        document.getElementById('modalProcesandoEvidencia'),
+        { backdrop: 'static', keyboard: false }
+    );
 
     formAjax.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -500,13 +565,8 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('imagen', imagen);
 
         btnSubir.disabled = true;
-        
-        // Mostrar modal
-        const modalEl = document.getElementById('modalProcesandoEvidencia');
-        const modalProcesando = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
         modalProcesando.show();
 
-        // Timeout de seguridad: cerrar modal a los 45 segundos
         const safetyTimeout = setTimeout(function() {
             cerrarModalProcesando();
             mensajeDiv.innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>El procesamiento tomó más tiempo de lo esperado. Por favor recargue la página para verificar.</div>';
@@ -535,7 +595,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 mensajeDiv.innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>' + (data.message || 'Evidencia guardada.') + '</div>';
                 formAjax.reset();
 
-                // Ocultar empty state
                 if (emptyState) emptyState.classList.add('d-none');
                 if (tablaContainer) tablaContainer.classList.remove('d-none');
 
@@ -613,6 +672,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     '</div>';
 
                 grid.insertAdjacentHTML('beforeend', nuevaCard);
+
+                // Iniciar polling para esta nueva evidencia
+                setTimeout(function() { iniciarPollingIA(); }, 3000);
 
                 setTimeout(function() { mensajeDiv.innerHTML = ''; }, 5000);
 
