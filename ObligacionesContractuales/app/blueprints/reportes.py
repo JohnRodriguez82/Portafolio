@@ -3495,4 +3495,70 @@ def cerrar_mes_reportado():
     )
 
     return redirect(url_for('reportes.reportes'))
-    
+ 
+# ============================================================
+# SELECCIONAR OBLIGACIÓN PARA NUEVO REPORTE
+# ============================================================
+
+@reportes_bp.route(
+    '/reporte/nuevo'
+)
+@login_required
+def nuevo_reporte_selector():
+    """
+    Muestra las obligaciones del contrato activo para que
+    el usuario seleccione cuál desea reportar.
+    """
+
+    contrato = (
+        Contrato.query
+        .filter_by(
+            activo=True,
+            user_id=current_user.id
+        )
+        .first()
+    )
+
+    if not contrato:
+
+        flash(
+            'No hay contrato activo.',
+            'warning'
+        )
+
+        return redirect(
+            url_for(
+                'contratos.contratos'
+            )
+        )
+
+    obligaciones = (
+        Obligacion.query
+        .filter_by(
+            contrato_id=contrato.id
+        )
+        .order_by(
+            Obligacion.numero
+        )
+        .all()
+    )
+
+    if not obligaciones:
+
+        flash(
+            'No hay obligaciones registradas. '
+            'Cree obligaciones primero.',
+            'warning'
+        )
+
+        return redirect(
+            url_for(
+                'contratos.contratos'
+            )
+        )
+
+    return render_template(
+        'seleccionar_obligacion.html',
+        obligaciones=obligaciones,
+        contrato=contrato
+    ) 
