@@ -9,6 +9,21 @@
     </div>
 </div>
 
+<!-- NUEVO: Badge de reporte cerrado -->
+{% if reporte.cerrado %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-secondary d-flex align-items-center">
+            <i class="bi bi-lock-fill fs-4 me-3"></i>
+            <div>
+                <strong>Reporte Cerrado.</strong> Este reporte es de solo lectura. 
+                No se pueden agregar, editar ni eliminar evidencias.
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Informacion del reporte -->
 <div class="row mb-4">
     <div class="col-md-8">
@@ -37,6 +52,16 @@
 
                         <p class="mb-1 text-muted">Fecha de creacion</p>
                         <p>{{ reporte.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</p>
+
+                        <!-- NUEVO: Estado del reporte -->
+                        <p class="mb-1 text-muted">Estado</p>
+                        <p>
+                            {% if reporte.cerrado %}
+                                <span class="badge bg-secondary"><i class="bi bi-lock me-1"></i>Cerrado</span>
+                            {% else %}
+                                <span class="badge bg-success"><i class="bi bi-unlock me-1"></i>Abierto</span>
+                            {% endif %}
+                        </p>
                     </div>
                 </div>
                 <hr>
@@ -56,9 +81,23 @@
                 <a href="{{ url_for('reportes.generar_pdf', id=reporte.id) }}" class="btn pdf-btn w-100 mb-2">
                     <i class="bi bi-download me-2"></i>Descargar PDF
                 </a>
+
+                <!-- NUEVO: Boton cerrar reporte (solo si no esta cerrado) -->
+                {% if not reporte.cerrado %}
+                <form method="POST" action="{{ url_for('reportes.cerrar_reporte', id=reporte.id) }}"
+                      onsubmit="return confirm('Esta accion cerrara el reporte y lo convertira en solo lectura. ¿Esta seguro?');">
+                    <button type="submit" class="btn btn-outline-dark w-100 mb-2">
+                        <i class="bi bi-lock me-2"></i>Cerrar Reporte
+                    </button>
+                </form>
+                {% endif %}
+
+                <!-- NUEVO: Carga masiva solo si no esta cerrado -->
+                {% if not reporte.cerrado %}
                 <a href="{{ url_for('cargas.carga_masiva_evidencias', id=reporte.id) }}" class="btn btn-outline-success w-100">
                     <i class="bi bi-file-earmark-excel me-2"></i>Carga Masiva Excel
                 </a>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -109,7 +148,7 @@
 <!-- Cargar evidencia individual -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card card-custom {% if contrato.etapa == 'Reporte Cerrado' %}opacity-50{% endif %}">
+        <div class="card card-custom {% if contrato.etapa == 'Reporte Cerrado' or reporte.cerrado %}opacity-50{% endif %}">
             <div class="card-header bg-white border-0 pt-4 px-4">
                 <h5 class="mb-0"><i class="bi bi-cloud-upload me-2"></i>Cargar Nueva Evidencia (Actividad)</h5>
             </div>
@@ -117,6 +156,10 @@
                 {% if contrato.etapa == 'Reporte Cerrado' %}
                 <div class="alert alert-secondary">
                     <i class="bi bi-lock me-2"></i>La carga de evidencias esta deshabilitada porque el contrato esta finalizado.
+                </div>
+                {% elif reporte.cerrado %}
+                <div class="alert alert-secondary">
+                    <i class="bi bi-lock me-2"></i>La carga de evidencias esta deshabilitada porque el reporte esta cerrado.
                 </div>
                 {% else %}
                 <form method="POST" action="{{ url_for('reportes.subir_evidencia', id=reporte.id) }}" enctype="multipart/form-data">
@@ -196,6 +239,8 @@
                                         {% endif %}
                                     </div>
 
+                                    <!-- NUEVO: Formulario de edicion solo si no esta cerrado -->
+                                    {% if not reporte.cerrado %}
                                     <form method="POST" action="{{ url_for('reportes.editar_evidencia', id=reporte.id, evidencia_id=ev.id) }}" 
                                           class="mt-2 d-none" id="ev-form-{{ ev.id }}">
                                         <div class="mb-2">
@@ -214,6 +259,7 @@
                                             </button>
                                         </div>
                                     </form>
+                                    {% endif %}
                                 </td>
                                 <td class="align-middle text-center">
                                     {% if ev.fecha_actividad %}
@@ -224,18 +270,41 @@
                                 </td>
                                 <td class="align-middle">
                                     {% if ev.imagen_path %}
-                                        {% set filename = ev.imagen_path.replace('\\', '/').split('/')[-1] %}
-                                        <a href="{{ url_for('reportes.uploaded_file', filename=filename) }}" target="_blank">
-                                            <img src="{{ url_for('reportes.uploaded_file', filename=filename) }}" 
-                                                 alt="Evidencia" 
-                                                 class="evidence-img"
-                                                 style="max-height: 100px; width: auto;">
-                                        </a>
+                                        {% set imagen_ruta = ev.imagen_path|string|replace('\', '/') %}
+                                        {% set filename = imagen_ruta.split('/')[-1] %}
+
+                                        {% if filename %}
+                                            <a href="{{ url_for('reportes.uploaded_file', filename=filename) }}"
+                                               target="_blank"
+                                               title="Abrir evidencia">
+
+                                                <img src="{{ url_for('reportes.uploaded_file', filename=filename) }}"
+                                                     alt="Evidencia de la actividad {{ ev.numero_actividad }}"
+                                                     class="evidence-img"
+                                                     style="max-height: 100px; width: auto; object-fit: contain;"
+                                                     loading="lazy"
+                                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+
+                                                <span class="text-danger small" style="display:none;">
+                                                    <i class="bi bi-image"></i>
+                                                    No se pudo cargar la imagen
+                                                </span>
+
+                                            </a>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark">
+                                                Sin imagen
+                                            </span>
+                                        {% endif %}
                                     {% else %}
-                                        <span class="badge bg-warning text-dark">Sin imagen</span>
+                                        <span class="badge bg-warning text-dark">
+                                            Sin imagen
+                                        </span>
                                     {% endif %}
                                 </td>
                                 <td class="align-middle text-center">
+                                    <!-- NUEVO: Botones de accion solo si no esta cerrado -->
+                                    {% if not reporte.cerrado %}
                                     <button type="button" class="btn btn-outline-primary btn-sm mb-1" 
                                             onclick="toggleEditEv({{ ev.id }})" id="ev-btn-{{ ev.id }}">
                                         <i class="bi bi-pencil"></i>
@@ -246,6 +315,9 @@
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </form>
+                                    {% else %}
+                                    <span class="badge bg-secondary"><i class="bi bi-lock me-1"></i>Solo lectura</span>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -260,7 +332,7 @@
                     <div class="col-md-4 col-lg-3">
                         <div class="card h-100 border-0 shadow-sm">
                             {% if ev.imagen_path %}
-                                {% set filename = ev.imagen_path.replace('\\', '/').split('/')[-1] %}
+                                {% set filename = ev.imagen_path.replace('\', '/').split('/')[-1] %}
                                 <a href="{{ url_for('reportes.uploaded_file', filename=filename) }}" target="_blank">
                                     <img src="{{ url_for('reportes.uploaded_file', filename=filename) }}" 
                                          class="card-img-top" 
