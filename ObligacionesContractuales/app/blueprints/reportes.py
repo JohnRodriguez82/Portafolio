@@ -27,6 +27,8 @@ import io
 import zipfile
 import calendar
 
+from datetime import datetime, date
+
 from datetime import (
     datetime,
     date
@@ -1172,11 +1174,30 @@ def subir_evidencia(id):
             )
         )
 
-    # --------------------------------------------------------
-    # CONTRATO FINALIZADO
-    # --------------------------------------------------------
+        # --------------------------------------------------------
+        # REPORTE CERRADO
+        # --------------------------------------------------------
 
-    if contrato.etapa == 'Reporte Cerrado':
+        if reporte.cerrado:
+
+            flash(
+                'Este reporte está cerrado. '
+                'No se pueden agregar más evidencias.',
+                'warning'
+            )
+
+            return redirect(
+                url_for(
+                    'reportes.ver_reporte',
+                    id=id
+                )
+            )
+
+        # --------------------------------------------------------
+        # CONTRATO FINALIZADO
+        # --------------------------------------------------------
+
+        if contrato.etapa == 'Reporte Cerrado':
 
         flash(
             'Este contrato está finalizado '
@@ -1565,6 +1586,24 @@ def eliminar_evidencia(
         )
 
     # --------------------------------------------------------
+    # REPORTE CERRADO
+    # --------------------------------------------------------
+
+    if reporte.cerrado:
+
+        flash(
+            'Este reporte está cerrado. '
+            'No se pueden eliminar evidencias.',
+            'warning'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
+            )
+        )
+    # --------------------------------------------------------
     # Guardar número antes de eliminar
     # --------------------------------------------------------
 
@@ -1699,6 +1738,25 @@ def editar_evidencia(
         return redirect(
             url_for(
                 'inicio.inicio'
+            )
+        )
+
+    # --------------------------------------------------------
+    # REPORTE CERRADO
+    # --------------------------------------------------------
+
+    if reporte.cerrado:
+
+        flash(
+            'Este reporte está cerrado. '
+            'No se pueden editar evidencias.',
+            'warning'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
             )
         )
 
@@ -3100,3 +3158,201 @@ def generar_excel_consolidado():
                 'inicio.index'
             )
         )
+        # ============================================================
+# CERRAR REPORTE
+# ============================================================
+
+@reportes_bp.route(
+    '/reporte/<int:id>/cerrar',
+    methods=['POST']
+)
+@login_required
+def cerrar_reporte(id):
+    """
+    Cierra un reporte mensual.
+
+    Condiciones:
+    1. El reporte debe tener al menos una evidencia.
+    2. Todas las obligaciones del contrato deben tener
+       al menos un reporte con evidencia en ese mes.
+    3. Solo se puede cerrar el mes anterior al actual
+       (o meses anteriores).
+    """
+
+    reporte = (
+        ReporteMensual.query
+        .get_or_404(id)
+    )
+
+    obligacion = (
+        reporte.obligacion
+    )
+
+    contrato = (
+        Contrato.query
+        .get(
+            obligacion.contrato_id
+        )
+    )
+
+    # --------------------------------------------------------
+    # Seguridad
+    # --------------------------------------------------------
+
+    if (
+        not contrato
+        or contrato.user_id != current_user.id
+    ):
+
+        flash(
+            'No tiene permiso.',
+            'danger'
+        )
+
+        return redirect(
+            url_for(
+                'inicio.inicio'
+            )
+        )
+
+    # --------------------------------------------------------
+    # Ya está cerrado
+    # --------------------------------------------------------
+
+    if reporte.cerrado:
+
+        flash(
+            'Este reporte ya está cerrado.',
+            'info'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
+            )
+        )
+
+    # --------------------------------------------------------
+    # Solo cerrar meses anteriores al actual
+    # --------------------------------------------------------
+
+    hoy = date.today()
+
+    if (
+        reporte.anio > hoy.year
+        or (
+            reporte.anio == hoy.year
+            and reporte.mes >= hoy.month
+        )
+    ):
+
+        flash(
+            'Solo se pueden cerrar reportes de meses '
+            'anteriores al actual.',
+            'warning'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
+            )
+        )
+
+    # --------------------------------------------------------
+    # El reporte debe tener al menos una evidencia
+    # --------------------------------------------------------
+
+    if not reporte.evidencias:
+
+        flash(
+            'No se puede cerrar un reporte sin evidencias.',
+            'warning'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
+            )
+        )
+
+    # --------------------------------------------------------
+    # Todas las obligaciones deben tener reporte con evidencia
+    # en ese mes
+    # --------------------------------------------------------
+
+    obligaciones = (
+        Obligacion.query
+        .filter_by(
+            contrato_id=contrato.id
+        )
+        .all()
+    )
+
+    obligaciones_faltantes = []
+
+    for obl in obligaciones:
+
+        rep = (
+            ReporteMensual.query
+            .filter_by(
+                mes=reporte.mes,
+                anio=reporte.anio,
+                obligacion_id=obl.id
+            )
+            .first()
+        )
+
+        if not rep:
+
+            obligaciones_faltantes.append(
+                f'Obligación No. {obl.numero} '
+                f'(sin reporte)'
+            )
+
+        elif not rep.evidencias:
+
+            obligaciones_faltantes.append(
+                f'Obligación No. {obl.numero} '
+                f'(sin evidencias)'
+            )
+
+    if obligaciones_faltantes:
+
+        flash(
+            'No se puede cerrar el mes porque '
+            'faltan evidencias en: '
+            + ', '.join(obligaciones_faltantes),
+            'danger'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
+            )
+        )
+
+    # --------------------------------------------------------
+    # Cerrar reporte
+    # --------------------------------------------------------
+
+    reporte.cerrado = True
+
+    db.session.commit()
+
+    flash(
+        f'Reporte de {reporte.nombre_mes} {reporte.anio} '
+        'cerrado exitosamente. '
+        'Ahora es de solo lectura.',
+        'success'
+    )
+
+    return redirect(
+        url_for(
+            'reportes.ver_reporte',
+            id=id
+        )
+    )
