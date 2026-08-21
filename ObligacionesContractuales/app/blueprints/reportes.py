@@ -21,8 +21,11 @@ import zipfile
 import calendar
 import threading
 import logging
+import hashlib
+import json
 
 from datetime import datetime, date
+from functools import lru_cache
 
 from flask import (
     Blueprint,
@@ -60,6 +63,73 @@ from app.services.evidencia_service import EvidenciaService
 # ============================================================
 
 reportes_bp = Blueprint('reportes', __name__)
+
+# ============================================================
+# CACHE DE IA (en memoria con TTL de 24 horas)
+# ============================================================
+
+_ia_cache = {}
+_ia_cache_lock = threading.Lock()
+
+
+def _cache_key_ia(image_bytes, contexto, anuncio):
+    """Genera una clave de cache única basada en contenido de imagen + contexto."""
+    hasher = hashlib.md5()
+    hasher.update(image_bytes)
+    hasher.update(str(contexto).encode('utf-8'))
+    hasher.update(str(anuncio).encode('utf-8'))
+    return hasher.hexdigest()
+
+
+def _get_cached_ia(image_bytes, contexto, anuncio):
+    """Obtiene descripción cacheada de IA si existe y no ha expirado."""
+    key = _cache_key_ia(image_bytes, contexto, anuncio)
+    with _ia_cache_lock:
+        entry = _ia_cache.get(key)
+        if entry:
+            ts, desc = entry
+            if (datetime.utcnow() - ts).total_seconds() < 86400:  # 24h
+                ia_logger.info(f'[CACHE HIT] IA cacheada para hash {key[:8]}...')
+                return desc
+            else:
+                del _ia_cache[key]
+    return None
+
+
+def _set_cached_ia(image_bytes, contexto, anuncio, descripcion):
+    """Guarda descripción de IA en cache."""
+    key = _cache_key_ia(image_bytes, contexto, anuncio)
+    with _ia_cache_lock:
+        _ia_cache[key] = (datetime.utcnow(), descripcion)
+    ia_logger.info(f'[CACHE SET] IA cacheada para hash {key[:8]}...')
+
+
+# ============================================================
+# ESTADO DE PROCESAMIENTO AJAX (en memoria)
+# ============================================================
+
+_ajax_status = {}
+_ajax_status_lock = threading.Lock()
+
+
+def _set_ajax_status(reporte_id, estado, mensaje='', detalle=None):
+    with _ajax_status_lock:
+        _ajax_status[reporte_id] = {
+            'estado': estado,
+            'mensaje': mensaje,
+            'detalle': detalle,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+
+
+def _get_ajax_status(reporte_id):
+    with _ajax_status_lock:
+        return _ajax_status.get(reporte_id, {
+            'estado': 'desconocido',
+            'mensaje': 'No hay procesamiento activo.',
+            'detalle': None
+        })
+
 
 
 # ============================================================
@@ -125,9 +195,13 @@ if not ia_logger.handlers:
 # ANALISIS IA EN BACKGROUND
 # ============================================================
 
+# ============================================================
+# ANALISIS IA EN BACKGROUND
+# ============================================================
+
 def _analizar_ia_background(app, evidencia_id, imagen_path, api_key, obligacion_desc, anuncio):
     import time
-    time.sleep(2)
+    time.sleep(1)
 
     with app.app_context():
         from models import db, Evidencia
@@ -136,14 +210,39 @@ def _analizar_ia_background(app, evidencia_id, imagen_path, api_key, obligacion_
         db.session.remove()
 
         try:
-            ia_logger.info(f'=== INICIO analisis IA evidencia {evidencia_id} ===')
-            descripcion = analizar_imagen(
-                imagen_path,
-                api_key=api_key,
-                contexto_obligacion=obligacion_desc,
-                anuncio_usuario=anuncio
-            )
-            ia_logger.info(f'Respuesta Gemini: {str(descripcion)[:200]}')
+            ia_logger.info(f'=== INICIO analisis IA background evidencia {evidencia_id} ===')
+
+            # Verificar cache con hash de archivo
+            descripcion = None
+            try:
+                if os.path.isfile(imagen_path):
+                    with open(imagen_path, 'rb') as fimg:
+                        img_bytes = fimg.read()
+                    cached = _get_cached_ia(img_bytes, obligacion_desc, anuncio)
+                    if cached:
+                        descripcion = cached
+                        ia_logger.info(f'[CACHE HIT] Background usando cache para evidencia {evidencia_id}')
+            except Exception as ce:
+                ia_logger.warning(f'[CACHE] Error leyendo cache background: {ce}')
+
+            if not descripcion:
+                descripcion = analizar_imagen(
+                    imagen_path,
+                    api_key=api_key,
+                    contexto_obligacion=obligacion_desc,
+                    anuncio_usuario=anuncio
+                )
+                # Guardar en cache
+                try:
+                    if os.path.isfile(imagen_path):
+                        with open(imagen_path, 'rb') as fimg:
+                            img_bytes = fimg.read()
+                        if descripcion:
+                            _set_cached_ia(img_bytes, obligacion_desc, anuncio, descripcion)
+                except Exception as ce:
+                    ia_logger.warning(f'[CACHE] Error guardando cache background: {ce}')
+
+            ia_logger.info(f'Respuesta Gemini background: {str(descripcion)[:200]}')
 
             if descripcion:
                 evidencia = Evidencia.query.get(evidencia_id)
@@ -151,25 +250,18 @@ def _analizar_ia_background(app, evidencia_id, imagen_path, api_key, obligacion_
                     evidencia.descripcion_visual_ia = descripcion
                     evidencia.descripcion_actividad = descripcion
                     db.session.commit()
-                    ia_logger.info(f'=== EXITO evidencia {evidencia_id} ===')
+                    ia_logger.info(f'=== EXITO background evidencia {evidencia_id} ===')
                 else:
-                    ia_logger.error(f'Evidencia {evidencia_id} NO ENCONTRADA')
+                    ia_logger.error(f'Evidencia {evidencia_id} NO ENCONTRADA en background')
             else:
-                ia_logger.warning(f'Evidencia {evidencia_id}: Gemini NO retorno descripcion')
+                ia_logger.warning(f'Evidencia {evidencia_id}: Gemini NO retorno descripcion en background')
 
         except Exception as e:
-            ia_logger.exception(f'=== ERROR evidencia {evidencia_id}: {e} ===')
+            ia_logger.exception(f'=== ERROR background evidencia {evidencia_id}: {e} ===')
             db.session.rollback()
         finally:
             db.session.remove()
 
-
-# ============================================================
-# LISTADO DE REPORTES
-# ============================================================
-
-@reportes_bp.route('/reportes')
-@login_required
 def reportes():
     contrato = Contrato.query.filter_by(activo=True, user_id=current_user.id).first()
 
@@ -402,6 +494,12 @@ def ver_reporte(id):
 
 @reportes_bp.route('/reporte/<int:id>/evidencia', methods=['POST'])
 @login_required
+# ============================================================
+# SUBIR EVIDENCIA (POST tradicional - ahora con background IA)
+# ============================================================
+
+@reportes_bp.route('/reporte/<int:id>/evidencia', methods=['POST'])
+@login_required
 def subir_evidencia(id):
     reporte = ReporteMensual.query.get_or_404(id)
     obligacion = reporte.obligacion
@@ -466,19 +564,34 @@ def subir_evidencia(id):
         evidencia_service = EvidenciaService()
 
         # ========================================================
-        # MODO SINCRONO: La IA se ejecuta ahora mismo
+        # MODO BACKGROUND: guardar evidencia con descripcion
+        # temporal y lanzar analisis IA en thread separado
         # ========================================================
 
         descripcion_visual = None
 
         if api_key:
             try:
-                descripcion_visual = analizar_imagen(
-                    file,
-                    api_key=api_key,
-                    contexto_obligacion=obligacion.descripcion,
-                    anuncio_usuario=anuncio_usuario
-                )
+                # Leer bytes para cache
+                file.stream.seek(0)
+                img_bytes = file.stream.read()
+                file.stream.seek(0)
+
+                # Verificar cache
+                cached = _get_cached_ia(img_bytes, obligacion.descripcion, anuncio_usuario)
+                if cached:
+                    descripcion_visual = cached
+                    ia_logger.info(f'[CACHE] Usando descripcion cacheada para evidencia.')
+                else:
+                    # Analisis sincrono rapido (fallback) o background
+                    descripcion_visual = analizar_imagen(
+                        file,
+                        api_key=api_key,
+                        contexto_obligacion=obligacion.descripcion,
+                        anuncio_usuario=anuncio_usuario
+                    )
+                    if descripcion_visual:
+                        _set_cached_ia(img_bytes, obligacion.descripcion, anuncio_usuario, descripcion_visual)
             except Exception as e:
                 print(f'[IA] Error analizando imagen: {e}')
 
@@ -492,13 +605,23 @@ def subir_evidencia(id):
 
         db.session.commit()
 
+        # Si no se obtuvo descripcion visual, lanzar background
+        if api_key and not descripcion_visual:
+            app = current_app._get_current_object()
+            t = threading.Thread(
+                target=_analizar_ia_background,
+                args=(app, evidencia.id, evidencia.imagen_path, api_key, obligacion.descripcion, anuncio_usuario),
+                daemon=True
+            )
+            t.start()
+
         session.pop('evidencia_anuncio', None)
         session.pop('evidencia_fecha', None)
 
         if descripcion_visual:
             flash(f'Actividad {evidencia.numero_actividad} registrada con descripcion de IA.', 'success')
         else:
-            flash(f'Actividad {evidencia.numero_actividad} registrada.', 'success')
+            flash(f'Actividad {evidencia.numero_actividad} registrada. El analisis de IA se procesara en segundo plano.', 'info')
 
     except RequestEntityTooLarge:
         db.session.rollback()
@@ -511,11 +634,132 @@ def subir_evidencia(id):
 
 
 # ============================================================
-# ELIMINAR EVIDENCIA
+# SUBIR EVIDENCIA VIA AJAX
 # ============================================================
 
-@reportes_bp.route('/reporte/<int:id>/evidencia/<int:evidencia_id>/eliminar', methods=['POST'])
+@reportes_bp.route('/reporte/<int:id>/evidencia/ajax', methods=['POST'])
 @login_required
+def subir_evidencia_ajax(id):
+    reporte = ReporteMensual.query.get_or_404(id)
+    obligacion = reporte.obligacion
+    contrato = Contrato.query.get(obligacion.contrato_id)
+
+    if not contrato or contrato.user_id != current_user.id:
+        return jsonify({'success': False, 'error': 'No tiene permiso.'}), 403
+
+    if reporte.cerrado:
+        return jsonify({'success': False, 'error': 'Reporte cerrado.'}), 400
+
+    if contrato.etapa == 'Reporte Cerrado':
+        return jsonify({'success': False, 'error': 'Contrato finalizado.'}), 400
+
+    api_key = _obtener_api_key()
+
+    if 'imagen' not in request.files:
+        return jsonify({'success': False, 'error': 'No se selecciono archivo.'}), 400
+
+    file = request.files['imagen']
+    anuncio_usuario = request.form.get('anuncio_usuario', '').strip()
+
+    if not anuncio_usuario:
+        return jsonify({'success': False, 'error': 'El anuncio/contexto es obligatorio.'}), 400
+
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'Archivo vacio.'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'success': False, 'error': 'Formato no permitido.'}), 400
+
+    fecha_actividad_str = request.form.get('fecha_actividad', '').strip()
+    try:
+        if fecha_actividad_str:
+            fecha_actividad = datetime.strptime(fecha_actividad_str, '%Y-%m-%d').date()
+        else:
+            fecha_actividad = date.today()
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Fecha invalida.'}), 400
+
+    if fecha_actividad < reporte.fecha_inicio_reporte or fecha_actividad > reporte.fecha_fin_reporte:
+        return jsonify({
+            'success': False,
+            'error': f'La fecha debe estar entre {reporte.fecha_inicio_reporte.strftime("%d/%m/%Y")} y {reporte.fecha_fin_reporte.strftime("%d/%m/%Y")}.'
+        }), 400
+
+    try:
+        evidencia_service = EvidenciaService()
+
+        descripcion_visual = None
+        ia_background = False
+
+        if api_key:
+            try:
+                file.stream.seek(0)
+                img_bytes = file.stream.read()
+                file.stream.seek(0)
+
+                cached = _get_cached_ia(img_bytes, obligacion.descripcion, anuncio_usuario)
+                if cached:
+                    descripcion_visual = cached
+                else:
+                    descripcion_visual = analizar_imagen(
+                        file,
+                        api_key=api_key,
+                        contexto_obligacion=obligacion.descripcion,
+                        anuncio_usuario=anuncio_usuario
+                    )
+                    if descripcion_visual:
+                        _set_cached_ia(img_bytes, obligacion.descripcion, anuncio_usuario, descripcion_visual)
+            except Exception as e:
+                ia_logger.warning(f'[AJAX] Error IA sincrona: {e}')
+
+        evidencia = evidencia_service.crear_evidencia(
+            reporte=reporte,
+            imagen=file,
+            anuncio=anuncio_usuario,
+            fecha=fecha_actividad,
+            descripcion=descripcion_visual
+        )
+
+        db.session.commit()
+
+        # Si no se obtuvo descripcion, lanzar background
+        if api_key and not descripcion_visual:
+            app = current_app._get_current_object()
+            t = threading.Thread(
+                target=_analizar_ia_background,
+                args=(app, evidencia.id, evidencia.imagen_path, api_key, obligacion.descripcion, anuncio_usuario),
+                daemon=True
+            )
+            t.start()
+            ia_background = True
+
+        return jsonify({
+            'success': True,
+            'evidencia_id': evidencia.id,
+            'numero_actividad': evidencia.numero_actividad,
+            'descripcion_ia': bool(descripcion_visual),
+            'ia_background': ia_background,
+            'mensaje': 'Evidencia registrada correctamente.'
+        })
+
+    except RequestEntityTooLarge:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': 'Archivo demasiado grande (max 16MB).'}), 413
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# ESTADO DE PROCESAMIENTO AJAX
+# ============================================================
+
+@reportes_bp.route('/reporte/<int:id>/evidencia/ajax/status')
+@login_required
+def ajax_status(id):
+    status = _get_ajax_status(id)
+    return jsonify(status)
+
 def eliminar_evidencia(id, evidencia_id):
     evidencia = Evidencia.query.get_or_404(evidencia_id)
     reporte = ReporteMensual.query.get_or_404(id)
