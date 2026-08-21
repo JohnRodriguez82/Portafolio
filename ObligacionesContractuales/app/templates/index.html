@@ -169,7 +169,7 @@
                 <div class="empty-state py-5">
                     <i class="bi bi-clipboard-x"></i>
                     <p class="mb-3">{% if search %}No se encontraron obligaciones con "{{ search }}".{% else %}No hay obligaciones configuradas.{% endif %}</p>
-                    <a href="{{ url_for('configuracion.configuracion') }}" class="btn btn-primary-custom">Agregar Obligaciones</a>
+                    <a href="{{ url_for('contratos.contratos') }}" class="btn btn-primary-custom">Agregar Obligaciones</a>
                 </div>
                 {% else %}
                 <div class="table-responsive">
