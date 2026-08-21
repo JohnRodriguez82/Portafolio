@@ -59,8 +59,10 @@
                 </div>
 
 
+                {% if current_user.es_admin %}
+
                 <!-- ====================================================
-                     ESTADO DE LA API KEY
+                     ESTADO DE LA API KEY (solo admin)
                      ==================================================== -->
 
                 {% if api_key_configurada %}
@@ -239,6 +241,28 @@
                     </div>
 
                 </form>
+
+                {% endif %}
+
+
+                {% else %}
+
+                <!-- ====================================================
+                     MENSAJE PARA USUARIOS NO-ADMIN
+                     ==================================================== -->
+
+                <div class="alert alert-light border">
+
+                    <i class="bi bi-shield-lock me-2"></i>
+
+                    <strong>Acceso restringido.</strong>
+
+                    <br>
+
+                    La configuración de la API Key de Gemini está
+                    reservada al administrador del sistema.
+
+                </div>
 
                 {% endif %}
 
