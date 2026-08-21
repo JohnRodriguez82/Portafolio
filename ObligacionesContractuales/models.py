@@ -103,6 +103,7 @@ class ReporteMensual(db.Model):
     anio = db.Column(db.Integer, nullable=False)
     fecha_inicio_reporte = db.Column(db.Date, nullable=False)
     fecha_fin_reporte = db.Column(db.Date, nullable=False)
+    cerrado = db.Column(db.Boolean, default=False, nullable=False)
     obligacion_id = db.Column(
         db.Integer,
         db.ForeignKey('obligacion.id'),
