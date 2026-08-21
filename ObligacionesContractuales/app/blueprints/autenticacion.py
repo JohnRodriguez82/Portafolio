@@ -144,14 +144,6 @@ def login():
                 'next'
             )
 
-            flash(
-                (
-                    'Bienvenido, '
-                    f'{usuario.nombre or usuario.email}!'
-                ),
-                'success'
-            )
-
             return redirect(
                 next_page
                 or
@@ -384,11 +376,6 @@ def logout():
     logout_user()
 
     session.clear()
-
-    flash(
-        'Sesion cerrada.',
-        'info'
-    )
 
     return redirect(
         url_for(
@@ -668,14 +655,6 @@ def auth_google_callback():
 
         login_user(
             usuario
-        )
-
-        flash(
-            (
-                'Bienvenido, '
-                f'{usuario.nombre or usuario.email}!'
-            ),
-            'success'
         )
 
         return redirect(
