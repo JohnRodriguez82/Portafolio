@@ -19,7 +19,7 @@
                 </h5>
             </div>
             <div class="card-body px-4 pb-4">
-                <form method="POST" action="{{ url_for('reportes.cerrar_mes_reportado') }}" class="row g-3 align-items-end">
+                <form method="POST" action="{{ url_for('reportes.cerrar_mes_reportado') }}" id="formCerrarMes" class="row g-3 align-items-end">
                     <div class="col-md-3">
                         <label class="form-label fw-bold">Mes <span class="text-danger">*</span></label>
                         <select name="mes" class="form-select" required>
@@ -40,8 +40,7 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <button type="submit" class="btn btn-warning w-100 fw-bold"
-                                onclick="return confirm('¿Esta seguro de cerrar el mes seleccionado?\n\nEsta accion es irreversible. Todos los reportes del mes quedaran de solo lectura.');">
+                        <button type="submit" class="btn btn-warning w-100 fw-bold" id="btnAbrirModalCerrarMes">
                             <i class="bi bi-lock-fill me-2"></i>Cerrar mes reportado
                         </button>
                     </div>
@@ -190,9 +189,9 @@
                                 <a href="{{ url_for('reportes.ver_reporte', id=rep.id) }}" class="btn btn-outline-primary" title="Ver">
                                     <i class="bi bi-eye"></i> Ver
                                 </a>
-                                <a href="{{ url_for('reportes.generar_pdf', id=rep.id) }}" class="btn btn-outline-danger" title="Descargar PDF">
+                                <button type="button" class="btn btn-outline-danger" onclick="descargarPDF('{{ url_for('reportes.generar_pdf', id=rep.id) }}')" title="Descargar PDF">
                                     <i class="bi bi-file-pdf"></i> PDF
-                                </a>
+                                </button>
                                 <form method="POST" action="{{ url_for('reportes.eliminar_reporte', id=rep.id) }}" class="d-inline"
                                       onsubmit="return confirm('¿Eliminar este reporte permanentemente?');">
                                     <button type="submit" class="btn btn-outline-danger" title="Eliminar">
@@ -254,4 +253,76 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Modal Cerrar Mes Reportado -->
+<div class="modal fade" id="modalCerrarMes" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header text-white border-0" style="background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-lock-fill me-2"></i>Confirmar Cierre de Mes
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body text-center py-4">
+                <i class="bi bi-exclamation-triangle-fill text-warning fs-1 mb-3"></i>
+                <p class="mb-1 fs-5">¿Está seguro de cerrar el mes reportado?</p>
+                <p class="text-muted fw-bold" id="modalCerrarMesInfo">-</p>
+                <div class="alert alert-light border mt-3 mb-0">
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Esta acción es irreversible. Todos los reportes del mes quedarán de solo lectura.
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer border-0 justify-content-center pb-4">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-warning fw-bold" id="btnConfirmarCerrarMes">
+                    <i class="bi bi-lock-fill me-1"></i>Cerrar mes reportado
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Descargar PDF con toast inmediato
+    function descargarPDF(url) {
+        showToast('Descargando PDF...', 'success');
+        window.open(url, '_blank');
+    }
+
+    // Modal de Cerrar Mes Reportado
+    document.addEventListener('DOMContentLoaded', function() {
+        const formCerrarMes = document.getElementById('formCerrarMes');
+        const modalCerrarMesEl = document.getElementById('modalCerrarMes');
+        const modalCerrarMes = new bootstrap.Modal(modalCerrarMesEl);
+        const btnConfirmar = document.getElementById('btnConfirmarCerrarMes');
+        const modalInfo = document.getElementById('modalCerrarMesInfo');
+        const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+        formCerrarMes.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const mes = formCerrarMes.querySelector('select[name="mes"]').value;
+            const anio = formCerrarMes.querySelector('select[name="anio"]').value;
+
+            if (!mes || !anio) {
+                showToast('Debe seleccionar mes y año.', 'warning');
+                return;
+            }
+
+            modalInfo.textContent = meses[parseInt(mes) - 1] + ' ' + anio;
+            modalCerrarMes.show();
+        });
+
+        btnConfirmar.addEventListener('click', function() {
+            modalCerrarMes.hide();
+            formCerrarMes.submit();
+        });
+    });
+</script>
 {% endblock %}
