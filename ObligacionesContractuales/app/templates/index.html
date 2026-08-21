@@ -25,7 +25,6 @@
     </div>
 </div>
 {% else %}
-<!-- Tarjetas de resumen -->
 <div class="row mb-4">
     <div class="col-md-3">
         <div class="card card-custom h-100">
@@ -90,7 +89,7 @@
     </div>
 </div>
 
-<!-- NUEVO: Meses reportados vs faltantes -->
+<!-- Meses reportados vs faltantes -->
 <div class="row mb-4">
     <div class="col-md-6">
         <div class="card border-success h-100">
@@ -465,9 +464,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const disposition = response.headers.get('content-disposition');
             let filename = `Consolidado_${mes}_${anio}.xlsx`;
             if (disposition) {
-                const match = disposition.match(/filename[^;=
-]*=((['"]).*?|[^;
-]*)/);
+                const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
                 if (match) filename = match[1].replace(/['"]/g, '');
             }
 
