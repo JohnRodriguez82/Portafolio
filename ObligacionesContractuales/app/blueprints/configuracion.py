@@ -38,7 +38,8 @@ from flask import (
 )
 
 from flask_login import (
-    login_required
+    login_required,
+    current_user
 )
 
 from cryptography.fernet import (
@@ -671,6 +672,22 @@ def configuracion():
         Guarda la API Key global en la base de datos.
     """
 
+    # --------------------------------------------------------
+    # Solo administrador puede gestionar la API Key global
+    # --------------------------------------------------------
+
+    if not getattr(current_user, 'es_admin', False):
+        flash(
+            'Solo el administrador del sistema puede '
+            'gestionar la API Key de Gemini.',
+            'warning'
+        )
+        return redirect(
+            url_for(
+                'inicio.inicio'
+            )
+        )
+
     # ========================================================
     # GUARDAR
     # ========================================================
@@ -790,6 +807,21 @@ def eliminar_api_key():
     """
     Elimina la API Key global de Gemini.
     """
+
+    # --------------------------------------------------------
+    # Solo administrador puede eliminar la API Key
+    # --------------------------------------------------------
+
+    if not getattr(current_user, 'es_admin', False):
+        flash(
+            'Solo el administrador puede eliminar la API Key.',
+            'warning'
+        )
+        return redirect(
+            url_for(
+                'inicio.inicio'
+            )
+        )
 
     if _eliminar_api_key():
 
