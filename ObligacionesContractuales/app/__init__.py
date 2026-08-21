@@ -114,13 +114,9 @@ def create_app():
         'autenticacion.login'
     )
 
-    login_manager.login_message = (
-        'Por favor inicie sesion para acceder.'
-    )
+    login_manager.login_message = None
 
-    login_manager.login_message_category = (
-        'warning'
-    )
+    login_manager.login_message_category = None
 
     # ========================================================
     # USER LOADER
