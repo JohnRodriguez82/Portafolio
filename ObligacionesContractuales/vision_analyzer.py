@@ -4,14 +4,16 @@ Analizador de imagenes con Google Gemini Vision API.
 Genera descripciones automaticas orientadas a la
 actividad contractual realizada y consolida las
 actividades de un periodo en un texto ejecutivo.
+
+Utiliza la SDK oficial google-genai.
 """
 
 import os
 import re
+import mimetypes
 
-import google.generativeai as genai
-
-from PIL import Image
+from google import genai
+from google.genai import types
 
 
 # ============================================================
@@ -19,13 +21,10 @@ from PIL import Image
 # ============================================================
 
 MODELOS_GEMINI = [
-    'gemini-flash-latest',
+    'gemini-2.0-flash',
     'gemini-2.5-flash',
     'gemini-2.5-pro',
-    'gemini-pro-latest',
-    'gemini-1.5-flash-latest',
     'gemini-1.5-flash',
-    'gemini-1.5-pro-latest',
     'gemini-1.5-pro',
     'gemini-pro-vision',
 ]
@@ -55,24 +54,16 @@ def _limpiar_key(api_key):
 def _encontrar_modelo_funcional(key):
     """
     Encuentra el primer modelo de Gemini que funcione
-    para generación de contenido.
+    para generacion de contenido.
+
+    Utiliza la SDK google-genai.
     """
 
     try:
 
-        genai.configure(
+        client = genai.Client(
             api_key=key
         )
-
-        models = list(
-            genai.list_models()
-        )
-
-        disponibles = [
-            m.name
-            for m in models
-            if 'gemini' in m.name.lower()
-        ]
 
         # ----------------------------------------------------
         # Modelos preferidos
@@ -80,21 +71,11 @@ def _encontrar_modelo_funcional(key):
 
         for modelo_nombre in MODELOS_GEMINI:
 
-            nombre_completo = (
-                f"models/{modelo_nombre}"
-            )
-
-            if nombre_completo not in disponibles:
-                continue
-
             try:
 
-                model = genai.GenerativeModel(
-                    modelo_nombre
-                )
-
-                model.generate_content(
-                    "Hola"
+                client.models.generate_content(
+                    model=modelo_nombre,
+                    contents="Hola"
                 )
 
                 return modelo_nombre
@@ -107,35 +88,33 @@ def _encontrar_modelo_funcional(key):
         # Cualquier modelo compatible
         # ----------------------------------------------------
 
-        for model_info in models:
+        for m in client.models.list():
+
+            nombre = (
+                getattr(
+                    m,
+                    'name',
+                    str(m)
+                )
+                .replace(
+                    "models/",
+                    ""
+                )
+            )
 
             if (
                 'gemini'
-                in model_info.name.lower()
-                and
-                'generateContent'
-                in model_info.supported_generation_methods
+                in nombre.lower()
             ):
-
-                nombre_corto = (
-                    model_info.name
-                    .replace(
-                        "models/",
-                        ""
-                    )
-                )
 
                 try:
 
-                    model = genai.GenerativeModel(
-                        nombre_corto
+                    client.models.generate_content(
+                        model=nombre,
+                        contents="Hola"
                     )
 
-                    model.generate_content(
-                        "Hola"
-                    )
-
-                    return nombre_corto
+                    return nombre
 
                 except Exception:
 
@@ -150,10 +129,10 @@ def _encontrar_modelo_funcional(key):
 
 def _limpiar_texto(texto):
     """
-    Limpia referencias innecesarias a imágenes,
-    fotografías y evidencias visuales.
+    Limpia referencias innecesarias a imagenes,
+    fotografias y evidencias visuales.
 
-    También normaliza espacios y puntuación.
+    Tambien normaliza espacios y puntuacion.
     """
 
     if not texto:
@@ -329,11 +308,11 @@ def analizar_imagen(
     La IA recibe tres elementos:
 
     1. La imagen.
-    2. La obligación contractual.
+    2. La obligacion contractual.
     3. El contexto escrito por el usuario.
 
-    Esto permite que la descripción no sea solamente
-    una descripción visual, sino una interpretación
+    Esto permite que la descripcion no sea solamente
+    una descripcion visual, sino una interpretacion
     orientada a la actividad contractual.
     """
 
@@ -364,32 +343,104 @@ def analizar_imagen(
 
     try:
 
-        genai.configure(
+        client = genai.Client(
             api_key=key
         )
 
-        model = genai.GenerativeModel(
-            modelo
-        )
+        # --------------------------------------------------------
+        # Asegurar que la lectura comienza desde el inicio
+        # --------------------------------------------------------
+
+        if hasattr(
+            image_path,
+            'stream'
+        ) and image_path.stream:
+
+            image_path.stream.seek(0)
+
+        elif hasattr(
+            image_path,
+            'seek'
+        ):
+
+            image_path.seek(0)
+
+        # --------------------------------------------------------
+        # Leer imagen como bytes
+        # --------------------------------------------------------
+
+        if hasattr(
+            image_path,
+            'read'
+        ):
+
+            image_bytes = image_path.read()
+
+            mime = (
+                getattr(
+                    image_path,
+                    'content_type',
+                    None
+                )
+                or
+                getattr(
+                    image_path,
+                    'mimetype',
+                    None
+                )
+                or
+                'image/jpeg'
+            )
+
+            # ------------------------------------------------
+            # Restaurar puntero para EvidenciaService
+            # ------------------------------------------------
+
+            if hasattr(
+                image_path,
+                'stream'
+            ) and image_path.stream:
+
+                image_path.stream.seek(0)
+
+            elif hasattr(
+                image_path,
+                'seek'
+            ):
+
+                image_path.seek(0)
+
+        else:
+
+            with open(
+                image_path,
+                'rb'
+            ) as f:
+
+                image_bytes = f.read()
+
+            mime, _ = mimetypes.guess_type(
+                str(image_path)
+            )
+
+            if not mime:
+
+                mime = 'image/jpeg'
 
         # ----------------------------------------------------
-        # Abrir imagen
+        # Contexto
         # ----------------------------------------------------
-
-        img = Image.open(
-            image_path
-        )
 
         contexto = (
             contexto_obligacion
             or
-            'No se proporcionó la descripción de la obligación.'
+            'No se proporciono la descripcion de la obligacion.'
         )
 
         anuncio = (
             anuncio_usuario
             or
-            'No se proporcionó contexto adicional.'
+            'No se proporciono contexto adicional.'
         )
 
         # ----------------------------------------------------
@@ -398,16 +449,16 @@ def analizar_imagen(
 
         prompt = f"""
 Eres un profesional encargado de redactar
-informes de ejecución contractual para una
-entidad pública.
+informes de ejecucion contractual para una
+entidad publica.
 
 Debes analizar una actividad utilizando:
 
-1. La información contenida en la imagen.
-2. La obligación contractual.
+1. La informacion contenida en la imagen.
+2. La obligacion contractual.
 3. El contexto proporcionado por el usuario.
 
-OBLIGACIÓN CONTRACTUAL:
+OBLIGACION CONTRACTUAL:
 
 {contexto}
 
@@ -417,21 +468,21 @@ CONTEXTO PROPORCIONADO POR EL USUARIO:
 
 OBJETIVO:
 
-Redacta una descripción profesional de la actividad
-realizada y relaciónala con la obligación contractual
-cuando exista información suficiente para hacerlo.
+Redacta una descripcion profesional de la actividad
+realizada y relacionala con la obligacion contractual
+cuando exista informacion suficiente para hacerlo.
 
-La descripción debe responder, en la medida en que
-la información disponible lo permita:
+La descripcion debe responder, en la medida en que
+la informacion disponible lo permita:
 
-- ¿Qué actividad se realizó?
-- ¿Qué gestión se desarrolló?
-- ¿Qué se revisó, elaboró, actualizó, validó,
-  gestionó, implementó o coordinó?
-- ¿Qué resultado, avance o producto puede
+- Que actividad se realizo?
+- Que gestion se desarrollo?
+- Que se reviso, elaboro, actualizo, valido,
+  gestiono, implemento o coordino?
+- Que resultado, avance o producto puede
   identificarse?
-- ¿Cómo contribuye la actividad al cumplimiento
-  de la obligación?
+- Como contribuye la actividad al cumplimiento
+  de la obligacion?
 
 REGLAS OBLIGATORIAS:
 
@@ -442,16 +493,16 @@ REGLAS OBLIGATORIAS:
    "la imagen muestra",
    "pantallazo",
    "captura de pantalla",
-   "fotografía",
+   "fotografia",
    "evidencia visual".
 
 2. NO describas colores, posiciones, botones,
-   ventanas o elementos gráficos que no aporten
-   información sobre la actividad.
+   ventanas o elementos graficos que no aporten
+   informacion sobre la actividad.
 
 3. Describe la actividad funcional y contractual.
 
-4. Utiliza lenguaje formal, técnico y administrativo.
+4. Utiliza lenguaje formal, tecnico y administrativo.
 
 5. No inventes datos.
 
@@ -459,32 +510,39 @@ REGLAS OBLIGATORIAS:
    fechas, resultados, usuarios, reuniones,
    entregables o aprobaciones.
 
-7. Si la información únicamente demuestra un
-   avance o una gestión, no afirmes que existe
+7. Si la informacion unicamente demuestra un
+   avance o una gestion, no afirmes que existe
    cumplimiento total.
 
-8. Utiliza verbos de acción como:
-   revisión, análisis, elaboración, actualización,
-   seguimiento, validación, configuración,
-   implementación, documentación, coordinación,
-   verificación, atención, gestión, consolidación,
-   socialización, ajuste y preparación.
+8. Utiliza verbos de accion como:
+   revision, analisis, elaboracion, actualizacion,
+   seguimiento, validacion, configuracion,
+   implementacion, documentacion, coordinacion,
+   verificacion, atencion, gestion, consolidacion,
+   socializacion, ajuste y preparacion.
 
-9. La descripción debe tener entre 1 y 3 oraciones.
+9. La descripcion debe tener entre 1 y 3 oraciones.
 
 10. No utilices listas.
 
-11. La descripción debe poder copiarse directamente
+11. La descripcion debe poder copiarse directamente
     en un informe de actividades contractuales.
 
-12. Entrega únicamente la descripción final.
+12. Entrega unicamente la descripcion final.
 """
 
-        response = model.generate_content(
-            [
+        response = client.models.generate_content(
+            model=modelo,
+            contents=[
                 prompt,
-                img
-            ]
+                types.Part.from_bytes(
+                    data=image_bytes,
+                    mime_type=mime
+                )
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0.2
+            )
         )
 
         descripcion = (
@@ -515,6 +573,38 @@ REGLAS OBLIGATORIAS:
 
         return None
 
+    finally:
+
+        # --------------------------------------------------------
+        # MUY IMPORTANTE:
+        # devolver el archivo al inicio para que posteriormente
+        # EvidenciaService pueda guardarlo correctamente.
+        # --------------------------------------------------------
+
+        try:
+
+            if hasattr(
+                image_path,
+                'stream'
+            ) and image_path.stream:
+
+                image_path.stream.seek(0)
+
+            elif hasattr(
+                image_path,
+                'seek'
+            ):
+
+                image_path.seek(0)
+
+        except Exception as exc:
+
+            print(
+                '[VisionAnalyzer] '
+                'No fue posible restaurar el puntero '
+                f'del archivo: {exc}'
+            )
+
 
 # ============================================================
 # CONSOLIDAR ACTIVIDADES
@@ -528,10 +618,10 @@ def consolidar_textos_ejecutivo(
 ):
     """
     Consolida las actividades de un reporte mensual
-    en un único párrafo ejecutivo.
+    en un unico parrafo ejecutivo.
 
-    La obligación contractual se utiliza como contexto
-    para que el resumen explique la relación entre las
+    La obligacion contractual se utiliza como contexto
+    para que el resumen explique la relacion entre las
     actividades y el cumplimiento contractual.
     """
 
@@ -609,12 +699,8 @@ def consolidar_textos_ejecutivo(
 
     try:
 
-        genai.configure(
+        client = genai.Client(
             api_key=key
-        )
-
-        model = genai.GenerativeModel(
-            modelo
         )
 
         contexto_obligacion = (
@@ -641,12 +727,12 @@ def consolidar_textos_ejecutivo(
 
         prompt = f"""
 Eres un redactor especializado en informes
-de ejecución contractual para entidades públicas.
+de ejecucion contractual para entidades publicas.
 
 Debes consolidar las actividades realizadas durante
-un periodo en UN SOLO PÁRRAFO EJECUTIVO.
+un periodo en UN SOLO PARRAFO EJECUTIVO.
 
-OBLIGACIÓN CONTRACTUAL:
+OBLIGACION CONTRACTUAL:
 
 {contexto_obligacion}
 
@@ -660,16 +746,16 @@ ACTIVIDADES REGISTRADAS:
 
 OBJETIVO:
 
-Redacta un único párrafo que explique de manera
+Redacta un unico parrafo que explique de manera
 clara, profesional y coherente las principales
-actividades desarrolladas y su contribución al
-cumplimiento de la obligación contractual.
+actividades desarrolladas y su contribucion al
+cumplimiento de la obligacion contractual.
 
 REGLAS:
 
-1. Escribe UN SOLO PÁRRAFO.
+1. Escribe UN SOLO PARRAFO.
 
-2. Utiliza lenguaje formal, técnico y administrativo.
+2. Utiliza lenguaje formal, tecnico y administrativo.
 
 3. Integra las actividades en una narrativa coherente.
 
@@ -694,17 +780,17 @@ REGLAS:
    - productos;
    - resultados;
    - seguimiento;
-   - contribución contractual.
+   - contribucion contractual.
 
-9. NO inventes información.
+9. NO inventes informacion.
 
 10. NO inventes cantidades, porcentajes,
     fechas, resultados, nombres, reuniones,
     entregables o aprobaciones.
 
 11. NO menciones:
-    imágenes,
-    fotografías,
+    imagenes,
+    fotografias,
     capturas,
     pantallazos,
     evidencias,
@@ -716,27 +802,31 @@ REGLAS:
     "la imagen muestra",
     "como se ve".
 
-13. Evita frases vacías como:
+13. Evita frases vacias como:
     "se realizaron las actividades correspondientes",
-    cuando no aporten información concreta.
+    cuando no aporten informacion concreta.
 
 14. No exageres el cumplimiento.
 
-15. Si la información demuestra solamente un avance,
-    revisión, gestión o seguimiento, utiliza ese
+15. Si la informacion demuestra solamente un avance,
+    revision, gestion o seguimiento, utiliza ese
     nivel de certeza.
 
 16. El texto debe parecer redactado por un profesional
     responsable de un informe contractual.
 
-17. Cuando exista información suficiente,
-    procura una extensión aproximada de 100 a 180 palabras.
+17. Cuando exista informacion suficiente,
+    procura una extension aproximada de 100 a 180 palabras.
 
-18. Entrega únicamente el párrafo final.
+18. Entrega unicamente el parrafo final.
 """
 
-        response = model.generate_content(
-            prompt
+        response = client.models.generate_content(
+            model=modelo,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2
+            )
         )
 
         if response.text:
@@ -746,8 +836,8 @@ REGLAS:
             )
 
             # ------------------------------------------------
-            # Convertir saltos de línea en espacio para
-            # garantizar un único párrafo.
+            # Convertir saltos de linea en espacio para
+            # garantizar un unico parrafo.
             # ------------------------------------------------
 
             resultado = re.sub(
@@ -772,7 +862,7 @@ REGLAS:
 
 
 # ============================================================
-# CONSOLIDACIÓN SIN IA
+# CONSOLIDACION SIN IA
 # ============================================================
 
 def _consolidar_manual(
@@ -781,7 +871,7 @@ def _consolidar_manual(
     """
     Consolida actividades sin utilizar IA.
 
-    La salida es determinística: no utiliza random,
+    La salida es deterministica: no utiliza random,
     de modo que el mismo conjunto de actividades
     produce siempre el mismo resultado.
     """
@@ -834,7 +924,7 @@ def _consolidar_manual(
             )
 
         # ----------------------------------------------------
-        # Última actividad
+        # Ultima actividad
         # ----------------------------------------------------
 
         elif indice == len(limpias) - 1:
