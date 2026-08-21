@@ -425,6 +425,28 @@ function toggleEditEv(id) {
     }
 }
 
+function cerrarModalProcesando() {
+    const modalEl = document.getElementById('modalProcesandoEvidencia');
+    if (!modalEl) return;
+    
+    // Intentar cerrar via Bootstrap
+    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+    if (modalInstance) {
+        modalInstance.hide();
+    }
+    
+    // Fallback manual: remover backdrop y clases
+    setTimeout(function() {
+        document.querySelectorAll('.modal-backdrop').forEach(function(el) { el.remove(); });
+        modalEl.classList.remove('show');
+        modalEl.setAttribute('aria-hidden', 'true');
+        modalEl.style.display = 'none';
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+    }, 200);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Modal de Cerrar Reporte
     const formCerrarReporte = document.getElementById('formCerrarReporte');
@@ -450,7 +472,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // ============================================================
     
     const formAjax = document.getElementById('formEvidenciaAjax');
-    const modalProcesandoEl = document.getElementById('modalProcesandoEvidencia');
     const mensajeDiv = document.getElementById('mensajeEvidencia');
     const emptyState = document.getElementById('emptyStateEvidencias');
     const tablaContainer = document.getElementById('tablaEvidenciasContainer');
@@ -459,8 +480,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnSubir = document.getElementById('btnSubirEvidencia');
 
     if (!formAjax) return;
-
-    const modalProcesando = new bootstrap.Modal(modalProcesandoEl, { backdrop: 'static', keyboard: false });
 
     formAjax.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -481,19 +500,36 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('imagen', imagen);
 
         btnSubir.disabled = true;
+        
+        // Mostrar modal
+        const modalEl = document.getElementById('modalProcesandoEvidencia');
+        const modalProcesando = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
         modalProcesando.show();
+
+        // Timeout de seguridad: cerrar modal a los 45 segundos
+        const safetyTimeout = setTimeout(function() {
+            cerrarModalProcesando();
+            mensajeDiv.innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>El procesamiento tomó más tiempo de lo esperado. Por favor recargue la página para verificar.</div>';
+            btnSubir.disabled = false;
+        }, 45000);
 
         try {
             const response = await fetch(
                 "{{ url_for('reportes.subir_evidencia_ajax', id=reporte.id) }}",
-                {
-                    method: 'POST',
-                    body: formData
-                }
+                { method: 'POST', body: formData }
             );
 
-            const data = await response.json();
-            modalProcesando.hide();
+            clearTimeout(safetyTimeout);
+            cerrarModalProcesando();
+
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseErr) {
+                mensajeDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>Error al interpretar la respuesta del servidor.</div>';
+                btnSubir.disabled = false;
+                return;
+            }
 
             if (data.success && data.evidencia) {
                 mensajeDiv.innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>' + (data.message || 'Evidencia guardada.') + '</div>';
@@ -578,14 +614,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 grid.insertAdjacentHTML('beforeend', nuevaCard);
 
-                setTimeout(() => { mensajeDiv.innerHTML = ''; }, 5000);
+                setTimeout(function() { mensajeDiv.innerHTML = ''; }, 5000);
 
             } else {
                 mensajeDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>' + (data.error || 'Error desconocido.') + '</div>';
             }
 
         } catch (error) {
-            modalProcesando.hide();
+            clearTimeout(safetyTimeout);
+            cerrarModalProcesando();
             mensajeDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>Error de conexion: ' + error.message + '</div>';
         } finally {
             btnSubir.disabled = false;
