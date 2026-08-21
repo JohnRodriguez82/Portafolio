@@ -3598,3 +3598,141 @@ def nuevo_reporte_selector():
         obligaciones=obligaciones,
         contrato=contrato
     ) 
+    
+ # ============================================================
+# SUBIR EVIDENCIA VIA AJAX
+# ============================================================
+
+@reportes_bp.route(
+    '/reporte/<int:id>/evidencia/ajax',
+    methods=['POST']
+)
+@login_required
+def subir_evidencia_ajax(id):
+    """
+    Subida de evidencia via AJAX (sin recargar pagina).
+
+    Retorna JSON con la evidencia creada o mensaje de error.
+    """
+
+    reporte = (
+        ReporteMensual.query
+        .get_or_404(id)
+    )
+
+    obligacion = reporte.obligacion
+    contrato = Contrato.query.get(obligacion.contrato_id)
+
+    # Seguridad
+    if not contrato or contrato.user_id != current_user.id:
+        return jsonify({'error': 'No tiene permiso.'}), 403
+
+    # Reporte cerrado
+    if reporte.cerrado:
+        return jsonify({'error': 'El reporte esta cerrado.'}), 400
+
+    # Contrato finalizado
+    if contrato.etapa == 'Reporte Cerrado':
+        return jsonify({'error': 'El contrato esta finalizado.'}), 400
+
+    # Verificar archivo
+    if 'imagen' not in request.files:
+        return jsonify({'error': 'No se selecciono ningun archivo.'}), 400
+
+    file = request.files['imagen']
+    anuncio_usuario = request.form.get('anuncio_usuario', '').strip()
+
+    if not anuncio_usuario:
+        return jsonify({'error': 'Debe escribir un anuncio/contexto.'}), 400
+
+    if file.filename == '':
+        return jsonify({'error': 'No se selecciono ningun archivo.'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Formato no permitido.'}), 400
+
+    # Fecha de actividad
+    fecha_actividad_str = request.form.get('fecha_actividad', '').strip()
+    try:
+        if fecha_actividad_str:
+            fecha_actividad = datetime.strptime(fecha_actividad_str, '%Y-%m-%d').date()
+        else:
+            fecha_actividad = date.today()
+    except ValueError:
+        return jsonify({'error': 'La fecha de actividad no es valida.'}), 400
+
+    # Validar fecha contra periodo del reporte
+    if (fecha_actividad < reporte.fecha_inicio_reporte
+            or fecha_actividad > reporte.fecha_fin_reporte):
+        return jsonify({
+            'error': f'La fecha debe estar dentro del periodo: '
+                     f'{reporte.fecha_inicio_reporte.strftime("%d/%m/%Y")} a '
+                     f'{reporte.fecha_fin_reporte.strftime("%d/%m/%Y")}.'
+        }), 400
+
+    api_key = _obtener_api_key()
+
+    try:
+        evidencia_service = EvidenciaService()
+
+        evidencia = evidencia_service.crear_evidencia(
+            reporte=reporte,
+            imagen=file,
+            anuncio=anuncio_usuario,
+            fecha=fecha_actividad,
+            descripcion=None
+        )
+
+        db.session.commit()
+
+        # Analisis IA en background
+        if api_key and evidencia.imagen_path:
+            app = current_app._get_current_object()
+
+            thread = threading.Thread(
+                target=_analizar_ia_background,
+                args=(
+                    app,
+                    evidencia.id,
+                    evidencia.imagen_path,
+                    api_key,
+                    obligacion.descripcion,
+                    anuncio_usuario
+                ),
+                daemon=True
+            )
+            thread.start()
+
+        # Preparar respuesta JSON
+        filename = ''
+        if evidencia.imagen_path:
+            ruta = str(evidencia.imagen_path).replace('\\', '/')
+            filename = ruta.split('/')[-1]
+
+        fecha_str = (
+            evidencia.fecha_actividad.strftime('%d-%m-%Y')
+            if evidencia.fecha_actividad
+            else evidencia.fecha_carga.strftime('%d-%m-%Y')
+        )
+
+        return jsonify({
+            'success': True,
+            'evidencia': {
+                'id': evidencia.id,
+                'numero_actividad': evidencia.numero_actividad,
+                'descripcion_actividad': evidencia.descripcion_actividad,
+                'descripcion_visual_ia': evidencia.descripcion_visual_ia,
+                'fecha': fecha_str,
+                'imagen_filename': filename,
+                'anuncio_usuario': evidencia.anuncio_usuario
+            },
+            'message': 'Evidencia guardada. Analisis con IA en proceso.'
+        }), 200
+
+    except RequestEntityTooLarge:
+        db.session.rollback()
+        return jsonify({'error': 'El archivo es demasiado grande. Maximo 16MB.'}), 400
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Error: {str(e)}'}), 500
