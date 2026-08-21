@@ -38,7 +38,8 @@ class EvidenciaService:
         imagen=None,
         anuncio=None,
         fecha=None,
-        descripcion=None
+        descripcion=None,
+        skip_generacion=False
     ):
         """
         Crea una evidencia asociada a un reporte.
@@ -134,13 +135,27 @@ class EvidenciaService:
                 descripcion_visual
             )
 
+        elif skip_generacion:
+
+            # ------------------------------------------------
+            # MODO BACKGROUND: no generar descripcion ahora.
+            # La IA la completara en un thread separado.
+            # ------------------------------------------------
+
+            descripcion_actividad = (
+                anuncio
+                or
+                'Actividad registrada. '
+                'Descripcion en proceso...'
+            )
+
         else:
 
             # ------------------------------------------------
             # RESPALDO
             # ------------------------------------------------
-            # Si Gemini no está disponible o no pudo analizar
-            # la imagen, conservamos la lógica anterior.
+            # Si Gemini no esta disponible o no pudo analizar
+            # la imagen, conservamos la logica anterior.
             # ------------------------------------------------
 
             descripcion_actividad = (
