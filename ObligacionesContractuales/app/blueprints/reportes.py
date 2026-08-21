@@ -26,6 +26,7 @@ import os
 import io
 import zipfile
 import calendar
+import threading
 
 from datetime import datetime, date
 
@@ -1106,6 +1107,44 @@ def ver_reporte(id):
         form_data=form_data
     )
 
+# ============================================================
+# ANALISIS IA EN BACKGROUND
+# ============================================================
+
+def _analizar_ia_background(app, evidencia_id, imagen_path, api_key, obligacion_desc, anuncio):
+    """
+    Analiza la imagen con Gemini en un hilo separado
+    y actualiza la evidencia cuando termina.
+    """
+    import time
+    time.sleep(0.5)  # Pequeña espera para asegurar commit previo
+
+    with app.app_context():
+        try:
+            from vision_analyzer import analizar_imagen
+
+            descripcion = analizar_imagen(
+                imagen_path,
+                api_key=api_key,
+                contexto_obligacion=obligacion_desc,
+                anuncio_usuario=anuncio
+            )
+
+            if descripcion:
+                from models import Evidencia, db
+                evidencia = Evidencia.query.get(evidencia_id)
+                if evidencia:
+                    evidencia.descripcion_visual_ia = descripcion
+                    evidencia.descripcion_actividad = descripcion
+                    db.session.commit()
+                    print(f'[IA Background] Evidencia {evidencia_id} analizada.')
+            else:
+                print(f'[IA Background] Evidencia {evidencia_id}: sin descripcion.')
+
+        except Exception as e:
+            print(f'[IA Background] Error evidencia {evidencia_id}: {e}')
+            from models import db
+            db.session.rollback()
 
 # ============================================================
 # SUBIR EVIDENCIA
@@ -1385,73 +1424,70 @@ def subir_evidencia(id):
             )
         )
 
-    # ========================================================
-    # CREAR EVIDENCIA MEDIANTE SERVICE
-    # ========================================================
+        # ========================================================
+        # CREAR EVIDENCIA MEDIANTE SERVICE
+        # ========================================================
 
-    try:
+        try:
 
-        # ----------------------------------------------------
-        # ANÁLISIS MEDIANTE IA
-        # ----------------------------------------------------
-
-        descripcion_visual = None
-
-        if api_key:
-
-            flash(
-                'Analizando imagen con IA...',
-                'info'
-            )
-
-            descripcion_visual = analizar_imagen(
-                file,
-                api_key,
-                contexto_obligacion=obligacion.descripcion,
-                anuncio_usuario=anuncio_usuario
-            )
-            
             # ----------------------------------------------------
-            # RESTAURAR ARCHIVO DESPUÉS DEL ANÁLISIS IA
+            # CREAR EVIDENCIA INMEDIATAMENTE (sin esperar IA)
             # ----------------------------------------------------
 
-            try:
+            evidencia_service = EvidenciaService()
 
-                if hasattr(
-                    file,
-                    'stream'
-                ) and file.stream:
+            evidencia = (
+                evidencia_service.crear_evidencia(
+                    reporte=reporte,
+                    imagen=file,
+                    anuncio=anuncio_usuario,
+                    fecha=fecha_actividad,
+                    descripcion=None  # IA se procesa en background
+                )
+            )
 
-                    file.stream.seek(0)
+            # ----------------------------------------------------
+            # GUARDAR
+            # ----------------------------------------------------
 
-                elif hasattr(
-                    file,
-                    'seek'
-                ):
+            db.session.commit()
 
-                    file.seek(0)
+            # ----------------------------------------------------
+            # ANÁLISIS IA EN BACKGROUND (no bloquea al usuario)
+            # ----------------------------------------------------
 
-            except Exception as exc:
+            if api_key and evidencia.imagen_path:
 
-                print(
-                    '[Reportes] '
-                    'No fue posible restaurar el archivo '
-                    f'después del análisis IA: {exc}'
+                app = current_app._get_current_object()
+
+                thread = threading.Thread(
+                    target=_analizar_ia_background,
+                    args=(
+                        app,
+                        evidencia.id,
+                        evidencia.imagen_path,
+                        api_key,
+                        obligacion.descripcion,
+                        anuncio_usuario
+                    ),
+                    daemon=True
                 )
 
-            if descripcion_visual:
+                thread.start()
 
                 flash(
-                    f'IA detectó: '
-                    f'"{descripcion_visual[:80]}..."',
-                    'success'
+                    'Evidencia guardada. El análisis con IA '
+                    'se está procesando en segundo plano.',
+                    'info'
                 )
 
             else:
 
                 flash(
-                    'No se pudo analizar la imagen con IA.',
-                    'warning'
+                    f'Actividad '
+                    f'{evidencia.numero_actividad} '
+                    f'registrada.',
+                    'success'
                 )
 
         # ----------------------------------------------------
