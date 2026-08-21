@@ -67,7 +67,7 @@ def create_app():
     app = Flask(
         __name__,
         template_folder=str(Path(__file__).resolve().parent / "templates"),
-        static_folder='../static'
+        static_folder=str(Path(__file__).resolve().parent / "static")'
     )
 
     # ========================================================
