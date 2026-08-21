@@ -412,6 +412,7 @@ function toggleEditEv(id) {
     const desc = document.getElementById('ev-desc-' + id);
     const form = document.getElementById('ev-form-' + id);
     const btn = document.getElementById('ev-btn-' + id);
+    if (!desc || !form || !btn) return;
 
     if (form.classList.contains('d-none')) {
         desc.classList.add('d-none');
@@ -466,7 +467,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const anuncio = document.getElementById('evAnuncio').value.trim();
         const fecha = document.getElementById('evFecha').value;
-        const imagen = document.getElementById('evImagen').files[0];
+        const imagenInput = document.getElementById('evImagen');
+        const imagen = imagenInput.files[0];
 
         if (!anuncio || !fecha || !imagen) {
             mensajeDiv.innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Complete todos los campos.</div>';
@@ -486,108 +488,97 @@ document.addEventListener('DOMContentLoaded', function() {
                 "{{ url_for('reportes.subir_evidencia_ajax', id=reporte.id) }}",
                 {
                     method: 'POST',
-                    body: formData,
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
+                    body: formData
                 }
             );
 
             const data = await response.json();
-
             modalProcesando.hide();
 
-            if (data.success) {
-                // Mostrar mensaje de exito
-                mensajeDiv.innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>' + data.message + '</div>';
-
-                // Limpiar formulario
+            if (data.success && data.evidencia) {
+                mensajeDiv.innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>' + (data.message || 'Evidencia guardada.') + '</div>';
                 formAjax.reset();
 
                 // Ocultar empty state
                 if (emptyState) emptyState.classList.add('d-none');
                 if (tablaContainer) tablaContainer.classList.remove('d-none');
 
-                // Agregar fila a la tabla
                 const ev = data.evidencia;
                 const urlImagen = "{{ url_for('reportes.uploaded_file', filename='') }}" + ev.imagen_filename;
-                const urlEditar = "{{ url_for('reportes.editar_evidencia', id=reporte.id, evidencia_id=0) }}".replace('/0/', '/' + ev.id + '/');
-                const urlEliminar = "{{ url_for('reportes.eliminar_evidencia', id=reporte.id, evidencia_id=0) }}".replace('/0/', '/' + ev.id + '/');
+                const urlEditarBase = "{{ url_for('reportes.editar_evidencia', id=reporte.id, evidencia_id=0) }}";
+                const urlEliminarBase = "{{ url_for('reportes.eliminar_evidencia', id=reporte.id, evidencia_id=0) }}";
+                const urlEditar = urlEditarBase.replace('/0/', '/' + ev.id + '/');
+                const urlEliminar = urlEliminarBase.replace('/0/', '/' + ev.id + '/');
 
-                const badgeIA = {% if api_key_configurada %}
-                    '<div class="mt-2 p-2 bg-warning bg-opacity-10 rounded border border-warning" id="ia-badge-' + ev.id + '">' +
-                        '<small class="text-warning">' +
-                            '<i class="bi bi-robot me-1"></i>' +
-                            '<strong>Analizando con IA...</strong> La descripcion se actualizara automaticamente.' +
-                        '</small>' +
-                    '</div>' : '' {% else %} '' {% endif %};
+                let badgeIA = '';
+                {% if api_key_configurada %}
+                badgeIA = '<div class="mt-2 p-2 bg-warning bg-opacity-10 rounded border border-warning" id="ia-badge-' + ev.id + '">' +
+                    '<small class="text-warning">' +
+                        '<i class="bi bi-robot me-1"></i>' +
+                        '<strong>Analizando con IA...</strong> La descripcion se actualizara automaticamente.' +
+                    '</small>' +
+                '</div>';
+                {% endif %}
 
-                const nuevaFila = `
-                    <tr id="fila-evidencia-${ev.id}">
-                        <td class="align-middle text-center">
-                            <span class="badge bg-primary fs-6">${ev.numero_actividad}</span>
-                        </td>
-                        <td class="align-middle">
-                            <div id="ev-desc-${ev.id}">
-                                <p class="mb-0 small text-justify">${ev.descripcion_actividad}</p>
-                                ${badgeIA}
-                            </div>
-                            <form method="POST" action="${urlEditar}" class="mt-2 d-none" id="ev-form-${ev.id}">
-                                <div class="mb-2">
-                                    <label class="form-label small text-muted">Fecha de la actividad</label>
-                                    <input type="date" name="fecha_actividad" class="form-control form-control-sm" value="${fecha}" required>
-                                </div>
-                                <textarea name="descripcion_actividad" class="form-control form-control-sm" rows="4" required>${ev.descripcion_actividad}</textarea>
-                                <div class="mt-2">
-                                    <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check-lg me-1"></i>Guardar</button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm ms-1" onclick="toggleEditEv(${ev.id})"><i class="bi bi-x-lg me-1"></i>Cancelar</button>
-                                </div>
-                            </form>
-                        </td>
-                        <td class="align-middle text-center">${ev.fecha}</td>
-                        <td class="align-middle">
-                            <a href="${urlImagen}" target="_blank" title="Abrir evidencia">
-                                <img src="${urlImagen}" alt="Evidencia" class="evidence-img"
-                                     style="max-height: 100px; width: auto; object-fit: contain;" loading="lazy"
-                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
-                                <span class="text-danger small" style="display:none;"><i class="bi bi-image"></i> No se pudo cargar</span>
-                            </a>
-                        </td>
-                        <td class="align-middle text-center">
-                            <button type="button" class="btn btn-outline-primary btn-sm mb-1" onclick="toggleEditEv(${ev.id})" id="ev-btn-${ev.id}">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <form method="POST" action="${urlEliminar}" class="d-inline" data-confirm="Eliminar esta actividad?">
-                                <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
-                            </form>
-                        </td>
-                    </tr>
-                `;
+                const nuevaFila = 
+                    '<tr id="fila-evidencia-' + ev.id + '">' +
+                        '<td class="align-middle text-center">' +
+                            '<span class="badge bg-primary fs-6">' + ev.numero_actividad + '</span>' +
+                        '</td>' +
+                        '<td class="align-middle">' +
+                            '<div id="ev-desc-' + ev.id + '">' +
+                                '<p class="mb-0 small text-justify">' + (ev.descripcion_actividad || '') + '</p>' +
+                                badgeIA +
+                            '</div>' +
+                            '<form method="POST" action="' + urlEditar + '" class="mt-2 d-none" id="ev-form-' + ev.id + '">' +
+                                '<div class="mb-2">' +
+                                    '<label class="form-label small text-muted">Fecha de la actividad</label>' +
+                                    '<input type="date" name="fecha_actividad" class="form-control form-control-sm" value="' + fecha + '" required>' +
+                                '</div>' +
+                                '<textarea name="descripcion_actividad" class="form-control form-control-sm" rows="4" required>' + (ev.descripcion_actividad || '') + '</textarea>' +
+                                '<div class="mt-2">' +
+                                    '<button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check-lg me-1"></i>Guardar</button>' +
+                                    '<button type="button" class="btn btn-outline-secondary btn-sm ms-1" onclick="toggleEditEv(' + ev.id + ')"><i class="bi bi-x-lg me-1"></i>Cancelar</button>' +
+                                '</div>' +
+                            '</form>' +
+                        '</td>' +
+                        '<td class="align-middle text-center">' + ev.fecha + '</td>' +
+                        '<td class="align-middle">' +
+                            '<a href="' + urlImagen + '" target="_blank" title="Abrir evidencia">' +
+                                '<img src="' + urlImagen + '" alt="Evidencia" class="evidence-img" style="max-height: 100px; width: auto; object-fit: contain;" loading="lazy" ' +
+                                'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'inline-block\';">' +
+                                '<span class="text-danger small" style="display:none;"><i class="bi bi-image"></i> No se pudo cargar</span>' +
+                            '</a>' +
+                        '</td>' +
+                        '<td class="align-middle text-center">' +
+                            '<button type="button" class="btn btn-outline-primary btn-sm mb-1" onclick="toggleEditEv(' + ev.id + ')" id="ev-btn-' + ev.id + '">' +
+                                '<i class="bi bi-pencil"></i>' +
+                            '</button>' +
+                            '<form method="POST" action="' + urlEliminar + '" class="d-inline" data-confirm="Eliminar esta actividad?">' +
+                                '<button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>' +
+                            '</form>' +
+                        '</td>' +
+                    '</tr>';
 
                 tbody.insertAdjacentHTML('beforeend', nuevaFila);
 
-                // Agregar a la cuadricula
-                const nuevaCard = `
-                    <div class="col-md-4 col-lg-3 grid-item-evidencia" id="grid-evidencia-${ev.id}">
-                        <div class="card h-100 border-0 shadow-sm">
-                            <a href="${urlImagen}" target="_blank">
-                                <img src="${urlImagen}" class="card-img-top" alt="Evidencia" style="height: 160px; object-fit: cover;">
-                            </a>
-                            <div class="card-body">
-                                <span class="badge bg-primary mb-2">Actividad ${ev.numero_actividad}</span>
-                                <p class="card-text small text-muted mb-1">${ev.fecha}</p>
-                                <p class="card-text small text-secondary">${ev.descripcion_actividad.substring(0, 60)}${ev.descripcion_actividad.length > 60 ? '...' : ''}</p>
-                            </div>
-                        </div>
-                    </div>
-                `;
+                const nuevaCard = 
+                    '<div class="col-md-4 col-lg-3 grid-item-evidencia" id="grid-evidencia-' + ev.id + '">' +
+                        '<div class="card h-100 border-0 shadow-sm">' +
+                            '<a href="' + urlImagen + '" target="_blank">' +
+                                '<img src="' + urlImagen + '" class="card-img-top" alt="Evidencia" style="height: 160px; object-fit: cover;">' +
+                            '</a>' +
+                            '<div class="card-body">' +
+                                '<span class="badge bg-primary mb-2">Actividad ' + ev.numero_actividad + '</span>' +
+                                '<p class="card-text small text-muted mb-1">' + ev.fecha + '</p>' +
+                                '<p class="card-text small text-secondary">' + ((ev.descripcion_actividad || '').substring(0, 60)) + (((ev.descripcion_actividad || '').length > 60) ? '...' : '') + '</p>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>';
 
                 grid.insertAdjacentHTML('beforeend', nuevaCard);
 
-                // Auto-ocultar mensaje despues de 4 segundos
-                setTimeout(() => {
-                    mensajeDiv.innerHTML = '';
-                }, 4000);
+                setTimeout(() => { mensajeDiv.innerHTML = ''; }, 5000);
 
             } else {
                 mensajeDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-x-circle me-2"></i>' + (data.error || 'Error desconocido.') + '</div>';
