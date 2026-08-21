@@ -161,7 +161,7 @@
                     <i class="bi bi-lock me-2"></i>La carga de evidencias esta deshabilitada porque el reporte esta cerrado.
                 </div>
                 {% else %}
-                <form method="POST" action="{{ url_for('reportes.subir_evidencia', id=reporte.id) }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ url_for('reportes.subir_evidencia', id=reporte.id) }}" enctype="multipart/form-data" id="formEvidencia">
                     <div class="row g-3 align-items-end">
                         <div class="col-md-4">
                             <label class="form-label">Anuncio / Contexto <span class="text-muted">(solo para el sistema)</span></label>
@@ -180,7 +180,7 @@
                             <input type="file" name="imagen" class="form-control" accept="image/*" required>
                         </div>
                         <div class="col-md-2">
-                            <button type="submit" class="btn btn-primary-custom w-100">
+                            <button type="submit" class="btn btn-primary-custom w-100" id="btnSubirEvidencia">
                                 <i class="bi bi-cloud-upload me-2"></i>Subir
                             </button>
                         </div>
@@ -401,6 +401,31 @@
     </div>
 </div>
 
+<!-- Modal Procesando Evidencia -->
+<div class="modal fade" id="modalProcesandoEvidencia" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header text-white border-0" style="background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);">
+                <h5 class="modal-title fw-bold"><i class="bi bi-gear-wide-connected me-2"></i>Procesando Evidencia</h5>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <div class="spinner-border mb-3" role="status" style="width: 3rem; height: 3rem; color: #3498db;">
+                    <span class="visually-hidden">Procesando...</span>
+                </div>
+                <h5 class="mb-2">Subiendo y analizando imagen...</h5>
+                <p class="text-muted mb-3">El sistema está guardando la evidencia y, si está configurada la IA, analizando la imagen con Google Gemini. Por favor espere.</p>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
+                         style="width: 100%; background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);"></div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 justify-content-center pb-4">
+                <span class="text-muted small">Por favor no cierre esta ventana.</span>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 function toggleEditEv(id) {
     const desc = document.getElementById('ev-desc-' + id);
@@ -435,6 +460,27 @@ document.addEventListener('DOMContentLoaded', function() {
         btnConfirmar.addEventListener('click', function() {
             modalCerrarReporte.hide();
             formCerrarReporte.submit();
+        });
+    }
+
+    // Modal de Procesando Evidencia
+    const formEvidencia = document.getElementById('formEvidencia');
+    const modalProcesandoEl = document.getElementById('modalProcesandoEvidencia');
+    
+    if (formEvidencia && modalProcesandoEl) {
+        const modalProcesando = new bootstrap.Modal(modalProcesandoEl, { backdrop: 'static', keyboard: false });
+
+        formEvidencia.addEventListener('submit', function(e) {
+            // Validar campos requeridos antes de mostrar modal
+            const anuncio = formEvidencia.querySelector('textarea[name="anuncio_usuario"]').value.trim();
+            const fecha = formEvidencia.querySelector('input[name="fecha_actividad"]').value;
+            const imagen = formEvidencia.querySelector('input[name="imagen"]').value;
+
+            if (!anuncio || !fecha || !imagen) {
+                return; // Dejar que el navegador muestre sus validaciones nativas
+            }
+
+            modalProcesando.show();
         });
     }
 });
