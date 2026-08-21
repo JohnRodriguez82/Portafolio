@@ -137,12 +137,6 @@ def login():
                 'next'
             )
 
-            flash(
-                f'Bienvenido, '
-                f'{usuario.nombre or usuario.email}!',
-                'success'
-            )
-
             return redirect(
                 next_page or
                 url_for('inicio.inicio')
@@ -296,12 +290,7 @@ def logout():
     logout_user()
 
     session.clear()
-
-    flash(
-        'Sesion cerrada.',
-        'info'
-    )
-
+ 
     return redirect(
         url_for('auth.login')
     )
@@ -409,12 +398,6 @@ def auth_google_callback():
                 db.session.commit()
 
         login_user(usuario)
-
-        flash(
-            f'Bienvenido, '
-            f'{usuario.nombre or usuario.email}!',
-            'success'
-        )
 
         return redirect(
             url_for('inicio.inicio')
