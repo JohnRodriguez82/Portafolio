@@ -1013,3 +1013,261 @@ def contrato_finalizar(id):
             'contratos.contratos'
         )
     )
+
+# ============================================================
+# AGREGAR OBLIGACIÓN
+# ============================================================
+
+@contratos_bp.route(
+    '/obligacion/agregar',
+    methods=['POST']
+)
+@login_required
+def agregar_obligacion():
+    """
+    Crea una nueva obligación para el contrato activo.
+    """
+
+    contrato = (
+        Contrato.query
+        .filter_by(
+            activo=True,
+            user_id=current_user.id
+        )
+        .first()
+    )
+
+    if not contrato:
+        flash(
+            'Primero debe tener un contrato activo.',
+            'danger'
+        )
+        return redirect(
+            url_for(
+                'contratos.contratos'
+            )
+        )
+
+    try:
+        numero = int(
+            request.form.get(
+                'numero',
+                0
+            )
+        )
+    except (
+        ValueError,
+        TypeError
+    ):
+        flash(
+            'El número de obligación no es válido.',
+            'danger'
+        )
+        return redirect(
+            url_for(
+                'contratos.contratos'
+            )
+        )
+
+    descripcion = request.form.get(
+        'descripcion',
+        ''
+    ).strip()
+
+    if not descripcion:
+        flash(
+            'La descripción de la obligación es obligatoria.',
+            'danger'
+        )
+        return redirect(
+            url_for(
+                'contratos.contratos'
+            )
+        )
+
+    # --------------------------------------------------------
+    # Validar duplicado de número en el mismo contrato
+    # --------------------------------------------------------
+
+    existente = (
+        Obligacion.query
+        .filter_by(
+            numero=numero,
+            contrato_id=contrato.id
+        )
+        .first()
+    )
+
+    if existente:
+        session[
+            'obl_numero_error'
+        ] = numero
+
+        session[
+            'obl_descripcion_error'
+        ] = descripcion
+
+        flash(
+            f'Ya existe una obligación con el número {numero} '
+            f'en este contrato. Use otro número.',
+            'danger'
+        )
+
+        return redirect(
+            url_for(
+                'contratos.contratos'
+            )
+        )
+
+    # --------------------------------------------------------
+    # Crear obligación
+    # --------------------------------------------------------
+
+    obligacion = Obligacion(
+        numero=numero,
+        descripcion=descripcion,
+        contrato_id=contrato.id
+    )
+
+    db.session.add(
+        obligacion
+    )
+
+    db.session.commit()
+
+    flash(
+        f'Obligación No. {numero} agregada.',
+        'success'
+    )
+
+    return redirect(
+        url_for(
+            'contratos.contratos'
+        )
+    )
+
+
+# ============================================================
+# EDITAR OBLIGACIÓN
+# ============================================================
+
+@contratos_bp.route(
+    '/obligacion/<int:id>/editar',
+    methods=['POST']
+)
+@login_required
+def editar_obligacion(id):
+    """
+    Actualiza la descripción de una obligación.
+    """
+
+    obligacion = (
+        Obligacion.query
+        .get_or_404(id)
+    )
+
+    contrato = (
+        Contrato.query
+        .get(
+            obligacion.contrato_id
+        )
+    )
+
+    if (
+        not contrato
+        or contrato.user_id != current_user.id
+    ):
+        flash(
+            'No tiene permiso.',
+            'danger'
+        )
+        return redirect(
+            url_for(
+                'contratos.contratos'
+            )
+        )
+
+    nueva_descripcion = request.form.get(
+        'descripcion',
+        ''
+    ).strip()
+
+    if nueva_descripcion:
+        obligacion.descripcion = (
+            nueva_descripcion
+        )
+        db.session.commit()
+
+        flash(
+            f'Obligación No. {obligacion.numero} actualizada.',
+            'success'
+        )
+    else:
+        flash(
+            'La descripción no puede estar vacía.',
+            'danger'
+        )
+
+    return redirect(
+        url_for(
+            'contratos.contratos'
+        )
+    )
+
+
+# ============================================================
+# ELIMINAR OBLIGACIÓN
+# ============================================================
+
+@contratos_bp.route(
+    '/obligacion/<int:id>/eliminar',
+    methods=['POST']
+)
+@login_required
+def eliminar_obligacion(id):
+    """
+    Elimina una obligación y sus reportes en cascada.
+    """
+
+    obligacion = (
+        Obligacion.query
+        .get_or_404(id)
+    )
+
+    contrato = (
+        Contrato.query
+        .get(
+            obligacion.contrato_id
+        )
+    )
+
+    if (
+        not contrato
+        or contrato.user_id != current_user.id
+    ):
+        flash(
+            'No tiene permiso.',
+            'danger'
+        )
+        return redirect(
+            url_for(
+                'contratos.contratos'
+            )
+        )
+
+    db.session.delete(
+        obligacion
+    )
+
+    db.session.commit()
+
+    flash(
+        'Obligación eliminada.',
+        'info'
+    )
+
+    return redirect(
+        url_for(
+            'contratos.contratos'
+        )
+    )
