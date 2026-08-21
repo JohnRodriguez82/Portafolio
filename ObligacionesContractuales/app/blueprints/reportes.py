@@ -1977,12 +1977,6 @@ def generar_pdf(id):
             evidencias,
             contrato
         )
-
-        flash(
-            f'PDF generado: {pdf_filename}',
-            'success'
-        )
-
         return send_from_directory(
             current_app.config[
                 'PDF_FOLDER'
