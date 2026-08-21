@@ -39,25 +39,55 @@ Cuando carga una imagen como evidencia, el sistema puede analizarla automáticam
 ## Estructura del Proyecto (MVC)
 
 ```
-reporte_obligaciones/
-├── app.py                 # Controladores / Rutas Flask
-├── models.py              # Modelos de datos (SQLAlchemy)
-├── config.py              # Configuración de la aplicación
-├── pdf_generator.py       # Generador de PDFs con ReportLab
-├── vision_analyzer.py     # Analizador de imágenes con Google Gemini Vision
-├── requirements.txt       # Dependencias Python
-├── README.md              # Documentación
-├── reportes.db            # Base de datos SQLite (se crea al iniciar)
-├── static/
-│   ├── uploads/evidencias/   # Imágenes cargadas
-│   └── pdfs/generados/       # PDFs exportados
-└── templates/             # Vistas HTML (Jinja2)
-    ├── base.html
-    ├── index.html           # Dashboard
-    ├── config.html          # Configurar contrato, obligaciones y API key
-    ├── reportes.html        # Listado de reportes
-    ├── nuevo_reporte.html   # Crear reporte mensual
-    └── ver_reporte.html     # Cargar evidencias + cuadrícula + análisis IA
+├── app                      
+│   ├── __init__.py         
+│   ├── blueprints         
+│       ├── __init__.py       
+│       ├── autenticacion.py  
+│       ├── auth.py           
+│       ├── cargas.py         
+│       ├── configuracion.py  
+│       ├── contratos.py      
+│       ├── inicio.py         
+│       ├── reportes.py       
+│   ├── services              
+│       ├── __init__.py               
+│       ├── archivo_service.py        
+│       ├── carga_masiva_service.py   
+│       ├── contrato_service.py       
+│       ├── evidencia_service.py      
+│       ├── excel_service.py          
+│       ├── gemini_service.py         
+│       ├── job_service.py           
+│       ├── plantilla_service.py      
+│       ├── reporte_service.py         
+│   ├── static                        
+│   ├── templates                    
+│        ├── __init__.py              
+│        ├── base.html                      
+│        ├── login.html                      
+│        ├── registro.html                
+│        ├── carga_masiva.html          
+│        ├── index.html               
+│        ├── config.html              
+│        ├── reportes.html            
+│        ├── ver_reporte.html         
+│        ├── nuevo_reporte.html       
+│        ├── carga_masiva_mes.html    
+│        ├── contratos.html           
+│        ├── inicio.html              
+│   ├── utils
+├── .env                          
+├── README.md                          
+├── app.py                             
+├── config.py                          
+├── diagnostico_gemini.py              
+├── diagnostico_google.py               
+├── models.py                          
+├── pdf_generator.py                   
+├── requiriments.txt                   
+├── run.py                             
+├── vision_analyzer.py
 ```
 
 ## Requisitos
@@ -106,7 +136,7 @@ Para activar el análisis visual automático de imágenes con Inteligencia Artif
 
 1. Inicie la aplicación:
 ```bash
-python app.py
+python run.py
 ```
 
 2. Abra su navegador en:
