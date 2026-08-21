@@ -1,14 +1,14 @@
 """
-Blueprint de las páginas principales del sistema.
+Blueprint de las paginas principales del sistema.
 
 Responsabilidades:
-- Página de inicio / bienvenida.
+- Pagina de inicio / bienvenida.
 - Panel principal del sistema.
 - Consulta del contrato activo.
 - Consulta paginada de obligaciones.
 - Filtros de obligaciones.
 - Consulta de reportes existentes.
-- Preparación de información para index.html.
+- Preparacion de informacion para index.html.
 """
 
 from flask import (
@@ -55,7 +55,7 @@ def generar_meses_contrato(
 ):
     """
     Genera la lista de meses comprendidos entre
-    la fecha de inicio y la fecha de finalización
+    la fecha de inicio y la fecha de finalizacion
     del contrato.
 
     Retorna:
@@ -147,10 +147,10 @@ def generar_meses_contrato(
 @login_required
 def inicio():
     """
-    Página de bienvenida del sistema.
+    Pagina de bienvenida del sistema.
 
     Esta ruta no realiza consultas innecesarias a la base
-    de datos porque solamente presenta la página de inicio.
+    de datos porque solamente presenta la pagina de inicio.
     """
 
     return render_template(
@@ -174,12 +174,12 @@ def index():
 
     - Contrato activo.
     - Obligaciones del contrato.
-    - Paginación.
-    - Búsqueda de obligaciones.
+    - Paginacion.
+    - Busqueda de obligaciones.
     - Meses del contrato.
-    - Número total de reportes.
+    - Numero total de reportes.
     - Estado de API Key de Gemini.
-    - Relación obligación/mes/reporte.
+    - Relacion obligacion/mes/reporte.
     """
 
     # ========================================================
@@ -205,7 +205,7 @@ def index():
     meses_faltantes = 0
 
     # ========================================================
-    # PAGINACIÓN
+    # PAGINACION
     # ========================================================
 
     page = request.args.get(
@@ -221,7 +221,7 @@ def index():
     )
 
     # --------------------------------------------------------
-    # Protección contra valores inválidos
+    # Proteccion contra valores invalidos
     # --------------------------------------------------------
 
     if page < 1:
@@ -237,7 +237,7 @@ def index():
         per_page = 10
 
     # ========================================================
-    # BÚSQUEDA
+    # BUSQUEDA
     # ========================================================
 
     search = request.args.get(
@@ -285,7 +285,7 @@ def index():
         )
 
         # ----------------------------------------------------
-        # Filtro de búsqueda
+        # Filtro de busqueda
         # ----------------------------------------------------
 
         if search:
@@ -306,7 +306,7 @@ def index():
             )
 
         # ----------------------------------------------------
-        # Orden y paginación
+        # Orden y paginacion
         # ----------------------------------------------------
 
         obligaciones_pag = (
@@ -333,31 +333,14 @@ def index():
             contrato.fecha_inicio,
             contrato.fecha_fin
         )
-        
+
         # ====================================================
         # MESES REPORTADOS VS FALTANTES
         # ====================================================
 
         total_meses_contrato = len(meses)
 
-        meses_con_evidencia = (
-            db.session.query(
-                ReporteMensual.mes,
-                ReporteMensual.anio
-            )
-            .join(Obligacion)
-            .filter(
-                Obligacion.contrato_id == contrato.id
-            )
-            .join(Evidencia)
-            .filter(
-                Evidencia.reporte_id == ReporteMensual.id
-            )
-            .distinct()
-            .count()
-        )
-
-        # Un mes está "reportado" si TODAS las obligaciones
+        # Un mes esta "reportado" si TODAS las obligaciones
         # tienen al menos una evidencia en ese mes
 
         obligaciones_ids_todas = [
@@ -427,16 +410,16 @@ def index():
         #
         # IMPORTANTE:
         #
-        # El código original hacía:
+        # El codigo original hacia:
         #
         #     for obl in obligaciones:
         #         ReporteMensual.query.filter_by(...)
         #
         # Eso genera una consulta adicional por cada
-        # obligación.
+        # obligacion.
         #
-        # Aquí hacemos una sola consulta para todas las
-        # obligaciones mostradas en la página actual.
+        # Aqui hacemos una sola consulta para todas las
+        # obligaciones mostradas en la pagina actual.
         # ====================================================
 
         if obligaciones:
@@ -524,7 +507,7 @@ def index():
         meses_con_reporte=(
             meses_con_reporte
         ),
-        
+
         meses_reportados=meses_reportados,
 
         meses_faltantes=meses_faltantes,
