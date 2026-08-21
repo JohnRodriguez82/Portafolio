@@ -1389,6 +1389,34 @@ def subir_evidencia(id):
                 contexto_obligacion=obligacion.descripcion,
                 anuncio_usuario=anuncio_usuario
             )
+            
+            # ----------------------------------------------------
+            # RESTAURAR ARCHIVO DESPUÉS DEL ANÁLISIS IA
+            # ----------------------------------------------------
+
+            try:
+
+                if hasattr(
+                    file,
+                    'stream'
+                ) and file.stream:
+
+                    file.stream.seek(0)
+
+                elif hasattr(
+                    file,
+                    'seek'
+                ):
+
+                    file.seek(0)
+
+            except Exception as exc:
+
+                print(
+                    '[Reportes] '
+                    'No fue posible restaurar el archivo '
+                    f'después del análisis IA: {exc}'
+                )
 
             if descripcion_visual:
 
