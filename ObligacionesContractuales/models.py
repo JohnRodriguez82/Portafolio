@@ -17,6 +17,7 @@ class Usuario(UserMixin, db.Model):
     google_id = db.Column(db.String(100), unique=True, nullable=True)
     avatar_url = db.Column(db.String(500), nullable=True)
     activo = db.Column(db.Boolean, default=True)
+    es_admin = db.Column(db.Boolean, default=False)
     fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
     contratos = db.relationship('Contrato', backref='usuario', lazy=True, cascade='all, delete-orphan')
 
