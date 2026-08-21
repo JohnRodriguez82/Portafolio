@@ -41,6 +41,7 @@ Ese servicio es el responsable de persistirla.
 """
 
 from datetime import date, datetime
+from vision_analyzer import analizar_imagen
 
 
 class CargaMasivaService:
@@ -89,7 +90,7 @@ class CargaMasivaService:
         fila,
         imagenes,
         obligaciones_por_numero,
-        gemini,
+        api_key,
         reportes_cache
     ):
         """
@@ -126,8 +127,8 @@ class CargaMasivaService:
                 Diccionario:
                     numero -> Obligacion
 
-            gemini:
-                Servicio Gemini o None.
+            api_key:
+                API key de Gemini o None.
 
             reportes_cache:
                 Diccionario utilizado para reutilizar
@@ -518,7 +519,7 @@ class CargaMasivaService:
                 }
 
         # ========================================================
-        # GEMINI
+        # ANALISIS MEDIANTE IA
         # ========================================================
 
         descripcion = None
@@ -526,27 +527,22 @@ class CargaMasivaService:
         if (
             imagen_temporal
             and
-            gemini is not None
+            api_key
         ):
 
             try:
 
-                descripcion = (
-                    self._analizar_con_gemini(
-                        gemini=gemini,
-                        imagen=imagen_temporal,
-                        contrato=contrato,
-                        obligacion=obligacion,
-                        mes=mes,
-                        anio=anio,
-                        anuncio=anuncio
-                    )
+                descripcion = analizar_imagen(
+                    image_path=imagen_temporal,
+                    api_key=api_key,
+                    contexto_obligacion=obligacion.descripcion,
+                    anuncio_usuario=anuncio
                 )
 
             except Exception as exc:
 
                 # ------------------------------------------------
-                # Gemini NO debe impedir la creación
+                # La IA NO debe impedir la creación
                 # de la evidencia.
                 # ------------------------------------------------
 
@@ -628,90 +624,7 @@ class CargaMasivaService:
             'errores': errores,
             'evidencia': evidencia
         }
-
-    # ============================================================
-    # ANALIZAR CON GEMINI
-    # ============================================================
-
-    @staticmethod
-    def _analizar_con_gemini(
-        gemini,
-        imagen,
-        contrato,
-        obligacion,
-        mes,
-        anio,
-        anuncio
-    ):
-        """
-        Ejecuta el análisis de Gemini.
-
-        Se intenta primero utilizar la interfaz actual:
-
-            analizar_imagen_con_reintentos()
-
-        Si el servicio expone una interfaz alternativa
-        compatible, se intenta utilizarla.
-
-        Returns:
-            str | None
-        """
-
-        contexto = {
-            'contrato': contrato,
-            'obligacion': obligacion,
-            'mes': mes,
-            'anio': anio,
-            'anuncio': anuncio
-        }
-
-        metodo = getattr(
-            gemini,
-            'analizar_imagen_con_reintentos',
-            None
-        )
-
-        if callable(
-            metodo
-        ):
-
-            return metodo(
-                imagen,
-                contexto=contexto
-            )
-
-        # --------------------------------------------------------
-        # Compatibilidad con posibles implementaciones
-        # anteriores.
-        # --------------------------------------------------------
-
-        metodo = getattr(
-            gemini,
-            'analizar_imagen',
-            None
-        )
-
-        if callable(
-            metodo
-        ):
-
-            try:
-
-                return metodo(
-                    imagen,
-                    contexto=contexto
-                )
-
-            except TypeError:
-
-                return metodo(
-                    imagen
-                )
-
-        raise AttributeError(
-            'GeminiService no dispone de un método compatible '
-            'para analizar imágenes.'
-        )
+    
 
     # ============================================================
     # BUSCAR OBLIGACIÓN
