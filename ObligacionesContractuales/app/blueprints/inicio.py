@@ -26,7 +26,8 @@ from models import (
     db,
     Contrato,
     Obligacion,
-    ReporteMensual
+    ReporteMensual,
+    Evidencia
 )
 
 from app.blueprints.configuracion import (
@@ -200,6 +201,8 @@ def index():
     reportes_por_obligacion_mes = {}
 
     meses_con_reporte = set()
+    meses_reportados = 0
+    meses_faltantes = 0
 
     # ========================================================
     # PAGINACIÓN
@@ -330,6 +333,77 @@ def index():
             contrato.fecha_inicio,
             contrato.fecha_fin
         )
+        
+        # ====================================================
+        # MESES REPORTADOS VS FALTANTES
+        # ====================================================
+
+        total_meses_contrato = len(meses)
+
+        meses_con_evidencia = (
+            db.session.query(
+                ReporteMensual.mes,
+                ReporteMensual.anio
+            )
+            .join(Obligacion)
+            .filter(
+                Obligacion.contrato_id == contrato.id
+            )
+            .join(Evidencia)
+            .filter(
+                Evidencia.reporte_id == ReporteMensual.id
+            )
+            .distinct()
+            .count()
+        )
+
+        # Un mes está "reportado" si TODAS las obligaciones
+        # tienen al menos una evidencia en ese mes
+
+        obligaciones_ids_todas = [
+            obl.id for obl in
+            Obligacion.query.filter_by(
+                contrato_id=contrato.id
+            ).all()
+        ]
+
+        meses_completos = 0
+
+        for (
+            mes_num,
+            anio,
+            nombre
+        ) in meses:
+
+            mes_completo = True
+
+            for obl_id in obligaciones_ids_todas:
+
+                rep = (
+                    ReporteMensual.query
+                    .filter_by(
+                        mes=mes_num,
+                        anio=anio,
+                        obligacion_id=obl_id
+                    )
+                    .first()
+                )
+
+                if not rep or not rep.evidencias:
+
+                    mes_completo = False
+
+                    break
+
+            if mes_completo:
+
+                meses_completos += 1
+
+        meses_reportados = meses_completos
+
+        meses_faltantes = (
+            total_meses_contrato - meses_reportados
+        )
 
         # ====================================================
         # TOTAL DE REPORTES
@@ -450,6 +524,10 @@ def index():
         meses_con_reporte=(
             meses_con_reporte
         ),
+        
+        meses_reportados=meses_reportados,
+
+        meses_faltantes=meses_faltantes,
 
         search=search,
 
