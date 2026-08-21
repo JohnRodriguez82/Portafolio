@@ -354,11 +354,84 @@ class EvidenciaService:
             'save'
         ):
 
-            imagen.save(
-                ruta_final
-            )
+            try:
 
-            return ruta_final
+                # ----------------------------------------------------
+                # IMPORTANTE:
+                # Restaurar el puntero del archivo al inicio.
+                #
+                # La imagen pudo haber sido leída previamente
+                # por PIL/Gemini durante el análisis visual.
+                # ----------------------------------------------------
+
+                if hasattr(
+                    imagen,
+                    'stream'
+                ) and imagen.stream:
+
+                    imagen.stream.seek(0)
+
+                elif hasattr(
+                    imagen,
+                    'seek'
+                ):
+
+                    imagen.seek(0)
+
+                imagen.save(
+                    ruta_final
+                )
+
+            except Exception:
+
+                # Si algo falla, evitar dejar un archivo corrupto.
+                try:
+
+                    if os.path.exists(
+                        ruta_final
+                    ):
+
+                        os.remove(
+                            ruta_final
+                        )
+
+                except Exception:
+
+                    pass
+
+                raise
+
+            # --------------------------------------------------------
+            # VALIDAR QUE EL ARCHIVO REALMENTE SE GUARDÓ
+            # --------------------------------------------------------
+
+            if not os.path.isfile(
+                        ruta_final
+                    ):
+
+                        raise IOError(
+                            'La imagen no fue guardada correctamente.'
+                        )
+
+                    if os.path.getsize(
+                        ruta_final
+                    ) == 0:
+
+                        try:
+
+                            os.remove(
+                                ruta_final
+                            )
+
+                        except Exception:
+
+                            pass
+
+                        raise IOError(
+                            'La imagen se guardó vacía.'
+                        )
+
+                    return ruta_final
 
         # ----------------------------------------------------
         # RUTA FÍSICA
