@@ -25,6 +25,7 @@
     </div>
 </div>
 {% else %}
+<!-- Tarjetas de resumen -->
 <div class="row mb-4">
     <div class="col-md-3">
         <div class="card card-custom h-100">
@@ -89,6 +90,38 @@
     </div>
 </div>
 
+<!-- NUEVO: Meses reportados vs faltantes -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card border-success h-100">
+            <div class="card-body text-center">
+                <div class="d-flex align-items-center justify-content-center">
+                    <i class="bi bi-calendar-check-fill text-success fs-1 me-3"></i>
+                    <div>
+                        <h2 class="card-title text-success mb-0">{{ meses_reportados }}</h2>
+                        <p class="card-text text-muted mb-0">Meses completos</p>
+                        <small class="text-muted">Todas las obligaciones con evidencia</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-warning h-100">
+            <div class="card-body text-center">
+                <div class="d-flex align-items-center justify-content-center">
+                    <i class="bi bi-calendar-x-fill text-warning fs-1 me-3"></i>
+                    <div>
+                        <h2 class="card-title text-warning mb-0">{{ meses_faltantes }}</h2>
+                        <p class="card-text text-muted mb-0">Meses faltantes</p>
+                        <small class="text-muted">Pendientes por reportar</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-12">
         <div class="card card-custom">
@@ -102,7 +135,7 @@
                         <button type="button" class="btn btn-success btn-sm me-2" data-bs-toggle="modal" data-bs-target="#modalConsolidado">
                             <i class="bi bi-file-earmark-excel me-1"></i>Descargar Excel Consolidado
                         </button>
-                        <a href="{{ url_for('configuracion.config') }}" class="btn btn-outline-primary btn-sm">
+                        <a href="{{ url_for('configuracion.configuracion') }}" class="btn btn-outline-primary btn-sm">
                             <i class="bi bi-pencil me-1"></i>Editar Configuración
                         </a>
                     </div>
@@ -137,7 +170,7 @@
                 <div class="empty-state py-5">
                     <i class="bi bi-clipboard-x"></i>
                     <p class="mb-3">{% if search %}No se encontraron obligaciones con "{{ search }}".{% else %}No hay obligaciones configuradas.{% endif %}</p>
-                    <a href="{{ url_for('configuracion.config') }}" class="btn btn-primary-custom">Agregar Obligaciones</a>
+                    <a href="{{ url_for('configuracion.configuracion') }}" class="btn btn-primary-custom">Agregar Obligaciones</a>
                 </div>
                 {% else %}
                 <div class="table-responsive">
@@ -432,7 +465,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const disposition = response.headers.get('content-disposition');
             let filename = `Consolidado_${mes}_${anio}.xlsx`;
             if (disposition) {
-                const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                const match = disposition.match(/filename[^;=
+]*=((['"]).*?|[^;
+]*)/);
                 if (match) filename = match[1].replace(/['"]/g, '');
             }
 
