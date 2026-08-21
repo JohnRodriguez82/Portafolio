@@ -31,11 +31,6 @@ import threading
 
 from datetime import datetime, date
 
-from datetime import (
-    datetime,
-    date
-)
-
 from flask import (
     Blueprint,
     render_template,
@@ -245,6 +240,72 @@ def obtener_nombre_mes(mes):
 
     return nombres_meses[mes]
 
+# ============================================================
+# LOGGING PARA IA BACKGROUND
+# ============================================================
+
+_ia_log_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    'ia_background.log'
+)
+
+_ia_handler = logging.FileHandler(_ia_log_path, encoding='utf-8')
+_ia_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+ia_logger = logging.getLogger('ia_background')
+ia_logger.setLevel(logging.DEBUG)
+if not ia_logger.handlers:
+    ia_logger.addHandler(_ia_handler)
+
+
+# ============================================================
+# ANALISIS IA EN BACKGROUND
+# ============================================================
+
+def _analizar_ia_background(app, evidencia_id, imagen_path, api_key, obligacion_desc, anuncio):
+    """
+    Analiza la imagen con Gemini en un hilo separado
+    y actualiza la evidencia cuando termina.
+    """
+    import time
+    time.sleep(2)
+
+    with app.app_context():
+        from models import db, Evidencia
+        from vision_analyzer import analizar_imagen
+
+        db.session.remove()
+
+        try:
+            ia_logger.info(f'=== INICIO analisis IA evidencia {evidencia_id} ===')
+            ia_logger.info(f'Ruta imagen: {imagen_path}')
+
+            descripcion = analizar_imagen(
+                imagen_path,
+                api_key=api_key,
+                contexto_obligacion=obligacion_desc,
+                anuncio_usuario=anuncio
+            )
+
+            ia_logger.info(f'Respuesta Gemini: {str(descripcion)[:200]}')
+
+            if descripcion:
+                evidencia = Evidencia.query.get(evidencia_id)
+                if evidencia:
+                    evidencia.descripcion_visual_ia = descripcion
+                    evidencia.descripcion_actividad = descripcion
+                    db.session.commit()
+                    ia_logger.info(f'=== EXITO evidencia {evidencia_id} ===')
+                else:
+                    ia_logger.error(f'Evidencia {evidencia_id} NO ENCONTRADA')
+            else:
+                ia_logger.warning(f'Evidencia {evidencia_id}: Gemini NO retorno descripcion')
+
+        except Exception as e:
+            ia_logger.exception(f'=== ERROR evidencia {evidencia_id}: {e} ===')
+            db.session.rollback()
+        finally:
+            db.session.remove()
 
 # ============================================================
 # LISTADO DE REPORTES
