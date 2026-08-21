@@ -49,6 +49,8 @@ from flask import (
     current_app
 )
 
+from werkzeug.exceptions import RequestEntityTooLarge
+
 from flask_login import (
     login_required,
     current_user
@@ -1117,12 +1119,16 @@ def _analizar_ia_background(app, evidencia_id, imagen_path, api_key, obligacion_
     y actualiza la evidencia cuando termina.
     """
     import time
-    time.sleep(0.5)  # Pequeña espera para asegurar commit previo
+    time.sleep(1)  # Esperar a que el commit principal termine
 
     with app.app_context():
-        try:
-            from vision_analyzer import analizar_imagen
+        from models import db, Evidencia
+        from vision_analyzer import analizar_imagen
 
+        # SQLAlchemy requiere sesión limpia por thread
+        db.session.remove()
+
+        try:
             descripcion = analizar_imagen(
                 imagen_path,
                 api_key=api_key,
@@ -1131,20 +1137,22 @@ def _analizar_ia_background(app, evidencia_id, imagen_path, api_key, obligacion_
             )
 
             if descripcion:
-                from models import Evidencia, db
                 evidencia = Evidencia.query.get(evidencia_id)
                 if evidencia:
                     evidencia.descripcion_visual_ia = descripcion
                     evidencia.descripcion_actividad = descripcion
                     db.session.commit()
-                    print(f'[IA Background] Evidencia {evidencia_id} analizada.')
+                    print(f'[IA Background] OK evidencia {evidencia_id}')
+                else:
+                    print(f'[IA Background] Evidencia {evidencia_id} no encontrada')
             else:
-                print(f'[IA Background] Evidencia {evidencia_id}: sin descripcion.')
+                print(f'[IA Background] Evidencia {evidencia_id}: Gemini no retornó descripción')
 
         except Exception as e:
-            print(f'[IA Background] Error evidencia {evidencia_id}: {e}')
-            from models import db
+            print(f'[IA Background] ERROR evidencia {evidencia_id}: {e}')
             db.session.rollback()
+        finally:
+            db.session.remove()
 
 # ============================================================
 # SUBIR EVIDENCIA
@@ -3599,7 +3607,7 @@ def nuevo_reporte_selector():
         contrato=contrato
     ) 
     
- # ============================================================
+# ============================================================
 # SUBIR EVIDENCIA VIA AJAX
 # ============================================================
 
@@ -3611,31 +3619,22 @@ def nuevo_reporte_selector():
 def subir_evidencia_ajax(id):
     """
     Subida de evidencia via AJAX (sin recargar pagina).
-
-    Retorna JSON con la evidencia creada o mensaje de error.
     """
+    from app.blueprints.configuracion import _obtener_api_key
 
-    reporte = (
-        ReporteMensual.query
-        .get_or_404(id)
-    )
-
+    reporte = ReporteMensual.query.get_or_404(id)
     obligacion = reporte.obligacion
     contrato = Contrato.query.get(obligacion.contrato_id)
 
-    # Seguridad
     if not contrato or contrato.user_id != current_user.id:
         return jsonify({'error': 'No tiene permiso.'}), 403
 
-    # Reporte cerrado
     if reporte.cerrado:
         return jsonify({'error': 'El reporte esta cerrado.'}), 400
 
-    # Contrato finalizado
     if contrato.etapa == 'Reporte Cerrado':
         return jsonify({'error': 'El contrato esta finalizado.'}), 400
 
-    # Verificar archivo
     if 'imagen' not in request.files:
         return jsonify({'error': 'No se selecciono ningun archivo.'}), 400
 
@@ -3651,7 +3650,6 @@ def subir_evidencia_ajax(id):
     if not allowed_file(file.filename):
         return jsonify({'error': 'Formato no permitido.'}), 400
 
-    # Fecha de actividad
     fecha_actividad_str = request.form.get('fecha_actividad', '').strip()
     try:
         if fecha_actividad_str:
@@ -3661,7 +3659,6 @@ def subir_evidencia_ajax(id):
     except ValueError:
         return jsonify({'error': 'La fecha de actividad no es valida.'}), 400
 
-    # Validar fecha contra periodo del reporte
     if (fecha_actividad < reporte.fecha_inicio_reporte
             or fecha_actividad > reporte.fecha_fin_reporte):
         return jsonify({
@@ -3720,7 +3717,7 @@ def subir_evidencia_ajax(id):
             'evidencia': {
                 'id': evidencia.id,
                 'numero_actividad': evidencia.numero_actividad,
-                'descripcion_actividad': evidencia.descripcion_actividad,
+                'descripcion_actividad': evidencia.descripcion_actividad or '',
                 'descripcion_visual_ia': evidencia.descripcion_visual_ia,
                 'fecha': fecha_str,
                 'imagen_filename': filename,
