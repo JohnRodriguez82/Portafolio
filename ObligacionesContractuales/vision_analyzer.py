@@ -10,7 +10,10 @@ Utiliza la SDK oficial google-genai.
 
 import os
 import re
+import io
 import mimetypes
+
+from PIL import Image
 
 from google import genai
 from google.genai import types
@@ -237,6 +240,138 @@ def _limpiar_texto(texto):
 
 
 # ============================================================
+# OPTIMIZAR IMAGEN PARA IA
+# ============================================================
+
+def optimizar_imagen_para_ia(
+    file_obj,
+    max_width=1024,
+    quality=85
+):
+    """
+    Redimensiona y comprime una imagen antes de enviarla
+    a la API de Gemini.
+
+    Args:
+        file_obj:
+            Objeto de archivo con metodo .read() o ruta str.
+
+        max_width:
+            Ancho maximo en pixeles. Por defecto 1024.
+
+        quality:
+            Calidad JPEG de 1 a 100. Por defecto 85.
+
+    Returns:
+        io.BytesIO:
+            Stream de bytes con la imagen optimizada.
+    """
+
+    # --------------------------------------------------------
+    # Leer bytes originales
+    # --------------------------------------------------------
+
+    if hasattr(file_obj, 'read'):
+
+        if hasattr(file_obj, 'stream') and file_obj.stream:
+            file_obj.stream.seek(0)
+            raw_bytes = file_obj.stream.read()
+        else:
+            file_obj.seek(0)
+            raw_bytes = file_obj.read()
+
+    elif isinstance(file_obj, str) and os.path.isfile(file_obj):
+
+        with open(file_obj, 'rb') as f:
+            raw_bytes = f.read()
+
+    else:
+
+        raise ValueError(
+            'No se pudo leer la imagen para optimizar.'
+        )
+
+    # --------------------------------------------------------
+    # Abrir con PIL
+    # --------------------------------------------------------
+
+    try:
+
+        img = Image.open(io.BytesIO(raw_bytes))
+
+    except Exception as exc:
+
+        print(
+            f'[VisionAnalyzer] '
+            f'No se pudo abrir la imagen con PIL: {exc}. '
+            f'Usando imagen original.'
+        )
+
+        buffer = io.BytesIO(raw_bytes)
+        buffer.seek(0)
+        return buffer
+
+    # --------------------------------------------------------
+    # Convertir a RGB si es necesario (PNG con transparencia,
+    # modo P, etc.)
+    # --------------------------------------------------------
+
+    if img.mode in ('RGBA', 'P', 'LA'):
+
+        img = img.convert('RGB')
+
+    elif img.mode != 'RGB':
+
+        img = img.convert('RGB')
+
+    # --------------------------------------------------------
+    # Redimensionar si excede el ancho maximo
+    # --------------------------------------------------------
+
+    if img.width > max_width:
+
+        ratio = max_width / img.width
+        new_height = int(img.height * ratio)
+
+        img = img.resize(
+            (max_width, new_height),
+            Image.LANCZOS
+        )
+
+    # --------------------------------------------------------
+    # Guardar en buffer como JPEG optimizado
+    # --------------------------------------------------------
+
+    buffer = io.BytesIO()
+
+    img.save(
+        buffer,
+        format='JPEG',
+        quality=quality,
+        optimize=True
+    )
+
+    buffer.seek(0)
+
+    # --------------------------------------------------------
+    # Restaurar puntero del archivo original
+    # --------------------------------------------------------
+
+    try:
+
+        if hasattr(file_obj, 'stream') and file_obj.stream:
+            file_obj.stream.seek(0)
+        elif hasattr(file_obj, 'seek'):
+            file_obj.seek(0)
+
+    except Exception:
+
+        pass
+
+    return buffer
+
+
+# ============================================================
 # VERIFICAR API KEY
 # ============================================================
 
@@ -307,13 +442,9 @@ def analizar_imagen(
 
     La IA recibe tres elementos:
 
-    1. La imagen.
+    1. La imagen (optimizada: redimensionada y comprimida).
     2. La obligacion contractual.
     3. El contexto escrito por el usuario.
-
-    Esto permite que la descripcion no sea solamente
-    una descripcion visual, sino una interpretacion
-    orientada a la actividad contractual.
     """
 
     key = (
@@ -348,53 +479,25 @@ def analizar_imagen(
         )
 
         # --------------------------------------------------------
-        # Asegurar que la lectura comienza desde el inicio
+        # OPTIMIZAR IMAGEN ANTES DE ENVIARLA A GEMINI
         # --------------------------------------------------------
 
-        if hasattr(
+        imagen_optimizada = optimizar_imagen_para_ia(
             image_path,
-            'stream'
-        ) and image_path.stream:
+            max_width=1024,
+            quality=85
+        )
 
-            image_path.stream.seek(0)
+        image_bytes = imagen_optimizada.read()
 
-        elif hasattr(
-            image_path,
-            'seek'
-        ):
-
-            image_path.seek(0)
+        mime = 'image/jpeg'
 
         # --------------------------------------------------------
-        # Leer imagen como bytes
+        # Restaurar puntero del archivo original para que
+        # EvidenciaService pueda guardarlo despues.
         # --------------------------------------------------------
 
-        if hasattr(
-            image_path,
-            'read'
-        ):
-
-            image_bytes = image_path.read()
-
-            mime = (
-                getattr(
-                    image_path,
-                    'content_type',
-                    None
-                )
-                or
-                getattr(
-                    image_path,
-                    'mimetype',
-                    None
-                )
-                or
-                'image/jpeg'
-            )
-
-            # ------------------------------------------------
-            # Restaurar puntero para EvidenciaService
-            # ------------------------------------------------
+        try:
 
             if hasattr(
                 image_path,
@@ -410,22 +513,13 @@ def analizar_imagen(
 
                 image_path.seek(0)
 
-        else:
+        except Exception as exc:
 
-            with open(
-                image_path,
-                'rb'
-            ) as f:
-
-                image_bytes = f.read()
-
-            mime, _ = mimetypes.guess_type(
-                str(image_path)
+            print(
+                '[VisionAnalyzer] '
+                'No fue posible restaurar el puntero '
+                f'del archivo original: {exc}'
             )
-
-            if not mime:
-
-                mime = 'image/jpeg'
 
         # ----------------------------------------------------
         # Contexto
