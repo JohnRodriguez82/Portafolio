@@ -9,46 +9,99 @@
     </div>
 </div>
 
-<!-- Descarga Masiva de PDFs por Mes -->
+<!-- CERRAR MES REPORTADO -->
 <div class="row mb-4">
-    <div class="col-md-6">
-        <form method="POST" action="{{ url_for('reportes.descargar_masivo_mes') }}" class="d-flex gap-2 align-items-end">
-            <div>
-                <label class="form-label small text-muted">Mes</label>
-                <select name="mes" class="form-select">
-                    <option value="">Seleccione...</option>
-                    {% for i in range(1, 13) %}
-                    <option value="{{ i }}">{{ ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][i-1] }}</option>
-                    {% endfor %}
-                </select>
+    <div class="col-12">
+        <div class="card card-custom border-warning">
+            <div class="card-header bg-warning bg-opacity-10 border-0 pt-3 px-4">
+                <h5 class="mb-0 text-warning">
+                    <i class="bi bi-lock me-2"></i>Cerrar Mes Reportado
+                </h5>
             </div>
-            <div>
-                <label class="form-label small text-muted">Año</label>
-                <select name="anio" class="form-select">
-                    <option value="">Seleccione...</option>
-                    {% for a in range(2024, 2028) %}
-                    <option value="{{ a }}">{{ a }}</option>
-                    {% endfor %}
-                </select>
+            <div class="card-body px-4 pb-4">
+                <form method="POST" action="{{ url_for('reportes.cerrar_mes_reportado') }}" class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Mes <span class="text-danger">*</span></label>
+                        <select name="mes" class="form-select" required>
+                            <option value="">Seleccione mes...</option>
+                            {% for i in range(1, 13) %}
+                            {% set meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
+                            <option value="{{ i }}">{{ meses[i-1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Año <span class="text-danger">*</span></label>
+                        <select name="anio" class="form-select" required>
+                            <option value="">Seleccione año...</option>
+                            {% for a in range(2024, 2028) %}
+                            <option value="{{ a }}">{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-warning w-100 fw-bold"
+                                onclick="return confirm('¿Esta seguro de cerrar el mes seleccionado?\n\nEsta accion es irreversible. Todos los reportes del mes quedaran de solo lectura.');">
+                            <i class="bi bi-lock-fill me-2"></i>Cerrar mes reportado
+                        </button>
+                    </div>
+                </form>
+                <div class="alert alert-light border mt-3 mb-0">
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Reglas de cierre:</strong> Solo se permite cerrar meses anteriores al actual. 
+                        Todas las obligaciones del contrato deben tener al menos un reporte con actividades (evidencias) registradas en el mes seleccionado.
+                    </small>
+                </div>
             </div>
-            <button type="submit" class="btn btn-danger">
-                <i class="bi bi-download me-2"></i>Descargar ZIP de PDFs
-            </button>
-        </form>
-    </div>
-    <div class="col-md-6 text-end">
-        <a href="{{ url_for('reportes.reportes') }}" class="btn btn-warning">
-            <i class="bi bi-lock me-2"></i>Cerrar mes por Mes
-        </a>
-        <a href="{{ url_for('inicio.inicio') }}" class="btn btn-primary">
-            <i class="bi bi-plus-lg me-2"></i>Nuevo Reporte
-        </a>
+        </div>
     </div>
 </div>
 
-<!-- Historial de Reportes -->
+<!-- DESCARGA MASIVA DE PDFs -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card card-custom">
+            <div class="card-body">
+                <h6 class="mb-3 text-muted"><i class="bi bi-file-zip me-2"></i>Descarga Masiva de PDFs por Mes</h6>
+                <form method="POST" action="{{ url_for('reportes.descargar_masivo_mes') }}" class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <select name="mes" class="form-select">
+                            <option value="">Mes</option>
+                            {% for i in range(1, 13) %}
+                            {% set meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
+                            <option value="{{ i }}">{{ meses[i-1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="anio" class="form-select">
+                            <option value="">Año</option>
+                            {% for a in range(2024, 2028) %}
+                            <option value="{{ a }}">{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-danger w-100">
+                            <i class="bi bi-download me-2"></i>Descargar ZIP de PDFs
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HISTORIAL DE REPORTES -->
 <div class="card card-custom">
-    <div class="card-body">
+    <div class="card-header bg-white border-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Historial de Reportes</h5>
+        <a href="{{ url_for('inicio.inicio') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-2"></i>Nuevo Reporte
+        </a>
+    </div>
+    <div class="card-body px-4 pb-4">
         <!-- Filtros -->
         <form method="GET" action="{{ url_for('reportes.reportes') }}" class="row g-2 mb-3 align-items-end">
             <div class="col-md-3">
@@ -58,9 +111,8 @@
                 <select name="filtro_mes" class="form-select">
                     <option value="">Mes</option>
                     {% for i in range(1, 13) %}
-                    <option value="{{ i }}" {% if filtro_mes == i|string %}selected{% endif %}>
-                        {{ ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][i-1] }}
-                    </option>
+                    {% set meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}
+                    <option value="{{ i }}" {% if filtro_mes == i|string %}selected{% endif %}>{{ meses[i-1] }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -100,7 +152,7 @@
         </div>
         {% else %}
         <div class="table-responsive">
-            <table class="table table-hover table-custom">
+            <table class="table table-hover table-custom align-middle">
                 <thead>
                     <tr>
                         <th>Mes</th>
@@ -108,47 +160,39 @@
                         <th>Obligacion No.</th>
                         <th>Periodo Reportado</th>
                         <th>Actividades</th>
-                        <th style="width: 240px;">Acciones</th>
+                        <th>Estado</th>
+                        <th style="width: 200px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for rep in reportes %}
                     <tr>
-                        <td class="align-middle">{{ rep.nombre_mes }}</td>
-                        <td class="align-middle">{{ rep.anio }}</td>
-                        <td class="align-middle">
+                        <td>{{ rep.nombre_mes }}</td>
+                        <td>{{ rep.anio }}</td>
+                        <td>
                             <span class="badge bg-primary">{{ rep.obligacion.numero }}</span>
                         </td>
-                        <td class="align-middle">
+                        <td>
                             {{ rep.fecha_inicio_reporte.strftime('%d/%m/%Y') }} - {{ rep.fecha_fin_reporte.strftime('%d/%m/%Y') }}
                         </td>
-                        <td class="align-middle">
-                            <span class="badge bg-info text-dark">{{ rep.evidencias|length }} actividades</span>
+                        <td>
+                            <span class="badge bg-info text-dark">{{ rep.evidencias|length }} actividad{% if rep.evidencias|length != 1 %}es{% endif %}</span>
                         </td>
-                        <td class="align-middle">
+                        <td>
+                            {% if rep.cerrado %}
+                            <span class="badge bg-secondary"><i class="bi bi-lock-fill me-1"></i>Cerrado</span>
+                            {% else %}
+                            <span class="badge bg-success"><i class="bi bi-unlock me-1"></i>Abierto</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             <div class="btn-group btn-group-sm">
-                                <!-- Ver -->
                                 <a href="{{ url_for('reportes.ver_reporte', id=rep.id) }}" class="btn btn-outline-primary" title="Ver">
                                     <i class="bi bi-eye"></i> Ver
                                 </a>
-                                <!-- PDF -->
-                                <a href="{{ url_for('reportes.generar_pdf', id=rep.id) }}" class="btn btn-outline-danger" title="PDF">
+                                <a href="{{ url_for('reportes.generar_pdf', id=rep.id) }}" class="btn btn-outline-danger" title="Descargar PDF">
                                     <i class="bi bi-file-pdf"></i> PDF
                                 </a>
-                                <!-- Cerrar (NUEVO) -->
-                                {% if not rep.cerrado %}
-                                <form method="POST" action="{{ url_for('reportes.cerrar_reporte', id=rep.id) }}" class="d-inline"
-                                      onsubmit="return confirm('Esta accion cerrara el reporte y lo convertira en solo lectura. ¿Esta seguro?');">
-                                    <button type="submit" class="btn btn-outline-dark" title="Cerrar Reporte">
-                                        <i class="bi bi-lock"></i>
-                                    </button>
-                                </form>
-                                {% else %}
-                                <span class="btn btn-outline-secondary disabled" title="Reporte Cerrado">
-                                    <i class="bi bi-lock-fill"></i>
-                                </span>
-                                {% endif %}
-                                <!-- Eliminar -->
                                 <form method="POST" action="{{ url_for('reportes.eliminar_reporte', id=rep.id) }}" class="d-inline"
                                       onsubmit="return confirm('¿Eliminar este reporte permanentemente?');">
                                     <button type="submit" class="btn btn-outline-danger" title="Eliminar">
@@ -169,7 +213,7 @@
             <ul class="pagination justify-content-center">
                 {% if reportes_pag.has_prev %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.prev_num, per_page=per_page, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}">
+                    <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.prev_num, per_page=per_page, search=search or '', filtro_mes=filtro_mes or '', filtro_anio=filtro_anio or '', filtro_obligacion=filtro_obligacion or '') }}">
                         <i class="bi bi-chevron-left"></i>
                     </a>
                 </li>
@@ -183,7 +227,7 @@
                         <li class="page-item active"><span class="page-link">{{ p }}</span></li>
                         {% else %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('reportes.reportes', page=p, per_page=per_page, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}">{{ p }}</a>
+                            <a class="page-link" href="{{ url_for('reportes.reportes', page=p, per_page=per_page, search=search or '', filtro_mes=filtro_mes or '', filtro_anio=filtro_anio or '', filtro_obligacion=filtro_obligacion or '') }}">{{ p }}</a>
                         </li>
                         {% endif %}
                     {% else %}
@@ -193,7 +237,7 @@
                 
                 {% if reportes_pag.has_next %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.next_num, per_page=per_page, search=search, filtro_mes=filtro_mes, filtro_anio=filtro_anio, filtro_obligacion=filtro_obligacion) }}">
+                    <a class="page-link" href="{{ url_for('reportes.reportes', page=reportes_pag.next_num, per_page=per_page, search=search or '', filtro_mes=filtro_mes or '', filtro_anio=filtro_anio or '', filtro_obligacion=filtro_obligacion or '') }}">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>
