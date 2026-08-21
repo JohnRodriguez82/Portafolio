@@ -2023,17 +2023,103 @@ def eliminar_reporte(id):
 @reportes_bp.route(
     '/uploads/<path:filename>'
 )
+@login_required
 def uploaded_file(filename):
     """
-    Sirve las imágenes de evidencias almacenadas
-    en UPLOAD_FOLDER.
+    Sirve imágenes de evidencias.
+
+    El sistema almacena actualmente rutas físicas completas
+    en Evidencia.imagen_path. La plantilla envía únicamente
+    el nombre del archivo.
+
+    Esta función normaliza separadores para garantizar
+    compatibilidad entre Windows y otros sistemas.
     """
 
-    return send_from_directory(
-        current_app.config['UPLOAD_FOLDER'],
+    upload_folder = current_app.config.get(
+        'UPLOAD_FOLDER'
+    )
+
+    if not upload_folder:
+        return (
+            'Carpeta de evidencias no configurada.',
+            500
+        )
+
+    # --------------------------------------------------------
+    # Normalizar separadores
+    # --------------------------------------------------------
+
+    filename = str(
+        filename or ''
+    ).replace(
+        '\\',
+        '/'
+    )
+
+    # --------------------------------------------------------
+    # Evitar que llegue una ruta física completa
+    # --------------------------------------------------------
+
+    filename = os.path.basename(
         filename
     )
 
+    if not filename:
+        return (
+            'Archivo no especificado.',
+            404
+        )
+
+    # --------------------------------------------------------
+    # Seguridad
+    # --------------------------------------------------------
+
+    filename = secure_filename(
+        filename
+    )
+
+    if not filename:
+        return (
+            'Nombre de archivo no válido.',
+            400
+        )
+
+    # --------------------------------------------------------
+    # Ruta física
+    # --------------------------------------------------------
+
+    ruta_archivo = os.path.join(
+        upload_folder,
+        filename
+    )
+
+    # --------------------------------------------------------
+    # Verificar existencia
+    # --------------------------------------------------------
+
+    if not os.path.isfile(
+        ruta_archivo
+    ):
+
+        current_app.logger.warning(
+            'Imagen de evidencia no encontrada: %s',
+            ruta_archivo
+        )
+
+        return (
+            'Imagen de evidencia no encontrada.',
+            404
+        )
+
+    # --------------------------------------------------------
+    # Servir imagen
+    # --------------------------------------------------------
+
+    return send_from_directory(
+        upload_folder,
+        filename
+    )
 
 # ============================================================
 # DESCARGA MASIVA DE PDF POR MES
