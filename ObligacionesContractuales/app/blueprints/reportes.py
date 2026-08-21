@@ -1424,71 +1424,71 @@ def subir_evidencia(id):
             )
         )
 
-        # ========================================================
-        # CREAR EVIDENCIA MEDIANTE SERVICE
-        # ========================================================
+    # ========================================================
+    # CREAR EVIDENCIA MEDIANTE SERVICE
+    # ========================================================
 
-        try:
+    try:
 
-            # ----------------------------------------------------
-            # CREAR EVIDENCIA INMEDIATAMENTE (sin esperar IA)
-            # ----------------------------------------------------
+        # ----------------------------------------------------
+        # CREAR EVIDENCIA INMEDIATAMENTE (sin esperar IA)
+        # ----------------------------------------------------
 
-            evidencia_service = EvidenciaService()
+        evidencia_service = EvidenciaService()
 
-            evidencia = (
-                evidencia_service.crear_evidencia(
-                    reporte=reporte,
-                    imagen=file,
-                    anuncio=anuncio_usuario,
-                    fecha=fecha_actividad,
-                    descripcion=None  # IA se procesa en background
-                )
+        evidencia = (
+            evidencia_service.crear_evidencia(
+                reporte=reporte,
+                imagen=file,
+                anuncio=anuncio_usuario,
+                fecha=fecha_actividad,
+                descripcion=None  # IA se procesa en background
+            )
+        )
+
+        # ----------------------------------------------------
+        # GUARDAR
+        # ----------------------------------------------------
+
+        db.session.commit()
+
+        # ----------------------------------------------------
+        # ANÁLISIS IA EN BACKGROUND (no bloquea al usuario)
+        # ----------------------------------------------------
+
+        if api_key and evidencia.imagen_path:
+
+            app = current_app._get_current_object()
+
+            thread = threading.Thread(
+                target=_analizar_ia_background,
+                args=(
+                    app,
+                    evidencia.id,
+                    evidencia.imagen_path,
+                    api_key,
+                    obligacion.descripcion,
+                    anuncio_usuario
+                ),
+                daemon=True
             )
 
-            # ----------------------------------------------------
-            # GUARDAR
-            # ----------------------------------------------------
+            thread.start()
 
-            db.session.commit()
+            flash(
+                'Evidencia guardada. El análisis con IA '
+                'se está procesando en segundo plano.',
+                'info'
+            )
 
-            # ----------------------------------------------------
-            # ANÁLISIS IA EN BACKGROUND (no bloquea al usuario)
-            # ----------------------------------------------------
+        else:
 
-            if api_key and evidencia.imagen_path:
-
-                app = current_app._get_current_object()
-
-                thread = threading.Thread(
-                    target=_analizar_ia_background,
-                    args=(
-                        app,
-                        evidencia.id,
-                        evidencia.imagen_path,
-                        api_key,
-                        obligacion.descripcion,
-                        anuncio_usuario
-                    ),
-                    daemon=True
-                )
-
-                thread.start()
-
-                flash(
-                    'Evidencia guardada. El análisis con IA '
-                    'se está procesando en segundo plano.',
-                    'info'
-                )
-
-            else:
-
-                flash(
-                    f'Actividad '
-                    f'{evidencia.numero_actividad} '
-                    f'registrada.',
-                    'success'
-                )
+            flash(
+                f'Actividad '
+                f'{evidencia.numero_actividad} '
+                f'registrada.',
+                'success'
+            )
 
         # ----------------------------------------------------
         # CREAR EVIDENCIA
