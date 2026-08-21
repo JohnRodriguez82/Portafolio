@@ -1174,30 +1174,30 @@ def subir_evidencia(id):
             )
         )
 
-        # --------------------------------------------------------
-        # REPORTE CERRADO
-        # --------------------------------------------------------
+    # --------------------------------------------------------
+    # REPORTE CERRADO
+    # --------------------------------------------------------
 
-        if reporte.cerrado:
+    if reporte.cerrado:
 
-            flash(
-                'Este reporte está cerrado. '
-                'No se pueden agregar más evidencias.',
-                'warning'
+        flash(
+            'Este reporte está cerrado. '
+            'No se pueden agregar más evidencias.',
+            'warning'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
             )
+        )
 
-            return redirect(
-                url_for(
-                    'reportes.ver_reporte',
-                    id=id
-                )
-            )
+    # --------------------------------------------------------
+    # CONTRATO FINALIZADO
+    # --------------------------------------------------------
 
-        # --------------------------------------------------------
-        # CONTRATO FINALIZADO
-        # --------------------------------------------------------
-
-        if contrato.etapa == 'Reporte Cerrado':
+    if contrato.etapa == 'Reporte Cerrado':
 
         flash(
             'Este contrato está finalizado '
