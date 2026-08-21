@@ -3616,7 +3616,7 @@ def nuevo_reporte_selector():
     methods=['POST']
 )
 @login_required
-def subir_evidencia_ajax(id):
+def crear_evidencia(id):
     """
     Subida de evidencia via AJAX (sin recargar pagina).
     """
@@ -3677,7 +3677,8 @@ def subir_evidencia_ajax(id):
             imagen=file,
             anuncio=anuncio_usuario,
             fecha=fecha_actividad,
-            descripcion=None
+            descripcion=None,
+            skip_generacion=True
         )
 
         db.session.commit()
