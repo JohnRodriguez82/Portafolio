@@ -312,10 +312,20 @@ def optimizar_imagen_para_ia(
             file_obj.seek(0)
             raw_bytes = file_obj.read()
 
-    elif isinstance(file_obj, str) and os.path.isfile(file_obj):
+    elif isinstance(file_obj, (str, os.PathLike)):
 
-        with open(file_obj, 'rb') as f:
-            raw_bytes = f.read()
+        ruta = str(file_obj)
+
+        if os.path.isfile(ruta):
+
+            with open(ruta, 'rb') as f:
+                raw_bytes = f.read()
+
+        else:
+
+            raise ValueError(
+                f'No se encontro la imagen: {ruta}'
+            )
 
     else:
 
@@ -1092,3 +1102,80 @@ def _consolidar_manual(
     return _limpiar_texto(
         ' '.join(partes)
     )
+
+
+# ============================================================
+# ANALIZAR IMAGEN CON REINTENTOS
+# ============================================================
+
+def analizar_imagen_con_reintentos(
+    image_path,
+    api_key=None,
+    contexto_obligacion=None,
+    anuncio_usuario=None,
+    max_reintentos=2,
+    espera_segundos=3
+):
+    """
+    Analiza una imagen con Gemini reintentando en caso
+    de error temporal (rate limit, timeout, etc.).
+
+    Args:
+        image_path: Ruta o archivo de imagen.
+        api_key: API key de Gemini.
+        contexto_obligacion: Descripcion de la obligacion.
+        anuncio_usuario: Contexto del usuario.
+        max_reintentos: Numero de reintentos adicionales.
+        espera_segundos: Tiempo de espera entre reintentos.
+
+    Returns:
+        str: Descripcion generada, o None si fallo todo.
+    """
+    import time
+
+    ultimo_error = None
+
+    for intento in range(max_reintentos + 1):
+
+        try:
+
+            resultado = analizar_imagen(
+                image_path,
+                api_key=api_key,
+                contexto_obligacion=contexto_obligacion,
+                anuncio_usuario=anuncio_usuario
+            )
+
+            if resultado:
+
+                return resultado
+
+            # Si retorno None pero no lanzo excepcion,
+            # puede ser que Gemini no genero texto.
+            # Reintentamos una vez mas.
+
+            if intento < max_reintentos:
+
+                time.sleep(espera_segundos)
+
+        except Exception as e:
+
+            ultimo_error = e
+
+            print(
+                f'[VisionAnalyzer] '
+                f'Intento {intento + 1}/{max_reintentos + 1} '
+                f'fallo: {e}'
+            )
+
+            if intento < max_reintentos:
+
+                time.sleep(espera_segundos * (intento + 1))
+
+    print(
+        f'[VisionAnalyzer] '
+        f'Todos los intentos fallaron. '
+        f'Ultimo error: {ultimo_error}'
+    )
+
+    return None
