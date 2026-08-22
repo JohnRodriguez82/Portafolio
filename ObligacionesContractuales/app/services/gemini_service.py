@@ -482,37 +482,79 @@ class GeminiService:
         una evidencia contractual.
         """
 
-        prompt = """
+        prompt = f"""
+Eres un redactor especializado en informes de
+ejecucion contractual para entidades publicas.
+
 Analiza la imagen proporcionada como evidencia de una
-actividad relacionada con una obligación contractual.
+actividad relacionada con una obligacion contractual.
 
-Genera una descripción objetiva, clara y profesional
-de lo que se observa en la imagen.
+Genera UN PARRAFO profesional, claro y legible que
+describa la actividad realizada.
 
-La descripción debe:
+ESTRUCTURA DEL PARRAFO:
 
-- Explicar qué se observa.
-- Identificar, cuando sea posible, la actividad realizada.
-- Evitar inventar información que no sea visible.
-- No afirmar fechas, nombres o datos que no puedan
-  comprobarse visualmente.
-- Utilizar lenguaje formal apropiado para un informe
-  contractual.
-- Ser breve pero suficientemente descriptiva.
+- Inicia con un conector de proposito o contexto:
+  "Con el fin de...", "En el marco de...",
+  "Como parte del cumplimiento de la obligacion..."
 
-Entrega únicamente el párrafo descriptivo.
+- Desarrolla la accion principal con verbos de
+  accion: revision, analisis, elaboracion,
+  actualizacion, seguimiento, validacion,
+  configuracion, implementacion, documentacion,
+  coordinacion, verificacion, atencion, gestion,
+  consolidacion, socializacion, ajuste,
+  preparacion.
+
+- Cierra con el resultado, avance o contribucion
+  a la obligacion contractual.
+
+REGLAS:
+
+1. Escribe UN SOLO PARRAFO de 2 a 4 oraciones.
+   NO uses saltos de linea ni listas.
+
+2. NO digas: "en la imagen", "se observa",
+   "se ve", "la imagen muestra", "pantallazo",
+   "captura de pantalla", "fotografia",
+   "evidencia visual".
+
+3. NO describas colores, posiciones, botones,
+   ventanas o elementos graficos.
+
+4. Utiliza lenguaje formal, tecnico y
+   administrativo de entidad publica.
+
+5. No inventes datos, cantidades, porcentajes,
+   nombres, fechas, resultados, usuarios,
+   reuniones, entregables o aprobaciones.
+
+6. Si la informacion solo demuestra avance o
+   gestion, usa ese nivel de certeza.
+
+7. Usa conectores logicos para que el parrafo
+   fluya: "Asimismo", "De igual manera",
+   "En consecuencia", "Con el proposito de",
+   "En el marco de", "Como resultado".
+
+8. La descripcion debe poder copiarse
+   directamente en un informe contractual.
+
+9. Entrega UNICAMENTE el parrafo final.
+   Sin titulos, sin numeracion, sin listas.
 """
 
         if contexto:
 
             prompt += f"""
 
-Contexto proporcionado para esta evidencia:
+CONTEXTO ADICIONAL:
 
 {contexto}
 
-Utiliza este contexto únicamente como apoyo.
-No inventes información que contradiga la imagen.
+Utiliza este contexto como apoyo para enriquecer la
+descripcion, pero no inventes informacion que no sea
+visible en la imagen.
 """
 
         return prompt.strip()
