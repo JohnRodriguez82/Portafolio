@@ -172,6 +172,15 @@ def _limpiar_texto(texto):
         r'[Dd]onde se observa[^.]*\.',
         r'[Pp]antallazo de[^,]*,\s*',
         r'[Ff]otografia de[^,]*,\s*',
+        r'[Ss]e evidencia[^.]*\.',
+        r'[Cc]omo se evidencia[^.]*\.',
+        r'[Ll]a presente imagen[^.]*\.',
+        r'[Ee]n la presente imagen[^.]*\.',
+        r'[Ss]e aprecia[^.]*\.',
+        r'[Ll]a imagen evidencia[^.]*\.',
+        r'[Ee]n la fotografia[^.]*\.',
+        r'[Ss]e puede observar[^.]*\.',
+        r'[Cc]omo se aprecia[^.]*\.',
     ]
 
     for patron in frases_a_eliminar:
@@ -205,6 +214,16 @@ def _limpiar_texto(texto):
     )
 
     # --------------------------------------------------------
+    # Convertir saltos de linea en espacios (parrafo unico)
+    # --------------------------------------------------------
+
+    resultado = re.sub(
+        r'\n+',
+        ' ',
+        resultado
+    )
+
+    # --------------------------------------------------------
     # Normalizar espacios
     # --------------------------------------------------------
 
@@ -226,6 +245,12 @@ def _limpiar_texto(texto):
         resultado
     )
 
+    resultado = re.sub(
+        r',\s*\.',
+        '.',
+        resultado
+    )
+
     resultado = resultado.strip()
 
     if (
@@ -235,6 +260,13 @@ def _limpiar_texto(texto):
     ):
 
         resultado += '.'
+
+    # --------------------------------------------------------
+    # Capitalizar primera letra
+    # --------------------------------------------------------
+
+    if resultado:
+        resultado = resultado[0].upper() + resultado[1:]
 
     return resultado
 
@@ -542,9 +574,8 @@ def analizar_imagen(
         # ----------------------------------------------------
 
         prompt = f"""
-Eres un profesional encargado de redactar
-informes de ejecucion contractual para una
-entidad publica.
+Eres un redactor especializado en informes de
+ejecucion contractual para entidades publicas.
 
 Debes analizar una actividad utilizando:
 
@@ -562,11 +593,12 @@ CONTEXTO PROPORCIONADO POR EL USUARIO:
 
 OBJETIVO:
 
-Redacta una descripcion profesional de la actividad
-realizada y relacionala con la obligacion contractual
-cuando exista informacion suficiente para hacerlo.
+Redacta UN PARRAFO profesional que describa la
+actividad realizada y la relacione con la
+obligacion contractual cuando exista informacion
+suficiente.
 
-La descripcion debe responder, en la medida en que
+El parrafo debe responder, en la medida en que
 la informacion disponible lo permita:
 
 - Que actividad se realizo?
@@ -578,51 +610,60 @@ la informacion disponible lo permita:
 - Como contribuye la actividad al cumplimiento
   de la obligacion?
 
+ESTRUCTURA DEL PARRAFO (usa conectores naturales):
+
+- Inicia con un conector temporal o de proposito:
+  "Con el fin de...", "En el marco de...",
+  "Durante el periodo...", "Como parte del
+  cumplimiento de la obligacion..."
+
+- Desarrolla la accion principal con verbos de
+  accion: revision, analisis, elaboracion,
+  actualizacion, seguimiento, validacion,
+  configuracion, implementacion, documentacion,
+  coordinacion, verificacion, atencion, gestion,
+  consolidacion, socializacion, ajuste,
+  preparacion.
+
+- Cierra con el resultado, avance o contribucion
+  a la obligacion contractual.
+
 REGLAS OBLIGATORIAS:
 
-1. NO digas:
-   "en la imagen",
-   "se observa",
-   "se ve",
-   "la imagen muestra",
-   "pantallazo",
-   "captura de pantalla",
-   "fotografia",
-   "evidencia visual".
+1. Escribe UN SOLO PARRAFO de 2 a 4 oraciones.
+   NO uses saltos de linea ni listas.
 
-2. NO describas colores, posiciones, botones,
-   ventanas o elementos graficos que no aporten
-   informacion sobre la actividad.
+2. NO digas:
+   "en la imagen", "se observa", "se ve",
+   "la imagen muestra", "pantallazo",
+   "captura de pantalla", "fotografia",
+   "evidencia visual", "la presente evidencia".
 
-3. Describe la actividad funcional y contractual.
+3. NO describas colores, posiciones, botones,
+   ventanas o elementos graficos.
 
-4. Utiliza lenguaje formal, tecnico y administrativo.
+4. Utiliza lenguaje formal, tecnico y
+   administrativo de entidad publica.
 
-5. No inventes datos.
+5. No inventes datos, cantidades, porcentajes,
+   nombres, fechas, resultados, usuarios,
+   reuniones, entregables o aprobaciones.
 
-6. No inventes cantidades, porcentajes, nombres,
-   fechas, resultados, usuarios, reuniones,
-   entregables o aprobaciones.
+6. Si la informacion solo demuestra avance o
+   gestion, usa ese nivel de certeza. No
+   afirmes cumplimiento total.
 
-7. Si la informacion unicamente demuestra un
-   avance o una gestion, no afirmes que existe
-   cumplimiento total.
+7. Usa conectores logicos para que el parrafo
+   fluya: "Asimismo", "De igual manera",
+   "En consecuencia", "Con el proposito de",
+   "En el marco de", "Como resultado".
 
-8. Utiliza verbos de accion como:
-   revision, analisis, elaboracion, actualizacion,
-   seguimiento, validacion, configuracion,
-   implementacion, documentacion, coordinacion,
-   verificacion, atencion, gestion, consolidacion,
-   socializacion, ajuste y preparacion.
+8. La descripcion debe poder copiarse
+   directamente en un informe contractual
+   sin necesidad de edicion.
 
-9. La descripcion debe tener entre 1 y 3 oraciones.
-
-10. No utilices listas.
-
-11. La descripcion debe poder copiarse directamente
-    en un informe de actividades contractuales.
-
-12. Entrega unicamente la descripcion final.
+9. Entrega UNICAMENTE el parrafo final.
+   Sin titulos, sin numeracion, sin listas.
 """
 
         response = client.models.generate_content(
@@ -635,7 +676,7 @@ REGLAS OBLIGATORIAS:
                 )
             ],
             config=types.GenerateContentConfig(
-                temperature=0.2
+                temperature=0.3
             )
         )
 
@@ -919,7 +960,7 @@ REGLAS:
             model=modelo,
             contents=prompt,
             config=types.GenerateContentConfig(
-                temperature=0.2
+                temperature=0.3
             )
         )
 
