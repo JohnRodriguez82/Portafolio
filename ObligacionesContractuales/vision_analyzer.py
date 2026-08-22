@@ -587,11 +587,9 @@ def analizar_imagen(
 Eres un redactor especializado en informes de
 ejecucion contractual para entidades publicas.
 
-Debes analizar una actividad utilizando:
-
-1. La informacion contenida en la imagen.
-2. La obligacion contractual.
-3. El contexto proporcionado por el usuario.
+Debes analizar la imagen proporcionada como
+evidence de una actividad contractual y redactar
+UN PARRAFO profesional, sustancioso y detallado.
 
 OBLIGACION CONTRACTUAL:
 
@@ -603,77 +601,91 @@ CONTEXTO PROPORCIONADO POR EL USUARIO:
 
 OBJETIVO:
 
-Redacta UN PARRAFO profesional que describa la
-actividad realizada y la relacione con la
-obligacion contractual cuando exista informacion
-suficiente.
+Describe la actividad realizada INTEGRANDO lo
+que se evidencia en la imagen con el contexto
+de la obligacion contractual. El parrafo debe
+ser sustancioso: desarrolla la accion, menciona
+los elementos tecnicos o funcionales visibles
+(formularios, campos, modulos, mockups,
+configuraciones, esquemas, documentos, tablas,
+interfaces, etc.) y explica como contribuyen al
+cumplimiento de la obligacion.
 
-El parrafo debe responder, en la medida en que
-la informacion disponible lo permita:
+El parrafo debe responder:
 
 - Que actividad se realizo?
-- Que gestion se desarrollo?
-- Que se reviso, elaboro, actualizo, valido,
-  gestiono, implemento o coordino?
-- Que resultado, avance o producto puede
-  identificarse?
-- Como contribuye la actividad al cumplimiento
-  de la obligacion?
+- Que elementos tecnicos o funcionales se
+  trabajaron, configuraron, disenaron o
+  validaron? (usa lo que ves en la imagen)
+- Que gestion o proceso se desarrollo?
+- Que resultado, avance o producto se evidencia?
+- Como contribuye esto al cumplimiento de la
+  obligacion contractual?
 
-ESTRUCTURA DEL PARRAFO (usa conectores naturales):
+ESTRUCTURA DEL PARRAFO:
 
-- Inicia con un conector temporal o de proposito:
+- Inicia con un conector de proposito o contexto:
   "Con el fin de...", "En el marco de...",
-  "Durante el periodo...", "Como parte del
-  cumplimiento de la obligacion..."
+  "Como parte del cumplimiento de la obligacion...",
+  "Durante el periodo reportado..."
 
-- Desarrolla la accion principal con verbos de
-  accion: revision, analisis, elaboracion,
-  actualizacion, seguimiento, validacion,
-  configuracion, implementacion, documentacion,
-  coordinacion, verificacion, atencion, gestion,
-  consolidacion, socializacion, ajuste,
-  preparacion.
+- Desarrolla la descripcion integrando:
+  (a) La actividad principal con verbos de accion:
+      realizo, estructuro, configuro, diseno,
+      valido, implemento, desarrollo, documento,
+      reviso, analizo, actualizo, gestiono,
+      coordino, verifico, consolido, ajusto.
+  (b) Los elementos tecnicos o funcionales
+      visibles en la imagen (formularios, campos,
+      modulos, mockups, esquemas, tablas,
+      interfaces, configuraciones, etc.).
+  (c) La relacion con la obligacion contractual.
 
 - Cierra con el resultado, avance o contribucion
-  a la obligacion contractual.
+  al cumplimiento contractual.
 
-REGLAS OBLIGATORIAS:
+REGLAS:
 
-1. Escribe UN SOLO PARRAFO de 2 a 4 oraciones.
-   NO uses saltos de linea ni listas.
+1. Escribe UN SOLO PARRAFO sustancioso de 4 a 6
+   oraciones. NO uses saltos de linea ni listas.
 
-2. NO digas:
-   "en la imagen", "se observa", "se ve",
-   "la imagen muestra", "pantallazo",
+2. SI describe los elementos funcionales o
+   tecnicos visibles en la imagen (campos,
+   formularios, modulos, configuraciones, etc.)
+   como parte de la evidencia de la actividad.
+
+3. NO digas: "en la imagen", "se observa",
+   "se ve", "la imagen muestra", "pantallazo",
    "captura de pantalla", "fotografia",
-   "evidencia visual", "la presente evidencia".
+   "evidencia visual".
 
-3. NO describas colores, posiciones, botones,
-   ventanas o elementos graficos.
+4. NO describas aspectos puramente esteticos
+   (colores decorativos, fondos, iconos
+   ornamentales) que no aporten a la actividad.
 
-4. Utiliza lenguaje formal, tecnico y
+5. Utiliza lenguaje formal, tecnico y
    administrativo de entidad publica.
 
-5. No inventes datos, cantidades, porcentajes,
-   nombres, fechas, resultados, usuarios,
-   reuniones, entregables o aprobaciones.
+6. No inventes datos, cantidades, porcentajes,
+   nombres propios, fechas especificas,
+   resultados cuantitativos, usuarios,
+   reuniones, entregables formales o
+   aprobaciones institucionales.
 
-6. Si la informacion solo demuestra avance o
+7. Si la informacion solo demuestra avance o
    gestion, usa ese nivel de certeza. No
    afirmes cumplimiento total.
 
-7. Usa conectores logicos para que el parrafo
-   fluya: "Asimismo", "De igual manera",
-   "En consecuencia", "Con el proposito de",
-   "En el marco de", "Como resultado".
+8. Usa conectores logicos: "Asimismo",
+   "De igual manera", "En consecuencia",
+   "Con el proposito de", "En el marco de",
+   "Como resultado", "De esta forma".
 
-8. La descripcion debe poder copiarse
-   directamente en un informe contractual
-   sin necesidad de edicion.
+9. La descripcion debe poder copiarse
+   directamente en un informe contractual.
 
-9. Entrega UNICAMENTE el parrafo final.
-   Sin titulos, sin numeracion, sin listas.
+10. Entrega UNICAMENTE el parrafo final.
+    Sin titulos, sin numeracion, sin listas.
 """
 
         response = client.models.generate_content(
@@ -686,7 +698,8 @@ REGLAS OBLIGATORIAS:
                 )
             ],
             config=types.GenerateContentConfig(
-                temperature=0.3
+                temperature=0.3,
+                max_output_tokens=512
             )
         )
 
@@ -970,7 +983,8 @@ REGLAS:
             model=modelo,
             contents=prompt,
             config=types.GenerateContentConfig(
-                temperature=0.3
+                temperature=0.3,
+                max_output_tokens=512
             )
         )
 
