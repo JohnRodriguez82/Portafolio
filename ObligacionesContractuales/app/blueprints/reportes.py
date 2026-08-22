@@ -251,6 +251,47 @@ def obtener_nombre_mes(mes):
 # LISTADO DE REPORTES
 # ============================================================
 
+
+
+# ============================================================
+# CACHE DE IA (en memoria con TTL de 24 horas)
+# ============================================================
+
+_ia_cache = {}
+
+
+def _cache_key_ia(image_bytes, contexto, anuncio):
+    """Genera clave de cache unica basada en contenido de imagen + contexto."""
+    import hashlib
+    hasher = hashlib.md5()
+    hasher.update(image_bytes)
+    hasher.update(str(contexto).encode('utf-8'))
+    hasher.update(str(anuncio).encode('utf-8'))
+    return hasher.hexdigest()
+
+
+def _get_cached_ia(image_bytes, contexto, anuncio):
+    """Obtiene descripcion cacheada de IA si existe y no ha expirado."""
+    from datetime import datetime
+    key = _cache_key_ia(image_bytes, contexto, anuncio)
+    entry = _ia_cache.get(key)
+    if entry:
+        ts, desc = entry
+        if (datetime.utcnow() - ts).total_seconds() < 86400:  # 24h
+            print(f'[CACHE HIT] IA cacheada para hash {key[:8]}...')
+            return desc
+        else:
+            del _ia_cache[key]
+    return None
+
+
+def _set_cached_ia(image_bytes, contexto, anuncio, descripcion):
+    """Guarda descripcion de IA en cache."""
+    from datetime import datetime
+    key = _cache_key_ia(image_bytes, contexto, anuncio)
+    _ia_cache[key] = (datetime.utcnow(), descripcion)
+    print(f'[CACHE SET] IA cacheada para hash {key[:8]}...')
+
 @reportes_bp.route('/reportes')
 @login_required
 def reportes():
