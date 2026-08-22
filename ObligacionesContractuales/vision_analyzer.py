@@ -584,108 +584,44 @@ def analizar_imagen(
         # ----------------------------------------------------
 
         prompt = f"""
-Eres un redactor especializado en informes de
-ejecucion contractual para entidades publicas.
+Eres un redactor de informes de ejecucion contractual
+para entidades publicas.
 
-Debes analizar la imagen proporcionada como
-evidence de una actividad contractual y redactar
-UN PARRAFO profesional, sustancioso y detallado.
+Analiza la imagen adjunta y redacta UN PARRAFO
+profesional que describa la actividad contractual
+realizada.
 
 OBLIGACION CONTRACTUAL:
-
 {contexto}
 
-CONTEXTO PROPORCIONADO POR EL USUARIO:
-
+CONTEXTO DEL USUARIO:
 {anuncio}
 
-OBJETIVO:
+INSTRUCCIONES:
 
-Describe la actividad realizada INTEGRANDO lo
-que se evidencia en la imagen con el contexto
-de la obligacion contractual. El parrafo debe
-ser sustancioso: desarrolla la accion, menciona
-los elementos tecnicos o funcionales visibles
-(formularios, campos, modulos, mockups,
-configuraciones, esquemas, documentos, tablas,
-interfaces, etc.) y explica como contribuyen al
-cumplimiento de la obligacion.
+1. Usa el contexto del usuario como BASE, pero
+   ENRIQUECELO con lo que ves en la imagen.
 
-El parrafo debe responder:
+2. Describe los elementos funcionales o tecnicos
+   visibles: formularios, campos, modulos,
+   mockups, tablas, interfaces, configuraciones,
+   esquemas, documentos, etc.
 
-- Que actividad se realizo?
-- Que elementos tecnicos o funcionales se
-  trabajaron, configuraron, disenaron o
-  validaron? (usa lo que ves en la imagen)
-- Que gestion o proceso se desarrollo?
-- Que resultado, avance o producto se evidencia?
-- Como contribuye esto al cumplimiento de la
-  obligacion contractual?
+3. Relaciona la actividad con la obligacion
+   contractual.
 
-ESTRUCTURA DEL PARRAFO:
+4. Escribe UN SOLO PARRAFO de 4 a 6 oraciones.
 
-- Inicia con un conector de proposito o contexto:
-  "Con el fin de...", "En el marco de...",
-  "Como parte del cumplimiento de la obligacion...",
-  "Durante el periodo reportado..."
+5. NO digas "en la imagen", "se observa",
+   "la imagen muestra", "fotografia",
+   "captura de pantalla".
 
-- Desarrolla la descripcion integrando:
-  (a) La actividad principal con verbos de accion:
-      realizo, estructuro, configuro, diseno,
-      valido, implemento, desarrollo, documento,
-      reviso, analizo, actualizo, gestiono,
-      coordino, verifico, consolido, ajusto.
-  (b) Los elementos tecnicos o funcionales
-      visibles en la imagen (formularios, campos,
-      modulos, mockups, esquemas, tablas,
-      interfaces, configuraciones, etc.).
-  (c) La relacion con la obligacion contractual.
+6. NO inventes datos, cantidades, nombres,
+   fechas, porcentajes ni reuniones.
 
-- Cierra con el resultado, avance o contribucion
-  al cumplimiento contractual.
+7. Usa lenguaje formal y tecnico.
 
-REGLAS:
-
-1. Escribe UN SOLO PARRAFO sustancioso de 4 a 6
-   oraciones. NO uses saltos de linea ni listas.
-
-2. SI describe los elementos funcionales o
-   tecnicos visibles en la imagen (campos,
-   formularios, modulos, configuraciones, etc.)
-   como parte de la evidencia de la actividad.
-
-3. NO digas: "en la imagen", "se observa",
-   "se ve", "la imagen muestra", "pantallazo",
-   "captura de pantalla", "fotografia",
-   "evidencia visual".
-
-4. NO describas aspectos puramente esteticos
-   (colores decorativos, fondos, iconos
-   ornamentales) que no aporten a la actividad.
-
-5. Utiliza lenguaje formal, tecnico y
-   administrativo de entidad publica.
-
-6. No inventes datos, cantidades, porcentajes,
-   nombres propios, fechas especificas,
-   resultados cuantitativos, usuarios,
-   reuniones, entregables formales o
-   aprobaciones institucionales.
-
-7. Si la informacion solo demuestra avance o
-   gestion, usa ese nivel de certeza. No
-   afirmes cumplimiento total.
-
-8. Usa conectores logicos: "Asimismo",
-   "De igual manera", "En consecuencia",
-   "Con el proposito de", "En el marco de",
-   "Como resultado", "De esta forma".
-
-9. La descripcion debe poder copiarse
-   directamente en un informe contractual.
-
-10. Entrega UNICAMENTE el parrafo final.
-    Sin titulos, sin numeracion, sin listas.
+8. Entrega SOLO el parrafo, sin titulos ni listas.
 """
 
         response = client.models.generate_content(
@@ -703,22 +639,20 @@ REGLAS:
             )
         )
 
-        descripcion = (
-            response.text.strip()
-            if response.text
-            else None
-        )
+        raw_text = response.text.strip() if response.text else None
 
-        if descripcion:
+        print(f'[VisionAnalyzer] Modelo: {modelo}')
+        print(f'[VisionAnalyzer] Raw response: {repr(raw_text)[:300]}')
 
-            descripcion = _limpiar_texto(
-                descripcion
-            )
-
-        print(
-            f'[VisionAnalyzer] '
-            f'Usando modelo: {modelo}'
-        )
+        if raw_text:
+            descripcion = _limpiar_texto(raw_text)
+            print(f'[VisionAnalyzer] Limpio: {repr(descripcion)[:300]}')
+            if not descripcion:
+                print('[VisionAnalyzer] WARNING: _limpiar_texto dejo el texto vacio. Usando raw.')
+                descripcion = raw_text
+        else:
+            descripcion = None
+            print('[VisionAnalyzer] Gemini retorno texto vacio o None.')
 
         return descripcion
 
