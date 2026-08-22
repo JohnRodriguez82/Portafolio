@@ -3677,7 +3677,7 @@ def subir_evidencia_ajax(id):
                         _set_cached_ia(img_bytes, obligacion.descripcion, anuncio_usuario, descripcion_visual)
                         ia_usada = True
             except Exception as e:
-                ia_logger.warning(f'[AJAX] Error IA: {e}')
+                print(f'[AJAX] Error IA: {e}')
 
         # ========================================================
         # FALLBACK: si IA fallo, usar anuncio del usuario
