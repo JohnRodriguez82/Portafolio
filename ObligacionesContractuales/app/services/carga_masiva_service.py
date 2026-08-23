@@ -41,7 +41,7 @@ Ese servicio es el responsable de persistirla.
 """
 
 from datetime import date, datetime
-from vision_analyzer import analizar_imagen
+from vision_analyzer import analizar_imagen, analizar_imagen_con_reintentos
 
 
 class CargaMasivaService:
@@ -77,6 +77,39 @@ class CargaMasivaService:
         self.evidencia_service = (
             evidencia_service
         )
+
+    # ============================================================
+    # PROCESAR FILA
+    # ============================================================
+
+    # ============================================================
+    # CACHE DE IA
+    # ============================================================
+
+    def _cache_key_ia(self, image_bytes, contexto, anuncio):
+        import hashlib
+        hasher = hashlib.md5()
+        hasher.update(image_bytes)
+        hasher.update(str(contexto).encode('utf-8'))
+        hasher.update(str(anuncio).encode('utf-8'))
+        return hasher.hexdigest()
+
+    def _get_cached_ia(self, image_bytes, contexto, anuncio):
+        from datetime import datetime
+        key = self._cache_key_ia(image_bytes, contexto, anuncio)
+        entry = self._ia_cache.get(key)
+        if entry:
+            ts, desc = entry
+            if (datetime.utcnow() - ts).total_seconds() < 86400:
+                return desc
+            else:
+                del self._ia_cache[key]
+        return None
+
+    def _set_cached_ia(self, image_bytes, contexto, anuncio, descripcion):
+        from datetime import datetime
+        key = self._cache_key_ia(image_bytes, contexto, anuncio)
+        self._ia_cache[key] = (datetime.utcnow(), descripcion)
 
     # ============================================================
     # PROCESAR FILA
