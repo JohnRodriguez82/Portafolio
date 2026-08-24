@@ -15,8 +15,15 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', str(BASE_DIR / 'uploads'))
-    PDF_FOLDER = os.environ.get('PDF_FOLDER', str(BASE_DIR / 'pdfs'))
+    # Carpetas de archivos (por defecto en static/)
+    UPLOAD_FOLDER = os.environ.get(
+        'UPLOAD_FOLDER',
+        str(BASE_DIR / 'static' / 'uploads' / 'evidencias')
+    )
+    PDF_FOLDER = os.environ.get(
+        'PDF_FOLDER',
+        str(BASE_DIR / 'static' / 'pdfs')
+    )
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
 
     # Google OAuth
