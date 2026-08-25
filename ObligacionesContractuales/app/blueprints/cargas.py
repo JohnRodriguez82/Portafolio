@@ -1,1146 +1,2258 @@
 """
-Servicio para procesar cargas masivas mensuales de evidencias.
+Blueprint de cargas masivas.
 
 Responsabilidades:
-
-- Procesar las filas normalizadas por ExcelService.
-- Validar obligaciones.
-- Validar anuncio/contexto.
-- Validar fechas del periodo.
-- Obtener o crear reportes mensuales.
-- Resolver imágenes temporales.
-- Analizar imágenes mediante GeminiService.
-- Crear evidencias mediante EvidenciaService.
-- Mantener una única responsabilidad por servicio.
-
-Este servicio NO contiene rutas Flask.
-
-Dependencias esperadas:
-
-    ExcelService
-        Se encarga de leer y normalizar el Excel.
-
-    ReporteService
-        Se encarga de obtener o crear ReporteMensual.
-
-    EvidenciaService
-        Se encarga de guardar/mover la imagen y crear Evidencia.
-
-    GeminiService
-        Se encarga del análisis visual mediante IA.
-
-IMPORTANTE:
-
-CargaMasivaService NO debe mover directamente las imágenes.
-
-La imagen temporal debe entregarse a:
-
-    EvidenciaService.crear_evidencia()
-
-Ese servicio es el responsable de persistirla.
+- Carga masiva de evidencias desde Excel.
+- Carga masiva de evidencias por mes.
+- Procesamiento en segundo plano.
+- Progreso mediante Server-Sent Events (SSE).
+- Rate limiter para Gemini.
+- Generación de plantilla Excel por reporte.
+- Generación de plantilla Excel para carga masiva mensual.
 """
 
-from datetime import date, datetime
-from vision_analyzer import analizar_imagen
+import os
+import io
+import calendar
+import threading
+import time
+import uuid
+import json
+
+from datetime import datetime, date
+from app.services.excel_service import ExcelService
+from app.services.carga_masiva_service import CargaMasivaService
+from app.services.reporte_service import ReporteService
+from app.services.evidencia_service import EvidenciaService
+
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    send_file,
+    Response,
+    jsonify,
+    current_app
+)
+
+from flask_login import (
+    login_required,
+    current_user
+)
+
+from werkzeug.utils import secure_filename
+
+from openpyxl import load_workbook
+
+from models import (
+    db,
+    Contrato,
+    Obligacion,
+    ReporteMensual,
+    Evidencia
+)
+
+from app.blueprints.configuracion import (
+    _obtener_api_key
+)
+
+from app.services.excel_service import (
+    ExcelService
+)
+
+from app.services.carga_masiva_service import (
+    CargaMasivaService
+)
+
+from app.services.reporte_service import (
+    ReporteService
+)
+
+from app.services.evidencia_service import (
+    EvidenciaService
+)
 
 
-class CargaMasivaService:
+# ============================================================
+# BLUEPRINT
+# ============================================================
+
+cargas_bp = Blueprint(
+    'cargas',
+    __name__
+)
+
+
+# ============================================================
+# CONFIGURACIÓN
+# ============================================================
+
+ALLOWED_EXTENSIONS = {
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'bmp',
+    'webp'
+}
+
+
+def allowed_file(filename):
     """
-    Servicio encargado de procesar cargas masivas
-    mensuales de evidencias.
+    Verifica si un archivo tiene una extensión de imagen
+    permitida.
     """
 
-    # ============================================================
-    # CONSTRUCTOR
-    # ============================================================
-
-    def __init__(
-        self,
-        reporte_service,
-        evidencia_service
-    ):
-        """
-        Inicializa el servicio.
-
-        Args:
-            reporte_service:
-                Instancia de ReporteService.
-
-            evidencia_service:
-                Instancia de EvidenciaService.
-        """
-
-        self.reporte_service = (
-            reporte_service
-        )
-
-        self.evidencia_service = (
-            evidencia_service
-        )
-
-    # ============================================================
-    # PROCESAR FILA
-    # ============================================================
-
-    def _procesar_fila(
-        self,
-        contrato,
-        mes,
-        anio,
-        fila,
-        imagenes,
-        obligaciones_por_numero,
-        api_key,
-        reportes_cache
-    ):
-        """
-        Procesa una fila individual del Excel.
-
-        La fila debe venir normalizada por ExcelService:
-
-        {
-            'obligacion': ...,
-            'descripcion': ...,
-            'anuncio': ...,
-            'fecha': ...,
-            'nombre_imagen': ...,
-            '_fila_excel': ...
-        }
-
-        Args:
-            contrato:
-                Contrato activo.
-
-            mes:
-                Mes del proceso.
-
-            anio:
-                Año del proceso.
-
-            fila:
-                Diccionario normalizado.
-
-            imagenes:
-                Diccionario de imágenes temporales.
-
-            obligaciones_por_numero:
-                Diccionario:
-                    numero -> Obligacion
-
-            api_key:
-                API key de Gemini o None.
-
-            reportes_cache:
-                Diccionario utilizado para reutilizar
-                reportes durante la misma carga.
-
-        Returns:
-
-            {
-                'exitoso': bool,
-                'errores': list,
-                'evidencia': Evidencia | None
-            }
-        """
-
-        errores = []
-
-        # --------------------------------------------------------
-        # VALIDAR FILA
-        # --------------------------------------------------------
-
-        if not isinstance(
-            fila,
-            dict
-        ):
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    'La fila recibida no tiene '
-                    'un formato válido.'
-                ],
-                'evidencia': None
-            }
-
-        # --------------------------------------------------------
-        # NÚMERO DE FILA
-        # --------------------------------------------------------
-
-        numero_fila = (
-            self._obtener_numero_fila(
-                fila,
-                0
-            )
-        )
-
-        # --------------------------------------------------------
-        # DATOS
-        # --------------------------------------------------------
-
-        numero_obligacion = (
-            fila.get(
-                'obligacion'
-            )
-        )
-
-        anuncio = (
-            str(
-                fila.get(
-                    'anuncio'
-                )
-                or ''
-            )
-            .strip()
-        )
-
-        fecha = (
-            fila.get(
-                'fecha'
-            )
-        )
-
-        nombre_imagen = (
-            str(
-                fila.get(
-                    'nombre_imagen'
-                )
-                or ''
-            )
-            .strip()
-        )
-
-        # --------------------------------------------------------
-        # VALIDAR PERIODO
-        # --------------------------------------------------------
-
-        periodo_error = (
-            self._validar_periodo(
-                mes,
-                anio
-            )
-        )
-
-        if periodo_error:
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    (
-                        f'Fila {numero_fila}: '
-                        f'{periodo_error}'
-                    )
-                ],
-                'evidencia': None
-            }
-
-        # --------------------------------------------------------
-        # NORMALIZAR MES / AÑO
-        # --------------------------------------------------------
-
-        mes = int(
-            mes
-        )
-
-        anio = int(
-            anio
-        )
-
-        # --------------------------------------------------------
-        # VALIDAR OBLIGACIÓN
-        # --------------------------------------------------------
-
-        obligacion = (
-            self._buscar_obligacion(
-                numero_obligacion,
-                obligaciones_por_numero
-            )
-        )
-
-        if not obligacion:
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    (
-                        f'Fila {numero_fila}: '
-                        f'Obligación '
-                        f'{numero_obligacion} '
-                        f'no encontrada.'
-                    )
-                ],
-                'evidencia': None
-            }
-
-        # --------------------------------------------------------
-        # VALIDAR QUE LA OBLIGACIÓN PERTENEZCA AL CONTRATO
-        # --------------------------------------------------------
-
-        if contrato is not None:
-
-            contrato_id = getattr(
-                contrato,
-                'id',
-                None
-            )
-
-            obligacion_contrato_id = getattr(
-                obligacion,
-                'contrato_id',
-                None
-            )
-
-            if (
-                contrato_id is not None
-                and
-                obligacion_contrato_id is not None
-                and
-                contrato_id
-                !=
-                obligacion_contrato_id
-            ):
-
-                return {
-                    'exitoso': False,
-                    'errores': [
-                        (
-                            f'Fila {numero_fila}: '
-                            f'La obligación '
-                            f'{numero_obligacion} '
-                            f'no pertenece al contrato '
-                            f'seleccionado.'
-                        )
-                    ],
-                    'evidencia': None
-                }
-
-        # --------------------------------------------------------
-        # VALIDAR ANUNCIO
-        # --------------------------------------------------------
-
-        if not anuncio:
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    (
-                        f'Fila {numero_fila}: '
-                        f'El anuncio/contexto '
-                        f'es obligatorio.'
-                    )
-                ],
-                'evidencia': None
-            }
-
-        # --------------------------------------------------------
-        # NORMALIZAR FECHA
-        # --------------------------------------------------------
-
-        try:
-
-            fecha_actividad = (
-                self._normalizar_fecha(
-                    fecha
-                )
-            )
-
-        except ValueError as exc:
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    (
-                        f'Fila {numero_fila}: '
-                        f'{str(exc)}'
-                    )
-                ],
-                'evidencia': None
-            }
-
-        # --------------------------------------------------------
-        # FECHA POR DEFECTO
-        # --------------------------------------------------------
-
-        if fecha_actividad is None:
-
-            fecha_actividad = date(
-                anio,
-                mes,
-                15
-            )
-
-        # --------------------------------------------------------
-        # VALIDAR FECHA DEL MES
-        # --------------------------------------------------------
-
-        fecha_error = (
-            self._validar_fecha_periodo(
-                fecha_actividad,
-                mes,
-                anio
-            )
-        )
-
-        if fecha_error:
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    (
-                        f'Fila {numero_fila}: '
-                        f'{fecha_error}'
-                    )
-                ],
-                'evidencia': None
-            }
-
-        # ========================================================
-        # REPORTE
-        # ========================================================
-
-        cache_key = (
-            getattr(
-                obligacion,
-                'id',
-                None
-            ),
-            mes,
-            anio
-        )
-
-        if cache_key not in reportes_cache:
-
-            try:
-
-                reporte = (
-                    self.reporte_service
-                    .obtener_o_crear_reporte(
-                        contrato=contrato,
-                        obligacion=obligacion,
-                        mes=mes,
-                        anio=anio
-                    )
-                )
-
-            except Exception as exc:
-
-                return {
-                    'exitoso': False,
-                    'errores': [
-                        (
-                            f'Fila {numero_fila}: '
-                            f'Error obteniendo o creando '
-                            f'el reporte para la obligación '
-                            f'{numero_obligacion}: '
-                            f'{str(exc)}'
-                        )
-                    ],
-                    'evidencia': None
-                }
-
-            if reporte is None:
-
-                return {
-                    'exitoso': False,
-                    'errores': [
-                        (
-                            f'Fila {numero_fila}: '
-                            f'No fue posible obtener o crear '
-                            f'el reporte para la obligación '
-                            f'{numero_obligacion}.'
-                        )
-                    ],
-                    'evidencia': None
-                }
-
-            reportes_cache[
-                cache_key
-            ] = reporte
-
-        reporte = (
-            reportes_cache[
-                cache_key
-            ]
-        )
-
-        # ========================================================
-        # IMAGEN
-        # ========================================================
-
-        imagen_temporal = None
-
-        if nombre_imagen:
-
-            try:
-
-                imagen_temporal = (
-                    self.evidencia_service
-                    .obtener_imagen_temporal(
-                        nombre_imagen,
-                        imagenes
-                    )
-                )
-
-            except Exception as exc:
-
-                return {
-                    'exitoso': False,
-                    'errores': [
-                        (
-                            f'Fila {numero_fila}: '
-                            f'Error buscando imagen '
-                            f'"{nombre_imagen}": '
-                            f'{str(exc)}'
-                        )
-                    ],
-                    'evidencia': None
-                }
-
-            # ----------------------------------------------------
-            # IMPORTANTE
-            #
-            # Si el Excel indica una imagen y esa imagen no existe,
-            # NO se debe crear una evidencia sin imagen.
-            # ----------------------------------------------------
-
-            if not imagen_temporal:
-
-                return {
-                    'exitoso': False,
-                    'errores': [
-                        (
-                            f'Fila {numero_fila}: '
-                            f'Imagen "{nombre_imagen}" '
-                            f'no encontrada entre los '
-                            f'archivos cargados.'
-                        )
-                    ],
-                    'evidencia': None
-                }
-
-        # ========================================================
-        # ANALISIS MEDIANTE IA
-        # ========================================================
-
-        descripcion = None
-
-        if (
-            imagen_temporal
-            and
-            api_key
-        ):
-
-            try:
-
-                descripcion = analizar_imagen(
-                    image_path=imagen_temporal,
-                    api_key=api_key,
-                    contexto_obligacion=obligacion.descripcion,
-                    anuncio_usuario=anuncio
-                )
-
-            except Exception as exc:
-
-                # ------------------------------------------------
-                # La IA NO debe impedir la creación
-                # de la evidencia.
-                # ------------------------------------------------
-
-                errores.append(
-                    (
-                        f'Fila {numero_fila}: '
-                        f'Error analizando imagen '
-                        f'"{nombre_imagen}" con IA: '
-                        f'{str(exc)}'
-                    )
-                )
-
-                descripcion = None
-
-        # ========================================================
-        # CREAR EVIDENCIA
-        # ========================================================
-
-        try:
-
-            evidencia = (
-                self.evidencia_service
-                .crear_evidencia(
-                    reporte=reporte,
-                    imagen=imagen_temporal,
-                    anuncio=anuncio,
-                    fecha=fecha_actividad,
-                    descripcion=descripcion
-                )
-            )
-
-        except Exception as exc:
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    (
-                        f'Fila {numero_fila}: '
-                        f'Error creando evidencia '
-                        f'para la obligación '
-                        f'{numero_obligacion}: '
-                        f'{str(exc)}'
-                    )
-                ],
-                'evidencia': None
-            }
-
-        if evidencia is None:
-
-            return {
-                'exitoso': False,
-                'errores': [
-                    (
-                        f'Fila {numero_fila}: '
-                        f'No fue posible crear la evidencia '
-                        f'para la obligación '
-                        f'{numero_obligacion}.'
-                    )
-                ],
-                'evidencia': None
-            }
-
-        # --------------------------------------------------------
-        # NO MOVER LA IMAGEN NUEVAMENTE
-        #
-        # EvidenciaService.crear_evidencia() ya llama a:
-        #
-        #     _guardar_imagen()
-        #
-        # Por tanto NO se debe llamar aquí:
-        #
-        #     guardar_imagen_evidencia()
-        #
-        # porque la ruta temporal ya fue consumida.
-        # --------------------------------------------------------
-
-        return {
-            'exitoso': True,
-            'errores': errores,
-            'evidencia': evidencia
-        }
-    
-
-    # ============================================================
-    # BUSCAR OBLIGACIÓN
-    # ============================================================
-
-    @staticmethod
-    def _buscar_obligacion(
-        numero_obligacion,
-        obligaciones_por_numero
-    ):
-        """
-        Busca una obligación utilizando diferentes
-        representaciones del número.
-
-        Soporta:
-
+    return (
+        '.'
+        in filename
+        and
+        filename.rsplit(
+            '.',
             1
-            1.0
-            "1"
-            "1.0"
-            " 1 "
-            "01"
-            "1,0"
+        )[1].lower()
+        in ALLOWED_EXTENSIONS
+    )
 
-        Returns:
 
-            Obligacion | None
-        """
+# ============================================================
+# GENERAR MESES DEL CONTRATO
+# ============================================================
 
-        if (
-            numero_obligacion is None
-        ):
+def generar_meses_contrato(
+    fecha_inicio,
+    fecha_fin
+):
+    """
+    Genera los meses comprendidos entre las fechas
+    de inicio y fin del contrato.
+    """
 
-            return None
+    meses = []
 
-        if not obligaciones_por_numero:
+    current = date(
+        fecha_inicio.year,
+        fecha_inicio.month,
+        1
+    )
 
-            return None
+    end = date(
+        fecha_fin.year,
+        fecha_fin.month,
+        1
+    )
 
-        # --------------------------------------------------------
-        # COINCIDENCIA DIRECTA
-        # --------------------------------------------------------
+    nombres_meses = [
+        '',
+        'Enero',
+        'Febrero',
+        'Marzo',
+        'Abril',
+        'Mayo',
+        'Junio',
+        'Julio',
+        'Agosto',
+        'Septiembre',
+        'Octubre',
+        'Noviembre',
+        'Diciembre'
+    ]
 
-        try:
+    while current <= end:
 
-            if (
-                numero_obligacion
-                in obligaciones_por_numero
-            ):
-
-                return (
-                    obligaciones_por_numero[
-                        numero_obligacion
-                    ]
-                )
-
-        except (
-            TypeError,
-            AttributeError
-        ):
-
-            pass
-
-        # --------------------------------------------------------
-        # NORMALIZAR NÚMERO
-        # --------------------------------------------------------
-
-        numero_normalizado = (
-            CargaMasivaService
-            ._normalizar_numero_obligacion(
-                numero_obligacion
+        meses.append(
+            (
+                current.month,
+                current.year,
+                nombres_meses[
+                    current.month
+                ]
             )
         )
 
-        # --------------------------------------------------------
-        # BÚSQUEDA DIRECTA NORMALIZADA
-        # --------------------------------------------------------
+        if current.month == 12:
 
-        if numero_normalizado is not None:
+            current = date(
+                current.year + 1,
+                1,
+                1
+            )
+
+        else:
+
+            current = date(
+                current.year,
+                current.month + 1,
+                1
+            )
+
+    return meses
+
+
+# ============================================================
+# ESTADO GLOBAL DE JOBS
+# ============================================================
+
+jobs_lock = threading.Lock()
+
+jobs_progreso = {}
+
+
+# ============================================================
+# RATE LIMITER GEMINI
+# ============================================================
+
+_gemini_last_call = 0.0
+
+_gemini_lock = threading.Lock()
+
+# Aproximadamente 15 solicitudes por minuto.
+# Se deja margen de seguridad.
+GEMINI_MIN_INTERVAL = 4.1
+
+
+def _esperar_rate_limit_gemini():
+    """
+    Espera el tiempo necesario entre llamadas a Gemini.
+    """
+
+    global _gemini_last_call
+
+    with _gemini_lock:
+
+        ahora = time.time()
+
+        transcurrido = (
+            ahora
+            - _gemini_last_call
+        )
+
+        if (
+            transcurrido
+            < GEMINI_MIN_INTERVAL
+        ):
+
+            esperar = (
+                GEMINI_MIN_INTERVAL
+                - transcurrido
+            )
+
+            time.sleep(
+                esperar
+            )
+
+        _gemini_last_call = time.time()
+
+
+# ============================================================
+# ACTUALIZAR JOB
+# ============================================================
+
+def _actualizar_job(
+    job_id,
+    estado,
+    porcentaje,
+    mensaje,
+    resultado=None,
+    errores=None
+):
+    """
+    Actualiza de manera thread-safe el estado de un
+    proceso de carga masiva.
+    """
+
+    with jobs_lock:
+
+        if job_id not in jobs_progreso:
+
+            jobs_progreso[
+                job_id
+            ] = {}
+
+        jobs_progreso[
+            job_id
+        ].update(
+            {
+                'estado': estado,
+                'porcentaje': porcentaje,
+                'mensaje': mensaje,
+                'timestamp': time.time()
+            }
+        )
+
+        if resultado is not None:
+
+            jobs_progreso[
+                job_id
+            ]['resultado'] = resultado
+
+        if errores is not None:
+
+            jobs_progreso[
+                job_id
+            ]['errores'] = errores
+
+
+# ============================================================
+# PROCESAMIENTO DE CARGA MASIVA
+# ============================================================
+
+def _procesar_carga_masiva_job(
+    app,
+    job_id,
+    contrato_id,
+    mes,
+    anio,
+    excel_path,
+    imagenes_subidas,
+    api_key
+):
+    """
+    Procesa la carga masiva mensual en segundo plano.
+
+    El blueprint solamente coordina el proceso.
+    La lógica de negocio está delegada a:
+
+        ExcelService
+        CargaMasivaService
+        ReporteService
+        EvidenciaService
+        GeminiService
+    """
+
+    try:
+
+        with app.app_context():
+
+            # ====================================================
+            # RECUPERAR CONTRATO DENTRO DEL CONTEXTO FLASK
+            # ====================================================
+
+            contrato = (
+                Contrato.query
+                .filter_by(
+                    id=contrato_id
+                )
+                .first()
+            )
+
+            if not contrato:
+
+                _actualizar_job(
+                    job_id,
+                    'error',
+                    0,
+                    f'No se encontró el contrato {contrato_id}.'
+                )
+
+                return
+
+            # ====================================================
+            # RECUPERAR OBLIGACIONES DENTRO DEL CONTEXTO FLASK
+            # ====================================================
+
+            obligaciones = (
+                Obligacion.query
+                .filter_by(
+                    contrato_id=contrato.id
+                )
+                .order_by(
+                    Obligacion.numero
+                )
+                .all()
+            )
+
+            # ====================================================
+            # SERVICIOS
+            # ====================================================
+
+            reporte_service = ReporteService()
+
+            evidencia_service = EvidenciaService()
+
+            carga_service = CargaMasivaService(
+                reporte_service=reporte_service,
+                evidencia_service=evidencia_service
+            )
+
+
+            # ====================================================
+            # LEER EXCEL
+            # ====================================================
+
+            try:
+
+                workbook = load_workbook(
+                    excel_path,
+                    data_only=True
+                )
+
+                worksheet = workbook.active
+
+            except Exception as exc:
+
+                _actualizar_job(
+                    job_id,
+                    'error',
+                    0,
+                    (
+                        'No fue posible abrir el archivo Excel: '
+                        f'{str(exc)}'
+                    )
+                )
+
+                return
+
+            # ====================================================
+            # ENCABEZADOS
+            # ====================================================
+
+            expected_headers = [
+                'Obligacion No.',
+                'Descripcion Obligacion',
+                'Anuncio / Contexto',
+                'Fecha de la actividad',
+                'Nombre Imagen'
+            ]
+
+            headers = [
+                cell.value
+                for cell in worksheet[1]
+            ]
+
+            headers = [
+                str(value).strip()
+                if value is not None
+                else ''
+                for value in headers[:5]
+            ]
+
+            if headers != expected_headers:
+
+                _actualizar_job(
+                    job_id,
+                    'error',
+                    0,
+                    (
+                        'Encabezados incorrectos. '
+                        f'Esperado: {expected_headers}. '
+                        f'Recibido: {headers}.'
+                    )
+                )
+
+                return
+
+            # ====================================================
+            # OBLIGACIONES POR NÚMERO
+            # ====================================================
+
+            obligaciones_por_numero = {}
+
+            for obligacion in obligaciones:
+
+                try:
+
+                    obligaciones_por_numero[
+                        obligacion.numero
+                    ] = obligacion
+
+                except Exception:
+
+                    continue
+
+            # ====================================================
+            # PREPARAR FILAS
+            # ====================================================
+
+            filas = []
+
+            for numero_fila, row in enumerate(
+                worksheet.iter_rows(
+                    min_row=2,
+                    values_only=True
+                ),
+                start=2
+            ):
+
+                valores = list(row)
+
+                while len(valores) < 5:
+
+                    valores.append(None)
+
+                obligacion_value = valores[0]
+                descripcion_value = valores[1]
+                anuncio_value = valores[2]
+                fecha_value = valores[3]
+                imagen_value = valores[4]
+
+                if (
+                    obligacion_value is None
+                    and
+                    anuncio_value is None
+                    and
+                    imagen_value is None
+                ):
+
+                    continue
+
+                filas.append(
+                    {
+                        'obligacion': obligacion_value,
+                        'descripcion': descripcion_value,
+                        'anuncio': anuncio_value,
+                        'fecha': fecha_value,
+                        'nombre_imagen': imagen_value,
+                        '_fila_excel': numero_fila
+                    }
+                )
+
+            total_filas = len(filas)
+
+            if total_filas == 0:
+
+                _actualizar_job(
+                    job_id,
+                    'error',
+                    0,
+                    'No se encontraron filas válidas en el Excel.'
+                )
+
+                return
+
+            # ====================================================
+            # CACHE
+            # ====================================================
+
+            reportes_cache = {}
+
+            # ====================================================
+            # IMÁGENES
+            # ====================================================
+
+            imagenes_disponibles = dict(
+                imagenes_subidas or {}
+            )
+
+            # ====================================================
+            # RESULTADOS
+            # ====================================================
+
+            exitosos = 0
+
+            errores = []
+
+            # ====================================================
+            # PROCESAR FILAS
+            # ====================================================
+
+            for indice, fila in enumerate(
+                filas,
+                start=1
+            ):
+
+                numero_fila = fila.get(
+                    '_fila_excel',
+                    indice
+                )
+
+                porcentaje = int(
+                    (
+                        (indice - 1)
+                        /
+                        total_filas
+                    )
+                    * 100
+                )
+
+                _actualizar_job(
+                    job_id,
+                    'procesando',
+                    porcentaje,
+                    (
+                        f'Procesando fila '
+                        f'{numero_fila} '
+                        f'({indice}/{total_filas})...'
+                    )
+                )
+
+                # ------------------------------------------------
+                # Rate limit para Gemini (solo si hay imagen)
+                # ------------------------------------------------
+                if fila.get('nombre_imagen'):
+                    _esperar_rate_limit_gemini()
+
+                # ------------------------------------------------
+                # PROCESAR FILA MEDIANTE EL SERVICIO
+                # ------------------------------------------------
+
+                try:
+
+                    resultado = (
+                        carga_service
+                        ._procesar_fila(
+                            contrato=contrato,
+                            mes=mes,
+                            anio=anio,
+                            fila=fila,
+                            imagenes=imagenes_disponibles,
+                            obligaciones_por_numero=(
+                                obligaciones_por_numero
+                            ),
+                            api_key=api_key,
+                            reportes_cache=reportes_cache
+                        )
+                    )
+
+                except Exception as exc:
+                    resultado = {
+                        'exitoso': False,
+                        'errores': [
+                            (
+                                f'Fila {numero_fila}: '
+                                f'Error inesperado: '
+                                f'{str(exc)}'
+                            )
+                        ],
+                        'evidencia': None
+                    }
+
+                # ------------------------------------------------
+                # ERRORES
+                # ------------------------------------------------
+
+                fila_errores = resultado.get(
+                    'errores',
+                    []
+                )
+
+                if fila_errores:
+
+                    errores.extend(
+                        fila_errores
+                    )
+
+                # ------------------------------------------------
+                # ÉXITO
+                # ------------------------------------------------
+
+                if resultado.get(
+                    'exitoso',
+                    False
+                ):
+
+                    exitosos += 1
+
+                # ------------------------------------------------
+                # PROGRESO
+                # ------------------------------------------------
+
+                porcentaje_actual = int(
+                    (
+                        indice
+                        /
+                        total_filas
+                    )
+                    * 100
+                )
+
+                _actualizar_job(
+                    job_id,
+                    'procesando',
+                    porcentaje_actual,
+                    (
+                        f'Fila {numero_fila} procesada '
+                        f'({indice}/{total_filas}).'
+                    )
+                )
+            # ====================================================
+            # CONFIRMAR TRANSACCIÓN
+            # ====================================================
+
+            try:
+
+                db.session.commit()
+
+            except Exception as exc:
+
+                db.session.rollback()
+
+                raise RuntimeError(
+                    'No fue posible guardar la carga masiva '
+                    f'en la base de datos: {str(exc)}'
+                )
+
+            # ====================================================
+            # CERRAR EXCEL
+            # ====================================================
+
+            try:
+
+                workbook.close()
+
+            except Exception:
+
+                pass
+
+            # ====================================================
+            # LIMPIAR IMÁGENES QUE NO FUERON UTILIZADAS
+            # ====================================================
+
+            for tmp_path in (
+                imagenes_disponibles.values()
+            ):
+
+                try:
+
+                    if (
+                        tmp_path
+                        and
+                        os.path.exists(
+                            tmp_path
+                        )
+                    ):
+
+                        os.remove(
+                            tmp_path
+                        )
+
+                except Exception:
+
+                    pass
+
+            # ====================================================
+            # LIMPIAR EXCEL TEMPORAL
+            # ====================================================
 
             try:
 
                 if (
-                    numero_normalizado
-                    in obligaciones_por_numero
+                    excel_path
+                    and
+                    os.path.exists(
+                        excel_path
+                    )
                 ):
 
-                    return (
-                        obligaciones_por_numero[
-                            numero_normalizado
-                        ]
+                    os.remove(
+                        excel_path
                     )
 
-            except (
-                TypeError,
-                AttributeError
-            ):
+            except Exception:
 
                 pass
 
-        # --------------------------------------------------------
-        # COMPARAR TODAS LAS CLAVES NORMALIZADAS
-        # --------------------------------------------------------
+            # ====================================================
+            # RESULTADO FINAL
+            # ====================================================
 
-        for clave, obligacion in (
-            obligaciones_por_numero.items()
-        ):
-
-            clave_normalizada = (
-                CargaMasivaService
-                ._normalizar_numero_obligacion(
-                    clave
-                )
+            _actualizar_job(
+                job_id,
+                'completado',
+                100,
+                (
+                    f'Proceso finalizado. '
+                    f'{exitosos} evidencias cargadas.'
+                ),
+                resultado={
+                    'exitosos': exitosos,
+                    'errores': len(errores),
+                    'total': total_filas,
+                    'mes': mes,
+                    'anio': anio
+                },
+                errores=errores
             )
 
-            if (
-                numero_normalizado
-                is not None
-                and
-                clave_normalizada
-                ==
-                numero_normalizado
-            ):
+    except Exception as exc:
 
-                return obligacion
+        import traceback
 
-            # ----------------------------------------------------
-            # Comparación textual de respaldo.
-            # ----------------------------------------------------
+        traceback.print_exc()
 
-            texto_clave = str(
-                clave
-            ).strip()
-
-            texto_buscado = str(
-                numero_obligacion
-            ).strip()
-
-            if (
-                texto_clave
-                ==
-                texto_buscado
-            ):
-
-                return obligacion
-
-        return None
-
-    # ============================================================
-    # NORMALIZAR NÚMERO DE OBLIGACIÓN
-    # ============================================================
-
-    @staticmethod
-    def _normalizar_numero_obligacion(
-        valor
-    ):
-        """
-        Convierte diferentes representaciones de un número
-        de obligación a entero cuando es posible.
-
-        Ejemplos:
-
-            1       -> 1
-            1.0     -> 1
-            "1"     -> 1
-            "1.0"   -> 1
-            "01"    -> 1
-            "1,0"   -> 1
-
-        Si no representa un entero válido, retorna
-        el texto limpio.
-        """
-
-        if valor is None:
-
-            return None
-
-        if isinstance(
-            valor,
-            bool
-        ):
-
-            return int(
-                valor
-            )
-
-        if isinstance(
-            valor,
-            int
-        ):
-
-            return valor
-
-        if isinstance(
-            valor,
-            float
-        ):
-
-            if valor.is_integer():
-
-                return int(
-                    valor
-                )
-
-            return valor
-
-        texto = str(
-            valor
-        ).strip()
-
-        if not texto:
-
-            return None
-
-        texto_numerico = (
-            texto.replace(
-                ',',
-                '.'
-            )
-        )
+        # ========================================================
+        # EL EXCEPT TAMBIÉN NECESITA CONTEXTO FLASK
+        # ========================================================
 
         try:
 
-            numero = float(
-                texto_numerico
-            )
+            with app.app_context():
 
-            if numero.is_integer():
-
-                return int(
-                    numero
+                _actualizar_job(
+                    job_id,
+                    'error',
+                    0,
+                    (
+                        'Error inesperado durante la carga masiva: '
+                        f'{str(exc)}'
+                    )
                 )
 
-        except (
-            ValueError,
-            TypeError,
-            OverflowError
-        ):
+        except Exception as error_job:
+
+            print(
+                '[CargaMasiva] '
+                'No fue posible actualizar el estado del job: '
+                f'{error_job}'
+            )
+
+        # ========================================================
+        # LIMPIAR EXCEL TEMPORAL
+        # ========================================================
+
+        try:
+
+            if (
+                excel_path
+                and
+                os.path.exists(
+                    excel_path
+                )
+            ):
+
+                os.remove(
+                    excel_path
+                )
+
+        except Exception:
 
             pass
 
-        return texto
+# ============================================================
+# CARGA MASIVA PARA UN REPORTE
+# ============================================================
 
-    # ============================================================
-    # NORMALIZAR FECHA
-    # ============================================================
+@cargas_bp.route(
+    '/reporte/<int:id>/carga-masiva',
+    methods=['GET', 'POST']
+)
+@login_required
+def carga_masiva_evidencias(id):
+    """
+    Carga masiva de actividades mediante Excel
+    para un reporte específico.
+    """
 
-    @staticmethod
-    def _normalizar_fecha(
-        valor
+    reporte = (
+        ReporteMensual.query
+        .get_or_404(id)
+    )
+
+    obligacion = (
+        reporte.obligacion
+    )
+
+    contrato = (
+        Contrato.query
+        .get(
+            obligacion.contrato_id
+        )
+    )
+
+    # --------------------------------------------------------
+    # Seguridad
+    # --------------------------------------------------------
+
+    if (
+        not contrato
+        or
+        contrato.user_id != current_user.id
     ):
-        """
-        Normaliza una fecha recibida desde Excel.
 
-        Soporta:
+        flash(
+            'No tiene permiso.',
+            'danger'
+        )
 
-            None
-            date
-            datetime
-            YYYY-MM-DD
-            DD/MM/YYYY
-            DD-MM-YYYY
-            YYYY/MM/DD
+        return redirect(
+            url_for(
+                'inicio.inicio'
+            )
+        )
 
-        Returns:
+    # --------------------------------------------------------
+    # Contrato cerrado
+    # --------------------------------------------------------
 
-            date | None
+    if contrato.etapa == 'Reporte Cerrado':
 
-        Raises:
+        flash(
+            'Este contrato esta finalizado '
+            '(Reporte Cerrado). '
+            'No se pueden agregar mas evidencias.',
+            'warning'
+        )
 
-            ValueError
-        """
+        return redirect(
+            url_for(
+                'reportes.ver_reporte',
+                id=id
+            )
+        )
 
-        if valor is None:
+    # ========================================================
+    # POST
+    # ========================================================
 
-            return None
+    if request.method == 'POST':
 
-        if isinstance(
-            valor,
-            datetime
-        ):
+        # ----------------------------------------------------
+        # Excel
+        # ----------------------------------------------------
 
-            return valor.date()
+        if 'archivo_excel' not in request.files:
 
-        if isinstance(
-            valor,
-            date
-        ):
+            flash(
+                'No se selecciono el archivo Excel.',
+                'danger'
+            )
 
-            return valor
+            return redirect(
+                url_for(
+                    'cargas.carga_masiva_evidencias',
+                    id=id
+                )
+            )
 
-        texto = str(
-            valor
-        ).strip()
-
-        if not texto:
-
-            return None
-
-        formatos = [
-            '%Y-%m-%d',
-            '%d/%m/%Y',
-            '%d-%m-%Y',
-            '%Y/%m/%d'
+        archivo_excel = request.files[
+            'archivo_excel'
         ]
 
-        for formato in formatos:
+        if archivo_excel.filename == '':
+
+            flash(
+                'No se selecciono archivo Excel.',
+                'danger'
+            )
+
+            return redirect(
+                url_for(
+                    'cargas.carga_masiva_evidencias',
+                    id=id
+                )
+            )
+
+        # ----------------------------------------------------
+        # Validar extensión
+        # ----------------------------------------------------
+
+        if not archivo_excel.filename.lower().endswith(
+            (
+                '.xlsx',
+                '.xls'
+            )
+        ):
+
+            flash(
+                'El archivo debe ser Excel '
+                '(.xlsx o .xls).',
+                'danger'
+            )
+
+            return redirect(
+                url_for(
+                    'cargas.carga_masiva_evidencias',
+                    id=id
+                )
+            )
+
+        # ====================================================
+        # LEER EXCEL
+        # ====================================================
+
+        try:
+
+            wb = load_workbook(
+                archivo_excel
+            )
+
+            ws = wb.active
+
+            headers = [
+                cell.value
+                for cell in ws[1]
+            ]
+
+            expected = [
+                'Anuncio / Contexto',
+                'Fecha de la actividad'
+            ]
+
+            if headers[:2] != expected:
+
+                flash(
+                    (
+                        'Encabezados incorrectos. '
+                        f'Se esperaba: {expected}. '
+                        f'Encontrado: {headers[:2]}'
+                    ),
+                    'danger'
+                )
+
+                return redirect(
+                    url_for(
+                        'cargas.carga_masiva_evidencias',
+                        id=id
+                    )
+                )
+
+            api_key = _obtener_api_key()
+
+            exitosos = 0
+
+            errores = []
+
+            # =================================================
+            # FILAS
+            # =================================================
+
+            for idx, row in enumerate(
+                ws.iter_rows(
+                    min_row=2,
+                    values_only=True
+                ),
+                start=2
+            ):
+
+                anuncio = str(
+                    row[0] or ''
+                ).strip()
+
+                fecha_str = str(
+                    row[1] or ''
+                ).strip()
+
+                if not anuncio:
+
+                    errores.append(
+                        f'Fila {idx}: '
+                        f'Anuncio vacio.'
+                    )
+
+                    continue
+
+                if not fecha_str:
+
+                    errores.append(
+                        f'Fila {idx}: '
+                        f'Fecha vacia.'
+                    )
+
+                    continue
+
+                # ------------------------------------------------
+                # Fecha
+                # ------------------------------------------------
+
+                try:
+
+                    fecha_actividad = (
+                        datetime.strptime(
+                            fecha_str,
+                            '%Y-%m-%d'
+                        ).date()
+                    )
+
+                except ValueError:
+
+                    try:
+
+                        fecha_actividad = (
+                            datetime.strptime(
+                                fecha_str,
+                                '%d/%m/%Y'
+                            ).date()
+                        )
+
+                    except ValueError:
+
+                        errores.append(
+                            f'Fila {idx}: '
+                            f'Fecha invalida '
+                            f'({fecha_str}). '
+                            f'Use YYYY-MM-DD '
+                            f'o DD/MM/YYYY.'
+                        )
+
+                        continue
+
+                # ------------------------------------------------
+                # Validar período
+                # ------------------------------------------------
+
+                if (
+                    fecha_actividad
+                    < reporte.fecha_inicio_reporte
+                    or
+                    fecha_actividad
+                    > reporte.fecha_fin_reporte
+                ):
+
+                    errores.append(
+                        f'Fila {idx}: '
+                        f'Fecha {fecha_str} '
+                        f'fuera del periodo del reporte.'
+                    )
+
+                    continue
+
+                # ------------------------------------------------
+                # Número actividad
+                # ------------------------------------------------
+
+                ultima_evidencia = (
+                    Evidencia.query
+                    .filter_by(
+                        reporte_id=reporte.id
+                    )
+                    .order_by(
+                        Evidencia
+                        .numero_actividad
+                        .desc()
+                    )
+                    .first()
+                )
+
+                numero_actividad = (
+                    ultima_evidencia
+                    .numero_actividad + 1
+                    if ultima_evidencia
+                    else 1
+                )
+
+                # ------------------------------------------------
+                # Crear evidencia
+                # ------------------------------------------------
+
+                evidencia = Evidencia(
+                    numero_actividad=(
+                        numero_actividad
+                    ),
+
+                    imagen_path='',
+
+                    anuncio_usuario=(
+                        anuncio
+                    ),
+
+                    descripcion_visual_ia=None,
+
+                    descripcion_actividad='',
+
+                    fecha_actividad=(
+                        fecha_actividad
+                    ),
+
+                    reporte_id=(
+                        reporte.id
+                    )
+                )
+
+                # ------------------------------------------------
+                # Generar descripción
+                # ------------------------------------------------
+
+                evidencia.descripcion_actividad = (
+                    evidencia
+                    .generar_descripcion_automatica(
+                        obligacion
+                    )
+                )
+
+                db.session.add(
+                    evidencia
+                )
+
+                exitosos += 1
+
+            db.session.commit()
+
+            # ----------------------------------------------------
+            # Resultado
+            # ----------------------------------------------------
+
+            if exitosos:
+
+                flash(
+                    f'{exitosos} actividades '
+                    f'cargadas exitosamente.',
+                    'success'
+                )
+
+            if errores:
+
+                flash(
+                    'Se encontraron errores: '
+                    +
+                    ' | '.join(
+                        errores[:5]
+                    ),
+                    'warning'
+                )
+
+            return redirect(
+                url_for(
+                    'reportes.ver_reporte',
+                    id=id
+                )
+            )
+
+        except Exception as e:
+
+            flash(
+                f'Error procesando Excel: {str(e)}',
+                'danger'
+            )
+
+            return redirect(
+                url_for(
+                    'cargas.carga_masiva_evidencias',
+                    id=id
+                )
+            )
+
+    # ========================================================
+    # GET
+    # ========================================================
+
+    return render_template(
+        'carga_masiva.html',
+
+        reporte=reporte,
+
+        obligacion=obligacion,
+
+        contrato=contrato
+    )
+
+
+# ============================================================
+# GENERAR PLANTILLA MASIVA POR MES
+# ============================================================
+
+def generar_plantilla_masiva(
+    contrato,
+    obligaciones,
+    mes,
+    anio
+):
+    """
+    Genera una plantilla Excel para cargar evidencias
+    de todas las obligaciones de un mes.
+    """
+
+    from openpyxl import Workbook
+
+    from openpyxl.styles import (
+        Font,
+        PatternFill,
+        Alignment,
+        Border,
+        Side
+    )
+
+    # --------------------------------------------------------
+    # Crear workbook
+    # --------------------------------------------------------
+
+    wb = Workbook()
+
+    ws = wb.active
+
+    ws.title = (
+        f'Carga_{mes:02d}_{anio}'
+    )
+
+    # --------------------------------------------------------
+    # Encabezados
+    # --------------------------------------------------------
+
+    headers = [
+        'Obligacion No.',
+        'Descripcion Obligacion',
+        'Anuncio / Contexto',
+        'Fecha de la actividad',
+        'Nombre Imagen'
+    ]
+
+    ws.append(
+        headers
+    )
+
+    # --------------------------------------------------------
+    # Estilos
+    # --------------------------------------------------------
+
+    header_font = Font(
+        bold=True,
+        color='FFFFFF',
+        size=11
+    )
+
+    header_fill = PatternFill(
+        start_color='2c3e50',
+        end_color='2c3e50',
+        fill_type='solid'
+    )
+
+    header_align = Alignment(
+        horizontal='center',
+        vertical='center',
+        wrap_text=True
+    )
+
+    thin_border = Border(
+        left=Side(
+            style='thin'
+        ),
+        right=Side(
+            style='thin'
+        ),
+        top=Side(
+            style='thin'
+        ),
+        bottom=Side(
+            style='thin'
+        )
+    )
+
+    for cell in ws[1]:
+
+        cell.font = (
+            header_font
+        )
+
+        cell.fill = (
+            header_fill
+        )
+
+        cell.alignment = (
+            header_align
+        )
+
+        cell.border = (
+            thin_border
+        )
+
+    # --------------------------------------------------------
+    # Obligaciones
+    # --------------------------------------------------------
+
+    for obligacion in obligaciones:
+
+        ws.append(
+            [
+                obligacion.numero,
+
+                obligacion.descripcion,
+
+                '',
+
+                f'{anio}-{mes:02d}-15',
+
+                ''
+            ]
+        )
+
+    # --------------------------------------------------------
+    # Anchos
+    # --------------------------------------------------------
+
+    ws.column_dimensions[
+        'A'
+    ].width = 16
+
+    ws.column_dimensions[
+        'B'
+    ].width = 55
+
+    ws.column_dimensions[
+        'C'
+    ].width = 55
+
+    ws.column_dimensions[
+        'D'
+    ].width = 22
+
+    ws.column_dimensions[
+        'E'
+    ].width = 28
+
+    ws.freeze_panes = 'A2'
+
+    # ========================================================
+    # HOJA DE INSTRUCCIONES
+    # ========================================================
+
+    ws_instr = wb.create_sheet(
+        'Instrucciones'
+    )
+
+    instrucciones = [
+
+        [
+            'INSTRUCCIONES DE CARGA MASIVA POR MES'
+        ],
+
+        [''],
+
+        [
+            '1. NO modifique los encabezados '
+            'de columna (fila 1).'
+        ],
+
+        [
+            '2. NO modifique las columnas A y B '
+            '(Obligacion No. y Descripcion).'
+        ],
+
+        [
+            '3. En la columna C escriba el anuncio '
+            'o contexto de la actividad '
+            '(solo para el sistema).'
+        ],
+
+        [
+            '4. En la columna D indique la fecha '
+            'en formato YYYY-MM-DD o DD/MM/YYYY.'
+        ],
+
+        [
+            '5. En la columna E escriba el nombre '
+            'EXACTO del archivo de imagen, '
+            'incluyendo extension '
+            '(ej: evidencia1.jpg).'
+        ],
+
+        [
+            '6. Puede INSERTAR mas filas para la '
+            'misma obligacion si tiene multiples evidencias.'
+        ],
+
+        [
+            '7. Puede ELIMINAR las filas de obligaciones '
+            'que no tengan evidencias este mes.'
+        ],
+
+        [
+            '8. Las imagenes deben cargarse JUNTO '
+            'con el Excel en el formulario web '
+            '(campo de archivos multiples).'
+        ],
+
+        [''],
+
+        [
+            'REGLAS IMPORTANTES:'
+        ],
+
+        [
+            '- La fecha debe pertenecer al mes '
+            'y año seleccionados.'
+        ],
+
+        [
+            '- El nombre de imagen en el Excel '
+            'debe coincidir EXACTAMENTE con el archivo subido.'
+        ],
+
+        [
+            '- Si no adjunta imagen, deje la columna E vacia; '
+            'se creara la actividad sin evidencia visual.'
+        ],
+
+        [
+            '- El sistema creara automaticamente '
+            'los reportes mensuales por obligacion '
+            'si no existen.'
+        ],
+
+        [
+            '- Si tiene API key de Gemini configurada, '
+            'analizara automaticamente cada imagen.'
+        ],
+
+        [
+            '- NOTA: El tier gratuito de Gemini '
+            'permite 15 imagenes/minuto. '
+            'Si sube mas, el sistema las procesara '
+            'automaticamente con pausas.'
+        ]
+    ]
+
+    for row in instrucciones:
+
+        ws_instr.append(
+            row
+        )
+
+    ws_instr.column_dimensions[
+        'A'
+    ].width = 100
+
+    # --------------------------------------------------------
+    # Memoria
+    # --------------------------------------------------------
+
+    output = io.BytesIO()
+
+    wb.save(
+        output
+    )
+
+    output.seek(0)
+
+    # --------------------------------------------------------
+    # Nombre
+    # --------------------------------------------------------
+
+    filename = (
+        f'Plantilla_CargaMasiva_'
+        f'{mes:02d}_{anio}_'
+        f'{contrato.contratista or "Contrato"}.xlsx'
+    )
+
+    return send_file(
+        output,
+
+        mimetype=(
+            'application/vnd.openxmlformats-officedocument.'
+            'spreadsheetml.sheet'
+        ),
+
+        as_attachment=True,
+
+        download_name=filename
+    )
+
+
+# ============================================================
+# CARGA MASIVA POR MES
+# ============================================================
+
+@cargas_bp.route(
+    '/carga-masiva-mes',
+    methods=['GET', 'POST']
+)
+@login_required
+def carga_masiva_mes():
+    """
+    Carga masiva de evidencias para TODAS las obligaciones
+    del contrato activo en un mes determinado.
+    """
+
+    # --------------------------------------------------------
+    # Contrato activo
+    # --------------------------------------------------------
+
+    contrato = (
+        Contrato.query
+        .filter_by(
+            activo=True,
+            user_id=current_user.id
+        )
+        .first()
+    )
+
+    if not contrato:
+
+        flash(
+            'No hay contrato activo configurado.',
+            'danger'
+        )
+
+        return redirect(
+            url_for(
+                'inicio.inicio'
+            )
+        )
+
+    # --------------------------------------------------------
+    # Contrato cerrado
+    # --------------------------------------------------------
+
+    if contrato.etapa == 'Reporte Cerrado':
+
+        flash(
+            'El contrato activo esta finalizado '
+            '(Reporte Cerrado). '
+            'No se pueden agregar mas evidencias.',
+            'warning'
+        )
+
+        return redirect(
+            url_for(
+                'reportes.reportes'
+            )
+        )
+
+    # --------------------------------------------------------
+    # Obligaciones
+    # --------------------------------------------------------
+
+    obligaciones = (
+        Obligacion.query
+        .filter_by(
+            contrato_id=contrato.id
+        )
+        .order_by(
+            Obligacion.numero
+        )
+        .all()
+    )
+
+    # --------------------------------------------------------
+    # Meses
+    # --------------------------------------------------------
+
+    meses = generar_meses_contrato(
+        contrato.fecha_inicio,
+        contrato.fecha_fin
+    )
+
+    # ========================================================
+    # POST
+    # ========================================================
+
+    if request.method == 'POST':
+
+        action = request.form.get(
+            'action'
+        )
+
+        # ====================================================
+        # DESCARGAR PLANTILLA
+        # ====================================================
+
+        if action == 'descargar_plantilla':
 
             try:
 
-                return datetime.strptime(
-                    texto,
-                    formato
-                ).date()
+                mes = int(
+                    request.form.get(
+                        'mes',
+                        0
+                    )
+                )
 
-            except ValueError:
+                anio = int(
+                    request.form.get(
+                        'anio',
+                        0
+                    )
+                )
 
-                continue
+            except (
+                TypeError,
+                ValueError
+            ):
 
-        raise ValueError(
-            f'Fecha no válida: {valor}. '
-            f'Use YYYY-MM-DD o DD/MM/YYYY.'
+                flash(
+                    'Seleccione mes y año.',
+                    'danger'
+                )
+
+                return redirect(
+                    url_for(
+                        'cargas.carga_masiva_mes'
+                    )
+                )
+
+            if not mes or not anio:
+
+                flash(
+                    'Seleccione mes y año.',
+                    'danger'
+                )
+
+                return redirect(
+                    url_for(
+                        'cargas.carga_masiva_mes'
+                    )
+                )
+
+            return generar_plantilla_masiva(
+                contrato,
+                obligaciones,
+                mes,
+                anio
+            )
+
+        # ====================================================
+        # CARGAR MASIVO
+        # ====================================================
+
+        elif action == 'cargar_masivo':
+
+            try:
+
+                mes = int(
+                    request.form.get(
+                        'mes',
+                        0
+                    )
+                )
+
+                anio = int(
+                    request.form.get(
+                        'anio',
+                        0
+                    )
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                return jsonify(
+                    {
+                        'error':
+                        'Seleccione mes y año.'
+                    }
+                ), 400
+
+            if not mes or not anio:
+
+                return jsonify(
+                    {
+                        'error':
+                        'Seleccione mes y año.'
+                    }
+                ), 400
+
+            # ------------------------------------------------
+            # Validar mes
+            # ------------------------------------------------
+
+            if mes < 1 or mes > 12:
+
+                return jsonify(
+                    {
+                        'error':
+                        'El mes seleccionado no es válido.'
+                    }
+                ), 400
+
+            # ------------------------------------------------
+            # Excel
+            # ------------------------------------------------
+
+            if (
+                'archivo_excel'
+                not in request.files
+            ):
+
+                return jsonify(
+                    {
+                        'error':
+                        'No se seleccionó '
+                        'el archivo Excel.'
+                    }
+                ), 400
+
+            archivo_excel = request.files[
+                'archivo_excel'
+            ]
+
+            if archivo_excel.filename == '':
+
+                return jsonify(
+                    {
+                        'error':
+                        'No se seleccionó '
+                        'archivo Excel.'
+                    }
+                ), 400
+
+            # ------------------------------------------------
+            # Extensión Excel
+            # ------------------------------------------------
+
+            if not archivo_excel.filename.lower().endswith(
+                (
+                    '.xlsx',
+                    '.xls'
+                )
+            ):
+
+                return jsonify(
+                    {
+                        'error':
+                        'El archivo debe ser Excel '
+                        '(.xlsx o .xls).'
+                    }
+                ), 400
+
+            # =================================================
+            # CREAR JOB
+            # =================================================
+
+            job_id = str(
+                uuid.uuid4()
+            )
+
+            tmp_ts = (
+                datetime.now()
+                .strftime(
+                    '%Y%m%d_%H%M%S'
+                )
+            )
+
+            excel_tmp_name = secure_filename(
+                (
+                    f'tmp_excel_'
+                    f'{job_id}_'
+                    f'{tmp_ts}.xlsx'
+                )
+            )
+
+            excel_tmp_path = os.path.join(
+                current_app.config[
+                    'UPLOAD_FOLDER'
+                ],
+                excel_tmp_name
+            )
+
+            archivo_excel.save(
+                excel_tmp_path
+            )
+
+            # =================================================
+            # IMÁGENES TEMPORALES
+            # =================================================
+
+            imagenes_subidas = {}
+
+            imagenes_files = request.files.getlist(
+                'imagenes'
+            )
+
+            for img_file in imagenes_files:
+
+                if (
+                    img_file
+                    and
+                    img_file.filename
+                    and
+                    allowed_file(
+                        img_file.filename
+                    )
+                ):
+
+                    tmp_name = secure_filename(
+                        (
+                            f'tmp_'
+                            f'{job_id}_'
+                            f'{img_file.filename}'
+                        )
+                    )
+
+                    tmp_path = os.path.join(
+                        current_app.config[
+                            'UPLOAD_FOLDER'
+                        ],
+                        tmp_name
+                    )
+
+                    img_file.save(
+                        tmp_path
+                    )
+
+                    imagenes_subidas[
+                        img_file.filename
+                    ] = tmp_path
+
+                    imagenes_subidas[
+                        secure_filename(
+                            img_file.filename
+                        )
+                    ] = tmp_path
+
+            # =================================================
+            # API KEY
+            # =================================================
+
+            api_key = _obtener_api_key()
+
+            # =================================================
+            # INICIALIZAR JOB
+            # =================================================
+
+            _actualizar_job(
+                job_id,
+                'iniciado',
+                0,
+                'Iniciando procesamiento...'
+            )
+
+            # =================================================
+            # THREAD
+            # =================================================
+            app = current_app._get_current_object()
+            thread = threading.Thread(
+                target=_procesar_carga_masiva_job,
+                args=(
+                    current_app._get_current_object(),
+                    job_id,
+                    contrato.id,
+                    mes,
+                    anio,
+                    excel_tmp_path,
+                    imagenes_subidas,
+                    api_key
+                )
+            )
+
+            thread.daemon = True
+
+            thread.start()
+
+            return jsonify(
+                {
+                    'job_id': job_id,
+                    'status': 'started'
+                }
+            )
+
+    # ========================================================
+    # GET
+    # ========================================================
+
+    api_key_configurada = bool(
+        _obtener_api_key()
+    )
+
+    return render_template(
+        'carga_masiva_mes.html',
+
+        contrato=contrato,
+
+        obligaciones=obligaciones,
+
+        meses=meses,
+
+        api_key_configurada=(
+            api_key_configurada
+        )
+    )
+
+
+# ============================================================
+# PROGRESO SSE
+# ============================================================
+
+@cargas_bp.route(
+    '/carga-masiva-mes/progreso/<job_id>'
+)
+@login_required
+def carga_masiva_progreso(job_id):
+    """
+    Server-Sent Events.
+
+    Envía al navegador el progreso de la carga masiva
+    en tiempo real.
+    """
+
+    def event_stream():
+
+        ultimo_estado = None
+
+        while True:
+
+            # ------------------------------------------------
+            # Leer estado
+            # ------------------------------------------------
+
+            with jobs_lock:
+
+                job = jobs_progreso.get(
+                    job_id,
+                    {}
+                )
+
+            estado = job.get(
+                'estado',
+                'desconocido'
+            )
+
+            porcentaje = job.get(
+                'porcentaje',
+                0
+            )
+
+            mensaje = job.get(
+                'mensaje',
+                'Procesando...'
+            )
+
+            errores = job.get(
+                'errores',
+                []
+            )
+
+            resultado = job.get(
+                'resultado'
+            )
+
+            # ------------------------------------------------
+            # Datos SSE
+            # ------------------------------------------------
+
+            data = {
+                'estado': estado,
+
+                'porcentaje': porcentaje,
+
+                'mensaje': mensaje,
+
+                'errores': errores[:5]
+            }
+
+            if resultado:
+
+                data[
+                    'resultado'
+                ] = resultado
+
+            # ------------------------------------------------
+            # Enviar
+            # ------------------------------------------------
+
+            yield (
+                'data: '
+                +
+                json.dumps(
+                    data
+                )
+                +
+                '\n\n'
+            )
+
+            ultimo_estado = (
+                estado
+            )
+
+            # ------------------------------------------------
+            # Finalizado
+            # ------------------------------------------------
+
+            if estado in (
+                'completado',
+                'error'
+            ):
+
+                time.sleep(
+                    2
+                )
+
+                with jobs_lock:
+
+                    jobs_progreso.pop(
+                        job_id,
+                        None
+                    )
+
+                break
+
+            # ------------------------------------------------
+            # Esperar
+            # ------------------------------------------------
+
+            time.sleep(
+                0.5
+            )
+
+    return Response(
+        event_stream(),
+        mimetype='text/event-stream'
+    )
+
+
+# ============================================================
+# PLANTILLA EXCEL PARA UN REPORTE
+# ============================================================
+
+@cargas_bp.route(
+    '/reporte/<int:id>/plantilla-excel'
+)
+@login_required
+def descargar_plantilla_excel(id):
+    """
+    Descarga una plantilla Excel simple para registrar
+    actividades de un reporte específico.
+    """
+
+    from openpyxl import Workbook
+
+    from openpyxl.styles import (
+        Font,
+        PatternFill,
+        Alignment
+    )
+
+    # --------------------------------------------------------
+    # Validar reporte
+    # --------------------------------------------------------
+
+    reporte = (
+        ReporteMensual.query
+        .get_or_404(id)
+    )
+
+    obligacion = (
+        reporte.obligacion
+    )
+
+    contrato = (
+        Contrato.query
+        .get(
+            obligacion.contrato_id
+        )
+    )
+
+    # --------------------------------------------------------
+    # Seguridad
+    # --------------------------------------------------------
+
+    if (
+        not contrato
+        or
+        contrato.user_id != current_user.id
+    ):
+
+        flash(
+            'No tiene permiso.',
+            'danger'
         )
 
-    # ============================================================
-    # VALIDAR PERIODO
-    # ============================================================
-
-    @staticmethod
-    def _validar_periodo(
-        mes,
-        anio
-    ):
-        """
-        Valida mes y año del proceso.
-
-        Returns:
-
-            None si es válido.
-
-            str con mensaje si es inválido.
-        """
-
-        try:
-
-            mes_int = int(
-                mes
+        return redirect(
+            url_for(
+                'inicio.inicio'
             )
+        )
 
-        except (
-            TypeError,
-            ValueError
-        ):
+    # ========================================================
+    # CREAR WORKBOOK
+    # ========================================================
 
-            return (
-                f'El mes "{mes}" no es válido.'
-            )
+    wb = Workbook()
 
-        try:
+    ws = wb.active
 
-            anio_int = int(
-                anio
-            )
+    ws.title = (
+        'Carga Masiva'
+    )
 
-        except (
-            TypeError,
-            ValueError
-        ):
+    # --------------------------------------------------------
+    # Encabezados
+    # --------------------------------------------------------
 
-            return (
-                f'El año "{anio}" no es válido.'
-            )
+    headers = [
+        'Anuncio / Contexto',
+        'Fecha de la actividad'
+    ]
 
-        if not (
-            1
-            <=
-            mes_int
-            <=
-            12
-        ):
+    ws.append(
+        headers
+    )
 
-            return (
-                f'El mes "{mes}" debe estar '
-                f'entre 1 y 12.'
-            )
+    # --------------------------------------------------------
+    # Estilos
+    # --------------------------------------------------------
 
-        if not (
-            1900
-            <=
-            anio_int
-            <=
-            2100
-        ):
+    for cell in ws[1]:
 
-            return (
-                f'El año "{anio}" debe estar '
-                f'entre 1900 y 2100.'
-            )
+        cell.font = Font(
+            bold=True,
+            color='FFFFFF'
+        )
 
-        return None
+        cell.fill = PatternFill(
+            start_color='2c3e50',
+            end_color='2c3e50',
+            fill_type='solid'
+        )
 
-    # ============================================================
-    # VALIDAR FECHA DEL PERIODO
-    # ============================================================
+        cell.alignment = Alignment(
+            horizontal='center'
+        )
 
-    @staticmethod
-    def _validar_fecha_periodo(
-        fecha,
-        mes,
-        anio
-    ):
-        """
-        Verifica que una fecha pertenezca al mes/año
-        seleccionado.
+    # --------------------------------------------------------
+    # Ejemplos
+    # --------------------------------------------------------
 
-        Returns:
+    ws.append(
+        [
+            'Presentacion del estado de avance '
+            'de proyectos',
 
-            None si es válida.
+            '2026-07-15'
+        ]
+    )
 
-            str con mensaje si está fuera del periodo.
-        """
+    ws.append(
+        [
+            'Revision de solicitudes de ajuste '
+            'tecnicos',
 
-        if not isinstance(
-            fecha,
-            date
-        ):
+            '2026-07-20'
+        ]
+    )
 
-            return (
-                'La fecha de actividad no es válida.'
-            )
+    ws.append(
+        [
+            'Elaboracion del plan de trabajo '
+            'mensual',
 
-        try:
+            '2026-07-25'
+        ]
+    )
 
-            mes_int = int(
-                mes
-            )
+    # --------------------------------------------------------
+    # Anchos
+    # --------------------------------------------------------
 
-            anio_int = int(
-                anio
-            )
+    ws.column_dimensions[
+        'A'
+    ].width = 60
 
-        except (
-            TypeError,
-            ValueError
-        ):
+    ws.column_dimensions[
+        'B'
+    ].width = 25
 
-            return (
-                'El mes o año del proceso no es válido.'
-            )
+    # --------------------------------------------------------
+    # Memoria
+    # --------------------------------------------------------
 
-        if (
-            fecha.year
-            !=
-            anio_int
-            or
-            fecha.month
-            !=
-            mes_int
-        ):
+    output = io.BytesIO()
 
-            return (
-                f'La fecha {fecha.strftime("%Y-%m-%d")} '
-                f'no pertenece al periodo '
-                f'{mes_int:02d}/{anio_int}.'
-            )
+    wb.save(
+        output
+    )
 
-        return None
+    output.seek(0)
 
-    # ============================================================
-    # NÚMERO DE FILA
-    # ============================================================
+    # --------------------------------------------------------
+    # Nombre
+    # --------------------------------------------------------
 
-    @staticmethod
-    def _obtener_numero_fila(
-        fila,
-        indice
-    ):
-        """
-        Obtiene el número real de fila del Excel.
+    filename = (
+        f'Plantilla_Carga_Masiva_{id}.xlsx'
+    )
 
-        ExcelService agrega:
+    return send_file(
+        output,
 
-            '_fila_excel': numero_fila
+        mimetype=(
+            'application/vnd.openxmlformats-officedocument.'
+            'spreadsheetml.sheet'
+        ),
 
-        Si no existe, utiliza el índice recibido.
-        """
+        as_attachment=True,
 
-        if isinstance(
-            fila,
-            dict
-        ):
-
-            numero_fila = fila.get(
-                '_fila_excel'
-            )
-
-            if numero_fila is not None:
-
-                return numero_fila
-
-        return indice
-
-
-# ================================================================
-# INSTANCIA POR DEFECTO
-# ================================================================
-
-# No se crea una instancia global aquí porque los servicios
-# ReporteService, EvidenciaService y GeminiService pueden ser
-# inicializados/configurados por la aplicación.
-#
-# Ejemplo de utilización:
-#
-#     carga_service = CargaMasivaService(
-#         reporte_service=reporte_service,
-#         evidencia_service=evidencia_service
-#     )
-#
-# La instancia debe construirse donde se conozcan las dependencias.
+        download_name=filename
+    )
