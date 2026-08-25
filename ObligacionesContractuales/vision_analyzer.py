@@ -18,7 +18,6 @@ from PIL import Image
 from google import genai
 from google.genai import types
 
-
 # ============================================================
 # MODELOS GEMINI
 # ============================================================
@@ -31,7 +30,6 @@ MODELOS_GEMINI = [
     'gemini-1.5-pro',
     'gemini-pro-vision',
 ]
-
 
 # ============================================================
 # UTILIDADES
