@@ -174,7 +174,7 @@
                                 <td><span class="badge bg-primary fs-6">{{ obl.numero }}</span></td>
                                 <td>
                                     <span id="obl-desc-{{ obl.id }}">{{ obl.descripcion }}</span>
-                                    <form method="POST" action="{{ url_for('contratos.contrato_editar', id=obl.id) }}" 
+                                    <form method="POST" action="{{ url_for('contratos.editar_obligacion', id=obl.id) }}" 
                                           class="mt-2 d-none" id="obl-form-{{ obl.id }}">
                                         <textarea name="descripcion" class="form-control form-control-sm" rows="3" required>{{ obl.descripcion }}</textarea>
                                         <div class="mt-2">
