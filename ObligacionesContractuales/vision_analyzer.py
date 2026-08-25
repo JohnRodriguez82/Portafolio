@@ -17,6 +17,7 @@ from PIL import Image
 
 from google import genai
 from google.genai import types
+import google.genai as genai_module
 
 # ============================================================
 # MODELOS GEMINI
@@ -30,6 +31,7 @@ MODELOS_GEMINI = [
     'gemini-1.5-pro',
     'gemini-pro-vision',
 ]
+
 
 # ============================================================
 # UTILIDADES
@@ -63,7 +65,8 @@ def _encontrar_modelo_funcional(key):
     try:
 
         client = genai.Client(
-            api_key=key
+            api_key=key,
+            http_options={'timeout': 10000}
         )
 
         # ----------------------------------------------------
@@ -515,7 +518,8 @@ def analizar_imagen(
     try:
 
         client = genai.Client(
-            api_key=key
+            api_key=key,
+            http_options={'timeout': 30000}
         )
 
         # --------------------------------------------------------
