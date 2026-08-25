@@ -3628,7 +3628,7 @@ def nuevo_reporte_selector():
 # SUBIR EVIDENCIA VIA AJAX
 # ============================================================
 
-@reportes_bp.route(
+@@reportes_bp.route(
     '/reporte/<int:id>/evidencia/ajax',
     methods=['POST']
 )
@@ -3636,8 +3636,7 @@ def nuevo_reporte_selector():
 def subir_evidencia_ajax(id):
     """
     Subida de evidencia via AJAX.
-    El analisis IA es sincrono con reintentos para
-    garantizar que la evidencia siempre tenga descripcion.
+    El analisis IA se ejecuta en background para no bloquear al usuario.
     """
     reporte = ReporteMensual.query.get_or_404(id)
     obligacion = reporte.obligacion
@@ -3687,70 +3686,46 @@ def subir_evidencia_ajax(id):
     try:
         evidencia_service = EvidenciaService()
 
-        # ========================================================
-        # ANALISIS IA SINCRONO CON REINTENTOS
-        # Garantiza descripcion profesional antes de recargar.
-        # ========================================================
-
-        descripcion_visual = None
-        ia_usada = False
-
-        if api_key:
-            try:
-                file.stream.seek(0)
-                img_bytes = file.stream.read()
-                file.stream.seek(0)
-
-                cached = _get_cached_ia(img_bytes, obligacion.descripcion, anuncio_usuario)
-                if cached:
-                    descripcion_visual = cached
-                    ia_usada = True
-                else:
-                    descripcion_visual = analizar_imagen_con_reintentos(
-                        file,
-                        api_key=api_key,
-                        contexto_obligacion=obligacion.descripcion,
-                        anuncio_usuario=anuncio_usuario,
-                        max_reintentos=2,
-                        espera_segundos=3
-                    )
-                    if descripcion_visual:
-                        _set_cached_ia(img_bytes, obligacion.descripcion, anuncio_usuario, descripcion_visual)
-                        ia_usada = True
-            except Exception as e:
-                print(f'[AJAX] Error IA: {e}')
-
-        # ========================================================
-        # FALLBACK: si IA fallo, usar anuncio del usuario
-        # ========================================================
-
-        if not descripcion_visual:
-            descripcion_visual = (
-                f"{anuncio_usuario[0].upper()}{anuncio_usuario[1:]}. "
-                f"Actividad registrada en cumplimiento de la obligacion contractual."
-            )
-
-        # Asegurar stream al inicio para guardar
-        if hasattr(file, 'stream') and file.stream:
-            file.stream.seek(0)
-        elif hasattr(file, 'seek'):
-            file.seek(0)
+        # Guardar la evidencia INMEDIATAMENTE con descripcion fallback.
+        # La IA se procesara en background sin bloquear al usuario.
+        descripcion_fallback = (
+            f"{anuncio_usuario[0].upper()}{anuncio_usuario[1:]}. "
+            f"Actividad registrada en cumplimiento de la obligacion contractual."
+        )
 
         evidencia = evidencia_service.crear_evidencia(
             reporte=reporte,
             imagen=file,
             anuncio=anuncio_usuario,
             fecha=fecha_actividad,
-            descripcion=descripcion_visual
+            descripcion=descripcion_fallback
         )
 
         db.session.commit()
+
+        # Lanzar analisis IA en background (mismo patron que subir_evidencia POST)
+        if api_key and evidencia.imagen_path:
+            app = current_app._get_current_object()
+
+            thread = threading.Thread(
+                target=_analizar_ia_background,
+                args=(
+                    app,
+                    evidencia.id,
+                    evidencia.imagen_path,
+                    api_key,
+                    obligacion.descripcion,
+                    anuncio_usuario
+                ),
+                daemon=True
+            )
+            thread.start()
 
         return jsonify({
             'success': True,
             'evidencia_id': evidencia.id,
             'numero_actividad': evidencia.numero_actividad,
-            'descripcion_ia': ia_usada,
+            'descripcion_ia': bool(api_key and evidencia.imagen_path),
             'mensaje': 'Evidencia registrada correctamente.'
         })
 
