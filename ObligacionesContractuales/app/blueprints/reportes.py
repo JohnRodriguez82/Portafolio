@@ -3628,7 +3628,7 @@ def nuevo_reporte_selector():
 # SUBIR EVIDENCIA VIA AJAX
 # ============================================================
 
-@@reportes_bp.route(
+@reportes_bp.route(
     '/reporte/<int:id>/evidencia/ajax',
     methods=['POST']
 )
