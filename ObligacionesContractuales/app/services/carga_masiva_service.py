@@ -77,6 +77,7 @@ class CargaMasivaService:
         self.evidencia_service = (
             evidencia_service
         )
+        self._ia_cache = {}
 
     # ============================================================
     # PROCESAR FILA
