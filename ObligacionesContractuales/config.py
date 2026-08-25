@@ -1,50 +1,16 @@
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 
+# Carga variables desde archivo .env (si existe)
 load_dotenv()
 
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
 class Config:
-    """Configuración base."""
-
-    BASE_DIR = Path(__file__).resolve().parent
-
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-cambiar-en-produccion')
-
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        'DATABASE_URL',
-        f'sqlite:///{BASE_DIR / "reportes.db"}'
-    )
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-cambiar-en-produccion'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or         'sqlite:///' + os.path.join(BASE_DIR, 'reportes.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-
-    # Carpetas de archivos (por defecto en static/)
-    UPLOAD_FOLDER = os.environ.get(
-        'UPLOAD_FOLDER',
-        str(BASE_DIR / 'static' / 'uploads' / 'evidencias')
-    )
-    PDF_FOLDER = os.environ.get(
-        'PDF_FOLDER',
-        str(BASE_DIR / 'static' / 'pdfs')
-    )
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
-
-    # Google OAuth
-    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
-    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
-
-
-class DevelopmentConfig(Config):
-    """Configuración de desarrollo."""
-    DEBUG = True
-
-
-class ProductionConfig(Config):
-    """Configuración de producción."""
-    DEBUG = False
-
-
-class TestingConfig(Config):
-    """Configuración de testing."""
-    TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    WTF_CSRF_ENABLED = False
+    UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads', 'evidencias')
+    PDF_FOLDER = os.path.join(BASE_DIR, 'static', 'pdfs', 'generados')
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max upload
+    PERMANENT_SESSION_LIFETIME = 3600 * 24 * 30  # 30 días
