@@ -1405,11 +1405,20 @@ function confirmarFinalizar(){
 }
 
 function bloquearPestana(tabNum){
-    const panel = document.getElementById('panel' + tabNum);
+  const panel = document.getElementById('panel' + tabNum);
   const tab = document.querySelectorAll('.form-tab')[tabNum - 1];
 
   if(panel){
     panel.classList.add('locked');
+
+    // Mostrar aviso de solo lectura en M3
+    if(tabNum === 3){
+      const aviso = document.getElementById('readonlyNoticeM3');
+
+      if(aviso){
+        aviso.style.display = 'block';
+      }
+    }
 
     // Campos en solo lectura
     panel.querySelectorAll('input, textarea').forEach(el => {
