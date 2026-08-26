@@ -41,7 +41,7 @@ Ese servicio es el responsable de persistirla.
 """
 
 from datetime import date, datetime
-from vision_analyzer import analizar_imagen, analizar_imagen_con_reintentos
+from vision_analyzer import analizar_imagen_con_reintentos
 
 
 class CargaMasivaService:
@@ -558,29 +558,67 @@ class CargaMasivaService:
 
         descripcion = None
 
-        if (
-            imagen_temporal
-            and
-            api_key
-        ):
+        if imagen_temporal and api_key:
 
             try:
 
-                descripcion = analizar_imagen(
+                print(
+                    f'[CargaMasiva] Analizando imagen '
+                    f'"{nombre_imagen}" '
+                    f'para obligación '
+                    f'{numero_obligacion}...'
+                )
+
+                descripcion = analizar_imagen_con_reintentos(
                     image_path=imagen_temporal,
                     api_key=api_key,
-                    contexto_obligacion=obligacion.descripcion,
+                    contexto_obligacion=(
+                        getattr(
+                            obligacion,
+                            'descripcion',
+                            ''
+                        )
+                        or ''
+                    ),
                     anuncio_usuario=anuncio,
                     max_reintentos=3,
                     espera_segundos=5
                 )
 
+                if descripcion:
+
+                    descripcion = str(
+                        descripcion
+                    ).strip()
+
+                    print(
+                        '[CargaMasiva] '
+                        'Descripción IA generada: '
+                        f'{descripcion[:400]}'
+                    )
+
+                else:
+
+                    print(
+                        '[CargaMasiva] '
+                        f'Gemini no generó descripción '
+                        f'para "{nombre_imagen}".'
+                    )
+
+                    errores.append(
+                        (
+                            f'Fila {numero_fila}: '
+                            f'Gemini no generó descripción '
+                            f'para "{nombre_imagen}".'
+                        )
+                    )
+
             except Exception as exc:
 
-                # ------------------------------------------------
-                # La IA NO debe impedir la creación
-                # de la evidencia.
-                # ------------------------------------------------
+                print(
+                    '[CargaMasiva] Error con Gemini: '
+                    f'{exc}'
+                )
 
                 errores.append(
                     (
