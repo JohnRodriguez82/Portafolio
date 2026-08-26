@@ -3646,104 +3646,391 @@ def nuevo_reporte_selector():
 @login_required
 def subir_evidencia_ajax(id):
     """
-    Subida de evidencia via AJAX.
-    El analisis IA se ejecuta en background para no bloquear al usuario.
-    """
-    reporte = ReporteMensual.query.get_or_404(id)
-    obligacion = reporte.obligacion
-    contrato = Contrato.query.get(obligacion.contrato_id)
+    Registra una evidencia mediante AJAX.
 
-    if not contrato or contrato.user_id != current_user.id:
-        return jsonify({'success': False, 'error': 'No tiene permiso.'}), 403
+    IMPORTANTE:
+
+    La carga manual utiliza el mismo flujo de IA que la
+    carga masiva:
+
+        1. Recibir anuncio.
+        2. Recibir imagen.
+        3. Analizar imagen con Gemini.
+        4. Conservar la descripción generada por IA.
+        5. Generar la descripción profesional de la actividad.
+        6. Guardar ambos textos en la evidencia.
+
+    De esta forma la evidencia queda completamente procesada
+    antes de devolver la respuesta al navegador.
+    """
+
+    # ========================================================
+    # OBTENER REPORTE
+    # ========================================================
+
+    reporte = (
+        ReporteMensual.query
+        .get_or_404(id)
+    )
+
+    obligacion = (
+        reporte.obligacion
+    )
+
+    contrato = (
+        Contrato.query
+        .get(
+            obligacion.contrato_id
+        )
+    )
+
+    # ========================================================
+    # SEGURIDAD
+    # ========================================================
+
+    if (
+        not contrato
+        or contrato.user_id != current_user.id
+    ):
+
+        return jsonify(
+            {
+                'success': False,
+                'error': 'No tiene permiso.'
+            }
+        ), 403
+
+    # ========================================================
+    # VALIDAR REPORTE
+    # ========================================================
 
     if reporte.cerrado:
-        return jsonify({'success': False, 'error': 'Reporte cerrado.'}), 400
+
+        return jsonify(
+            {
+                'success': False,
+                'error': 'Reporte cerrado.'
+            }
+        ), 400
 
     if contrato.etapa == 'Reporte Cerrado':
-        return jsonify({'success': False, 'error': 'Contrato finalizado.'}), 400
+
+        return jsonify(
+            {
+                'success': False,
+                'error': 'Contrato finalizado.'
+            }
+        ), 400
+
+    # ========================================================
+    # API KEY
+    # ========================================================
 
     api_key = _obtener_api_key()
 
-    if 'imagen' not in request.files:
-        return jsonify({'success': False, 'error': 'No se selecciono archivo.'}), 400
+    # ========================================================
+    # VALIDAR ARCHIVO
+    # ========================================================
 
-    file = request.files['imagen']
-    anuncio_usuario = request.form.get('anuncio_usuario', '').strip()
+    if 'imagen' not in request.files:
+
+        return jsonify(
+            {
+                'success': False,
+                'error': 'No se seleccionó archivo.'
+            }
+        ), 400
+
+    file = request.files[
+        'imagen'
+    ]
+
+    # ========================================================
+    # ANUNCIO
+    # ========================================================
+
+    anuncio_usuario = (
+        request.form.get(
+            'anuncio_usuario',
+            ''
+        )
+        .strip()
+    )
 
     if not anuncio_usuario:
-        return jsonify({'success': False, 'error': 'El anuncio/contexto es obligatorio.'}), 400
+
+        return jsonify(
+            {
+                'success': False,
+                'error': (
+                    'El anuncio/contexto '
+                    'es obligatorio.'
+                )
+            }
+        ), 400
+
+    # ========================================================
+    # NOMBRE DEL ARCHIVO
+    # ========================================================
 
     if file.filename == '':
-        return jsonify({'success': False, 'error': 'Archivo vacio.'}), 400
 
-    if not allowed_file(file.filename):
-        return jsonify({'success': False, 'error': 'Formato no permitido.'}), 400
+        return jsonify(
+            {
+                'success': False,
+                'error': 'Archivo vacío.'
+            }
+        ), 400
 
-    fecha_actividad_str = request.form.get('fecha_actividad', '').strip()
-    try:
-        if fecha_actividad_str:
-            fecha_actividad = datetime.strptime(fecha_actividad_str, '%Y-%m-%d').date()
-        else:
-            fecha_actividad = date.today()
-    except ValueError:
-        return jsonify({'success': False, 'error': 'Fecha invalida.'}), 400
+    # ========================================================
+    # EXTENSIÓN
+    # ========================================================
 
-    if fecha_actividad < reporte.fecha_inicio_reporte or fecha_actividad > reporte.fecha_fin_reporte:
-        return jsonify({
-            'success': False,
-            'error': f'La fecha debe estar entre {reporte.fecha_inicio_reporte.strftime("%d/%m/%Y")} y {reporte.fecha_fin_reporte.strftime("%d/%m/%Y")}.'
-        }), 400
+    if not allowed_file(
+        file.filename
+    ):
 
-    try:
-        evidencia_service = EvidenciaService()
+        return jsonify(
+            {
+                'success': False,
+                'error': 'Formato no permitido.'
+            }
+        ), 400
 
-        # ============================================================
-        # FALLBACK PROFESIONAL: genera parrafo fluido con templates
-        # mientras la IA se procesa en background
-        # ============================================================
-        # El fallback profesional se genera automaticamente dentro de crear_evidencia.
-        # No pasamos descripcion aqui para que descripcion_visual_ia quede vacio
-        # hasta que la IA real responda en background.
+    # ========================================================
+    # FECHA
+    # ========================================================
 
-        evidencia = evidencia_service.crear_evidencia(
-            reporte=reporte,
-            imagen=file,
-            anuncio=anuncio_usuario,
-            fecha=fecha_actividad,
-            descripcion=None
+    fecha_actividad_str = (
+        request.form.get(
+            'fecha_actividad',
+            ''
         )
+        .strip()
+    )
+
+    try:
+
+        if fecha_actividad_str:
+
+            fecha_actividad = (
+                datetime.strptime(
+                    fecha_actividad_str,
+                    '%Y-%m-%d'
+                ).date()
+            )
+
+        else:
+
+            fecha_actividad = date.today()
+
+    except ValueError:
+
+        return jsonify(
+            {
+                'success': False,
+                'error': 'Fecha inválida.'
+            }
+        ), 400
+
+    # ========================================================
+    # VALIDAR FECHA CONTRA REPORTE
+    # ========================================================
+
+    if (
+        fecha_actividad
+        < reporte.fecha_inicio_reporte
+        or
+        fecha_actividad
+        > reporte.fecha_fin_reporte
+    ):
+
+        return jsonify(
+            {
+                'success': False,
+                'error': (
+                    'La fecha debe estar entre '
+                    f'{reporte.fecha_inicio_reporte.strftime("%d/%m/%Y")}'
+                    ' y '
+                    f'{reporte.fecha_fin_reporte.strftime("%d/%m/%Y")}.'
+                )
+            }
+        ), 400
+
+    # ========================================================
+    # ANALISIS IA
+    # ========================================================
+
+    descripcion_ia = None
+
+    if api_key:
+
+        try:
+
+            print(
+                '[CargaManual] '
+                'Iniciando análisis IA para '
+                f'"{file.filename}"...'
+            )
+
+            descripcion_ia = (
+                analizar_imagen_con_reintentos(
+                    image_path=file,
+                    api_key=api_key,
+                    contexto_obligacion=(
+                        obligacion.descripcion
+                    ),
+                    anuncio_usuario=(
+                        anuncio_usuario
+                    ),
+                    max_reintentos=3,
+                    espera_segundos=5
+                )
+            )
+
+            if descripcion_ia:
+
+                descripcion_ia = (
+                    str(
+                        descripcion_ia
+                    )
+                    .strip()
+                )
+
+                print(
+                    '[CargaManual] '
+                    'Descripción IA generada: '
+                    f'{descripcion_ia[:500]}'
+                )
+
+            else:
+
+                print(
+                    '[CargaManual] '
+                    'Gemini no retornó descripción.'
+                )
+
+        except Exception as exc:
+
+            print(
+                '[CargaManual] '
+                'Error analizando imagen con IA: '
+                f'{exc}'
+            )
+
+            # ------------------------------------------------
+            # IMPORTANTE:
+            # No impedir la carga de la evidencia si Gemini
+            # presenta un error.
+            # ------------------------------------------------
+
+            descripcion_ia = None
+
+    else:
+
+        print(
+            '[CargaManual] '
+            'No existe API key de Gemini. '
+            'Se utilizará el texto del anuncio.'
+        )
+
+    # ========================================================
+    # CREAR EVIDENCIA
+    # ========================================================
+
+    try:
+
+        evidencia_service = (
+            EvidenciaService()
+        )
+
+        evidencia = (
+            evidencia_service
+            .crear_evidencia(
+                reporte=reporte,
+                imagen=file,
+                anuncio=anuncio_usuario,
+                fecha=fecha_actividad,
+                descripcion=descripcion_ia
+            )
+        )
+
+        # ====================================================
+        # GUARDAR
+        # ====================================================
 
         db.session.commit()
 
-        # Lanzar analisis IA en background (mismo patron que subir_evidencia POST)
-        if api_key and evidencia.imagen_path:
-            app = current_app._get_current_object()
+        print(
+            '[CargaManual] '
+            f'Evidencia {evidencia.id} guardada.'
+        )
 
-            thread = threading.Thread(
-                target=_analizar_ia_background,
-                args=(
-                    app,
-                    evidencia.id,
-                    evidencia.imagen_path,
-                    api_key,
-                    obligacion.descripcion,
-                    anuncio_usuario
+        print(
+            '[CargaManual] '
+            'descripcion_visual_ia: '
+            f'{bool(evidencia.descripcion_visual_ia)}'
+        )
+
+        print(
+            '[CargaManual] '
+            'descripcion_actividad: '
+            f'{evidencia.descripcion_actividad[:300]}'
+        )
+
+        return jsonify(
+            {
+                'success': True,
+
+                'evidencia_id': (
+                    evidencia.id
                 ),
-                daemon=True
-            )
-            thread.start()
 
-        return jsonify({
-            'success': True,
-            'evidencia_id': evidencia.id,
-            'numero_actividad': evidencia.numero_actividad,
-            'descripcion_ia': bool(api_key and evidencia.imagen_path),
-            'mensaje': 'Evidencia registrada correctamente.'
-        })
+                'numero_actividad': (
+                    evidencia.numero_actividad
+                ),
+
+                'descripcion_ia': (
+                    bool(
+                        evidencia
+                        .descripcion_visual_ia
+                    )
+                ),
+
+                'mensaje': (
+                    'Evidencia registrada '
+                    'y procesada correctamente.'
+                )
+            }
+        )
 
     except RequestEntityTooLarge:
+
         db.session.rollback()
-        return jsonify({'success': False, 'error': 'Archivo demasiado grande (max 16MB).'}), 413
-    except Exception as e:
+
+        return jsonify(
+            {
+                'success': False,
+                'error': (
+                    'Archivo demasiado grande '
+                    '(máximo 16MB).'
+                )
+            }
+        ), 413
+
+    except Exception as exc:
+
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+
+        print(
+            '[CargaManual] '
+            'Error creando evidencia: '
+            f'{exc}'
+        )
+
+        return jsonify(
+            {
+                'success': False,
+                'error': str(exc)
+            }
+        ), 500
