@@ -3686,11 +3686,13 @@ def subir_evidencia_ajax(id):
     try:
         evidencia_service = EvidenciaService()
 
-        # Guardar la evidencia INMEDIATAMENTE con descripcion fallback.
-        # La IA se procesara en background sin bloquear al usuario.
-        descripcion_fallback = (
-            f"{anuncio_usuario[0].upper()}{anuncio_usuario[1:]}. "
-            f"Actividad registrada en cumplimiento de la obligacion contractual."
+        # ============================================================
+        # FALLBACK PROFESIONAL: genera parrafo fluido con templates
+        # mientras la IA se procesa en background
+        # ============================================================
+        descripcion_fallback = evidencia_service._generar_descripcion_actividad(
+            reporte=reporte,
+            anuncio=anuncio_usuario
         )
 
         evidencia = evidencia_service.crear_evidencia(
@@ -3735,35 +3737,3 @@ def subir_evidencia_ajax(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
-        
-# ============================================================
-# POLLING: ESTADO DE IA DE UNA EVIDENCIA
-# ============================================================
-
-@reportes_bp.route(
-    '/reporte/evidencia/<int:evidencia_id>/ia-status'
-)
-@login_required
-def ia_status(evidencia_id):
-    """
-    Devuelve el estado actual de la descripcion IA
-    de una evidencia. Usado por el frontend para
-    actualizar el badge automaticamente.
-    """
-
-    from models import Evidencia, ReporteMensual, Obligacion, Contrato
-
-    evidencia = Evidencia.query.get_or_404(evidencia_id)
-    reporte = ReporteMensual.query.get_or_404(evidencia.reporte_id)
-    obligacion = Obligacion.query.get_or_404(reporte.obligacion_id)
-    contrato = Contrato.query.get_or_404(obligacion.contrato_id)
-
-    if contrato.user_id != current_user.id:
-        return jsonify({'error': 'Sin permiso'}), 403
-
-    return jsonify({
-        'id': evidencia.id,
-        'tiene_ia': bool(evidencia.descripcion_visual_ia),
-        'descripcion_visual_ia': evidencia.descripcion_visual_ia or '',
-        'descripcion_actividad': evidencia.descripcion_actividad or ''
-    })
