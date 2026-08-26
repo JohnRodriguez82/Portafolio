@@ -3690,17 +3690,16 @@ def subir_evidencia_ajax(id):
         # FALLBACK PROFESIONAL: genera parrafo fluido con templates
         # mientras la IA se procesa en background
         # ============================================================
-        descripcion_fallback = evidencia_service._generar_descripcion_actividad(
-            reporte=reporte,
-            anuncio=anuncio_usuario
-        )
+        # El fallback profesional se genera automaticamente dentro de crear_evidencia.
+        # No pasamos descripcion aqui para que descripcion_visual_ia quede vacio
+        # hasta que la IA real responda en background.
 
         evidencia = evidencia_service.crear_evidencia(
             reporte=reporte,
             imagen=file,
             anuncio=anuncio_usuario,
             fecha=fecha_actividad,
-            descripcion=descripcion_fallback
+            descripcion=None
         )
 
         db.session.commit()
