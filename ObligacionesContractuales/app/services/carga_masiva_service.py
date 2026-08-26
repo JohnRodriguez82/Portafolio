@@ -570,7 +570,9 @@ class CargaMasivaService:
                     image_path=imagen_temporal,
                     api_key=api_key,
                     contexto_obligacion=obligacion.descripcion,
-                    anuncio_usuario=anuncio
+                    anuncio_usuario=anuncio,
+                    max_reintentos=3,
+                    espera_segundos=5
                 )
 
             except Exception as exc:
