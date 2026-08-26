@@ -588,44 +588,87 @@ def analizar_imagen(
         # ----------------------------------------------------
 
         prompt = f"""
-Eres un redactor de informes de ejecucion contractual
-para entidades publicas.
+Eres un analista técnico especializado en evidencias
+para informes de ejecución contractual de entidades
+públicas.
 
-Analiza la imagen adjunta y redacta UN PARRAFO
-profesional que describa la actividad contractual
-realizada.
+Tu función NO es redactar el párrafo contractual final.
 
-OBLIGACION CONTRACTUAL:
+Tu función es analizar la evidencia visual y proporcionar
+información técnica, funcional y objetiva que pueda utilizarse
+posteriormente para enriquecer el texto proporcionado por el
+usuario.
+
+OBLIGACIÓN CONTRACTUAL:
+
 {contexto}
 
-CONTEXTO DEL USUARIO:
+CONTEXTO O ANUNCIO DEL USUARIO:
+
 {anuncio}
 
-INSTRUCCIONES:
+Analiza la evidencia y determina qué información adicional
+puede obtenerse de ella.
 
-1. Usa el contexto del usuario como BASE, pero
-   ENRIQUECELO con lo que ves en la imagen.
+Identifica, cuando sea posible:
 
-2. Describe los elementos funcionales o tecnicos
-   visibles: formularios, campos, modulos,
-   mockups, tablas, interfaces, configuraciones,
-   esquemas, documentos, etc.
+- funcionalidades;
+- módulos;
+- formularios;
+- campos;
+- botones;
+- tablas;
+- interfaces;
+- configuraciones;
+- componentes técnicos;
+- documentos;
+- textos legibles;
+- avances funcionales;
+- elementos desarrollados;
+- relaciones entre los componentes.
 
-3. Relaciona la actividad con la obligacion
-   contractual.
+REGLAS:
 
-4. Escribe UN SOLO PARRAFO de 4 a 6 oraciones.
+1. El anuncio del usuario es el contexto principal de la
+   actividad.
 
-5. NO digas "en la imagen", "se observa",
-   "la imagen muestra", "fotografia",
-   "captura de pantalla".
+2. NO reemplaces el anuncio.
 
-6. NO inventes datos, cantidades, nombres,
-   fechas, porcentajes ni reuniones.
+3. NO repitas innecesariamente el anuncio.
 
-7. Usa lenguaje formal y tecnico.
+4. Aporta información adicional obtenida de la evidencia.
 
-8. Entrega SOLO el parrafo, sin titulos ni listas.
+5. No inventes información que no pueda sustentarse.
+
+6. No inventes fechas, cantidades, porcentajes, nombres,
+   reuniones, aprobaciones, resultados o entregables.
+
+7. Si la evidencia demuestra solamente un avance, utiliza
+   lenguaje que refleje un avance y no una terminación.
+
+8. No utilices expresiones como:
+   "en la imagen",
+   "se observa",
+   "la imagen muestra",
+   "captura de pantalla",
+   "fotografía",
+   "evidencia fotográfica".
+
+9. Utiliza lenguaje técnico y profesional.
+
+10. Escribe entre 3 y 5 oraciones sustanciales.
+
+11. La descripción debe aportar información concreta que
+    permita posteriormente construir un párrafo profesional
+    más completo.
+
+12. No escribas títulos.
+
+13. No escribas listas.
+
+14. No escribas "IA vio:".
+
+15. Entrega únicamente el análisis descriptivo.
 """
 
         response = client.models.generate_content(
