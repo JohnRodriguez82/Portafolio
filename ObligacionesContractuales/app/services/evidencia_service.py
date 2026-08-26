@@ -125,14 +125,35 @@ class EvidenciaService:
         # directamente esa descripción como descripción
         # principal de la actividad.
 
+        # ----------------------------------------------------
+        # DESCRIPCIÓN DE IA
+        # ----------------------------------------------------
+
         descripcion_visual = str(
             descripcion or ''
         ).strip()
 
-        if descripcion_visual:
+        # ----------------------------------------------------
+        # DESCRIPCIÓN PRINCIPAL DE LA ACTIVIDAD
+        # ----------------------------------------------------
+
+        if skip_generacion:
 
             descripcion_actividad = (
-                descripcion_visual
+                anuncio
+                or
+                'Actividad registrada. '
+                'Descripción en proceso...'
+            )
+
+        else:
+
+            descripcion_actividad = (
+                self._generar_descripcion_actividad(
+                    reporte=reporte,
+                    anuncio=anuncio,
+                    visual=descripcion_visual
+                )
             )
 
         elif skip_generacion:
@@ -590,7 +611,8 @@ class EvidenciaService:
     @staticmethod
     def _generar_descripcion_actividad(
         reporte,
-        anuncio
+        anuncio,
+        visual=None
     ):
         """
         Genera la descripción automática de la actividad.
@@ -609,13 +631,15 @@ class EvidenciaService:
             )
 
             evidencia_temporal = Evidencia(
-                anuncio_usuario=anuncio
+                anuncio_usuario=anuncio,
+                descripcion_visual_ia=visual or ''
             )
 
             return (
                 evidencia_temporal
                 .generar_descripcion_automatica(
-                    obligacion
+                    obligacion,
+                    visual=visual
                 )
             )
 
