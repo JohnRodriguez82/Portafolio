@@ -638,8 +638,7 @@ class EvidenciaService:
             return (
                 evidencia_temporal
                 .generar_descripcion_automatica(
-                    obligacion,
-                    visual=visual
+                    obligacion
                 )
             )
 
