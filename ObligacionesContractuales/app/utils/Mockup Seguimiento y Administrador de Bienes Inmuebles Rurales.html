@@ -128,6 +128,20 @@
   .progress-bar{flex:1;height:16px;background:#ECEFF1;border-radius:8px;overflow:hidden}
   .progress-fill{height:100%;border-radius:8px}
 
+   /* ===== AVISO SOLO LECTURA ===== */
+	.readonly-notice{
+	  display:none;
+	  margin:0 24px 12px;
+	  padding:10px 14px;
+	  background:#F5F7F8;
+	  border:1px solid #CFD8DC;
+	  border-left:4px solid #78909C;
+	  border-radius:6px;
+	  color:#546E7A;
+	  font-size:12px;
+	  font-weight:600;
+	}
+
   /* ===== PANEL BLOQUEADO ===== */
   .panel.locked input,
   .panel.locked select,
@@ -877,11 +891,12 @@
 
       <!-- PESTAÑA 3 -->
       <div class="panel" id="panel3">
-	  
+		<div class="readonly-notice" id="readonlyNoticeM3" style="display:none;">
+		🔒 Tarea finalizada — Información en solo lectura
+		</div>
         <div class="form-main">
           <button class="btn btn-blue">💾 Guardar</button>
-          <button class="btn btn-green" onclick="abrirModalFinalizar(3)">✅ Finalizar Tarea M3</button>
-		  
+          <button class="btn btn-green" onclick="abrirModalFinalizar(3)">✅ Finalizar Tarea M3</button>		  
           <div class="section-card collapsed" id="p3-h1">
             <div class="section-title" onclick="toggleAccordion(this)">Identificación de Hallazgos <span class="arrow">▼</span></div>
             <div class="section-body">
