@@ -298,9 +298,11 @@ class GeminiService:
         try:
 
             from google import genai
+            from google.genai import types
 
             self.client = genai.Client(
-                api_key=self.api_key
+                api_key=self.api_key,
+                http_options=types.HttpOptions(timeout=120000)
             )
 
         except ImportError as exc:
