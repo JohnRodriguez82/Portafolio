@@ -877,9 +877,11 @@
 
       <!-- PESTAÑA 3 -->
       <div class="panel" id="panel3">
+	  
         <div class="form-main">
           <button class="btn btn-blue">💾 Guardar</button>
           <button class="btn btn-green" onclick="abrirModalFinalizar(3)">✅ Finalizar Tarea M3</button>
+		  
           <div class="section-card collapsed" id="p3-h1">
             <div class="section-title" onclick="toggleAccordion(this)">Identificación de Hallazgos <span class="arrow">▼</span></div>
             <div class="section-body">
@@ -1369,7 +1371,7 @@ function abrirModalFinalizar(tabNum){
   const nombre = nombresPestanas[tabNum];
 
   if(tabNum === 3){
-    texto.innerHTML = '¿Está seguro de finalizar la tarea? El sistema valida <strong>' + nombre + '</strong> y si todo está Ok, queda el análisis cerrado y queda todo de solo lectura.';
+    texto.innerHTML = '¿Está seguro de finalizar la tarea? El sistema valida <strong>' + nombre + '</strong> y si todo está Ok, el análisis quedará cerrado y queda todo de solo lectura.';
     btn.textContent = '✅ Confirmar y cerrar análisis';
   } else {
     texto.innerHTML = '¿Está seguro de finalizar la tarea? El sistema valida <strong>' + nombre + '</strong> y si todo está Ok, continúa a la siguiente pestaña y deja la pestaña de solo lectura.';
@@ -1391,13 +1393,40 @@ function confirmarFinalizar(){
 }
 
 function bloquearPestana(tabNum){
-  const panel = document.getElementById('panel' + tabNum);
+    const panel = document.getElementById('panel' + tabNum);
   const tab = document.querySelectorAll('.form-tab')[tabNum - 1];
-  if(panel) panel.classList.add('locked');
+
+  if(panel){
+    panel.classList.add('locked');
+
+    // Campos en solo lectura
+    panel.querySelectorAll('input, textarea').forEach(el => {
+      el.readOnly = true;
+      el.style.backgroundColor = '#f5f5f5';
+      el.style.cursor = 'default';
+    });
+
+    // Select en solo lectura
+    panel.querySelectorAll('select').forEach(el => {
+      el.disabled = true;
+      el.style.backgroundColor = '#f5f5f5';
+      el.style.cursor = 'default';
+    });
+
+    // Deshabilitar botones de edición/guardado
+    panel.querySelectorAll('.form-main > .btn').forEach(btn => {
+      btn.disabled = true;
+    });
+  }
+
   if(tab){
-    tab.classList.add('locked');
-    tab.innerHTML = '🔒 ' + tab.textContent.replace('🔒 ','');
-    tab.onclick = null;
+    // La pestaña permanece completamente normal y navegable
+    tab.classList.remove('locked');
+
+    // Mantener la navegación
+    tab.onclick = function(){
+      switchTab(tabNum);
+    };
   }
 }
 
