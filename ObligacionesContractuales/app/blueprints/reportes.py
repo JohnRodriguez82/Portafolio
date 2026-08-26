@@ -1183,7 +1183,18 @@ def _analizar_ia_background(app, evidencia_id, imagen_path, api_key, obligacion_
                 evidencia = Evidencia.query.get(evidencia_id)
                 if evidencia:
                     evidencia.descripcion_visual_ia = descripcion
-                    evidencia.descripcion_actividad = descripcion
+
+                    evidencia_temporal = Evidencia(
+                        anuncio_usuario=anuncio,
+                        descripcion_visual_ia=descripcion
+                    )
+
+                    evidencia.descripcion_actividad = (
+                        evidencia_temporal.generar_descripcion_automatica(
+                            evidencia.reporte.obligacion,
+                            visual=descripcion
+                        )
+                    )
                     db.session.commit()
                     print(f'[IA Background] OK evidencia {evidencia_id}')
                 else:
