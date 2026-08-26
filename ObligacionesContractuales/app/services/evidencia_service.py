@@ -12,16 +12,14 @@ Responsabilidades:
 """
 
 import os
-
 from datetime import datetime
 
 from flask import current_app
-
 from werkzeug.utils import secure_filename
 
 from app import db
-
 from models import Evidencia
+
 
 class EvidenciaService:
     """
@@ -44,42 +42,33 @@ class EvidenciaService:
         """
         Crea una evidencia asociada a un reporte.
 
-        La imagen puede ser:
+        Parámetros:
 
-        - una ruta temporal;
-        - un Flask FileStorage;
-        - None.
+        reporte:
+            Objeto ReporteMensual.
 
-        IMPORTANTE:
-        Este método se encarga de guardar la imagen cuando
-        se proporciona una.
+        imagen:
+            Archivo FileStorage o ruta física.
 
-        Por lo tanto, quien utilice este método NO debe llamar
-        posteriormente a guardar_imagen_evidencia() para la
-        misma imagen.
+        anuncio:
+            Texto ingresado por el usuario o proveniente
+            de la carga masiva.
 
-        Args:
-            reporte:
-                Objeto ReporteMensual.
+        fecha:
+            Fecha de la actividad.
 
-            imagen:
-                Archivo o ruta de imagen.
+        descripcion:
+            Descripción generada por Gemini a partir de
+            la evidencia visual.
 
-            anuncio:
-                Texto ingresado por el usuario.
-
-            fecha:
-                Fecha de la actividad.
-
-            descripcion:
-                Descripción visual generada por Gemini.
-
-        Returns:
-            Evidencia
+        skip_generacion:
+            Cuando es True, se crea inicialmente la evidencia
+            sin generar nuevamente el párrafo principal.
+            Se utiliza principalmente para procesos en segundo
+            plano.
         """
 
         if reporte is None:
-
             raise ValueError(
                 'No se recibió el reporte.'
             )
@@ -89,7 +78,6 @@ class EvidenciaService:
         ).strip()
 
         if not anuncio:
-
             anuncio = (
                 'Actividad contractual realizada '
                 'durante el periodo reportado.'
@@ -118,15 +106,7 @@ class EvidenciaService:
         )
 
         # ----------------------------------------------------
-        # DESCRIPCIÓN DE ACTIVIDAD
-        # ----------------------------------------------------
-
-        # Si Gemini logró analizar la imagen, utilizamos
-        # directamente esa descripción como descripción
-        # principal de la actividad.
-
-        # ----------------------------------------------------
-        # DESCRIPCIÓN DE IA
+        # DESCRIPCIÓN GENERADA POR GEMINI
         # ----------------------------------------------------
 
         descripcion_visual = str(
@@ -134,7 +114,30 @@ class EvidenciaService:
         ).strip()
 
         # ----------------------------------------------------
-        # DESCRIPCIÓN PRINCIPAL DE LA ACTIVIDAD
+        # DESCRIPCIÓN PRINCIPAL
+        # ----------------------------------------------------
+        #
+        # IMPORTANTE:
+        #
+        # descripcion_visual_ia:
+        #     conserva exactamente el resultado de Gemini.
+        #
+        # descripcion_actividad:
+        #     se genera separadamente utilizando:
+        #
+        #     anuncio + IA + obligación contractual.
+        #
+        # NO debemos hacer:
+        #
+        #     descripcion_actividad = descripcion_visual
+        #
+        # porque eso elimina la diferencia entre:
+        #
+        #     "Actividad realizada"
+        #
+        # y:
+        #
+        #     "IA vio".
         # ----------------------------------------------------
 
         if skip_generacion:
@@ -156,38 +159,8 @@ class EvidenciaService:
                 )
             )
 
-        elif skip_generacion:
-
-            # ------------------------------------------------
-            # MODO BACKGROUND: no generar descripcion ahora.
-            # La IA la completara en un thread separado.
-            # ------------------------------------------------
-
-            descripcion_actividad = (
-                anuncio
-                or
-                'Actividad registrada. '
-                'Descripcion en proceso...'
-            )
-
-        else:
-
-            # ------------------------------------------------
-            # RESPALDO
-            # ------------------------------------------------
-            # Si Gemini no esta disponible o no pudo analizar
-            # la imagen, conservamos la logica anterior.
-            # ------------------------------------------------
-
-            descripcion_actividad = (
-                self._generar_descripcion_actividad(
-                    reporte=reporte,
-                    anuncio=anuncio
-                )
-            )
-
         # ----------------------------------------------------
-        # CREAR EVIDENCIA
+        # CREAR OBJETO EVIDENCIA
         # ----------------------------------------------------
 
         evidencia = Evidencia(
@@ -195,12 +168,13 @@ class EvidenciaService:
 
             imagen_path=imagen_path,
 
+            # Texto original del usuario.
             anuncio_usuario=anuncio,
 
-            descripcion_visual_ia=(
-                descripcion or ''
-            ),
+            # Texto generado por Gemini.
+            descripcion_visual_ia=descripcion_visual,
 
+            # Texto principal profesional.
             descripcion_actividad=(
                 descripcion_actividad
             ),
@@ -227,16 +201,6 @@ class EvidenciaService:
         """
         Obtiene el siguiente número consecutivo
         de actividad dentro del reporte.
-
-        Ejemplo:
-
-            Evidencias existentes:
-                1
-                2
-                3
-
-            Retorna:
-                4
         """
 
         ultima = (
@@ -253,7 +217,6 @@ class EvidenciaService:
         )
 
         if ultima is None:
-
             return 1
 
         return (
@@ -278,17 +241,9 @@ class EvidenciaService:
         - Flask FileStorage.
         - Ruta física.
         - None.
-
-        Returns:
-            str:
-                Ruta final de la imagen.
-
-        Si imagen es None:
-            retorna ''.
         """
 
         if imagen is None:
-
             return ''
 
         upload_folder = (
@@ -298,7 +253,6 @@ class EvidenciaService:
         )
 
         if not upload_folder:
-
             raise RuntimeError(
                 'UPLOAD_FOLDER no está configurado.'
             )
@@ -392,18 +346,17 @@ class EvidenciaService:
 
             try:
 
-                # ----------------------------------------------------
-                # IMPORTANTE:
-                # Restaurar el puntero del archivo al inicio.
-                #
-                # La imagen pudo haber sido leída previamente
-                # por PIL/Gemini durante el análisis visual.
-                # ----------------------------------------------------
+                # La imagen pudo haber sido leída
+                # previamente por Gemini/PIL.
+                # Regresamos el puntero al comienzo.
 
-                if hasattr(
-                    imagen,
-                    'stream'
-                ) and imagen.stream:
+                if (
+                    hasattr(
+                        imagen,
+                        'stream'
+                    )
+                    and imagen.stream
+                ):
 
                     imagen.stream.seek(0)
 
@@ -420,7 +373,6 @@ class EvidenciaService:
 
             except Exception:
 
-                # Si algo falla, evitar dejar un archivo corrupto.
                 try:
 
                     if os.path.exists(
@@ -432,21 +384,21 @@ class EvidenciaService:
                         )
 
                 except Exception:
-
                     pass
 
                 raise
 
-            # --------------------------------------------------------
-            # VALIDAR QUE EL ARCHIVO REALMENTE SE GUARDÓ
-            # --------------------------------------------------------
+            # ------------------------------------------------
+            # VALIDAR ARCHIVO
+            # ------------------------------------------------
 
             if not os.path.isfile(
                 ruta_final
             ):
 
                 raise IOError(
-                    'La imagen no fue guardada correctamente.'
+                    'La imagen no fue guardada '
+                    'correctamente.'
                 )
 
             if os.path.getsize(
@@ -460,7 +412,6 @@ class EvidenciaService:
                     )
 
                 except Exception:
-
                     pass
 
                 raise IOError(
@@ -490,10 +441,14 @@ class EvidenciaService:
         # EVITAR COLISIÓN
         # ----------------------------------------------------
 
-        if os.path.abspath(
-            ruta_origen
-        ) == os.path.abspath(
-            ruta_final
+        if (
+            os.path.abspath(
+                ruta_origen
+            )
+            ==
+            os.path.abspath(
+                ruta_final
+            )
         ):
 
             return ruta_final
@@ -523,20 +478,12 @@ class EvidenciaService:
 
         La imagen encontrada se elimina del diccionario
         para impedir que sea utilizada nuevamente.
-
-        Acepta coincidencia:
-
-        1. Exacta.
-        2. Nombre seguro.
-        3. Normalizada.
         """
 
         if not nombre_imagen:
-
             return None
 
         if not imagenes_disponibles:
-
             return None
 
         # ----------------------------------------------------
@@ -593,7 +540,8 @@ class EvidenciaService:
 
             if (
                 clave_normalizada
-                == nombre_normalizado
+                ==
+                nombre_normalizado
             ):
 
                 return (
@@ -605,7 +553,7 @@ class EvidenciaService:
         return None
 
     # ========================================================
-    # GENERAR DESCRIPCIÓN
+    # GENERAR DESCRIPCIÓN PRINCIPAL
     # ========================================================
 
     @staticmethod
@@ -615,13 +563,17 @@ class EvidenciaService:
         visual=None
     ):
         """
-        Genera la descripción automática de la actividad.
+        Genera el párrafo principal de "Actividad realizada".
 
-        Utiliza el método existente del modelo Evidencia
-        para conservar la lógica actual de la aplicación.
+        Utiliza:
 
-        Si la generación falla, utiliza el anuncio como
-        descripción alternativa.
+        1. El anuncio del usuario.
+        2. La descripción visual generada por Gemini.
+        3. La obligación contractual.
+
+        La descripción visual NO reemplaza el anuncio.
+
+        Ambos textos se conservan por separado.
         """
 
         try:
@@ -630,17 +582,37 @@ class EvidenciaService:
                 reporte.obligacion
             )
 
-            evidencia_temporal = Evidencia(
-                anuncio_usuario=anuncio,
-                descripcion_visual_ia=visual or ''
-            )
+            # ------------------------------------------------
+            # OBJETO TEMPORAL
+            # ------------------------------------------------
+            #
+            # Se crea únicamente para reutilizar la lógica
+            # existente del modelo Evidencia.
+            # ------------------------------------------------
 
-            return (
-                evidencia_temporal
-                .generar_descripcion_automatica(
-                    obligacion
+            evidencia_temporal = Evidencia(
+                anuncio_usuario=(
+                    anuncio or ''
+                ),
+
+                descripcion_visual_ia=(
+                    visual or ''
                 )
             )
+
+            resultado = (
+                evidencia_temporal
+                .generar_descripcion_automatica(
+                    obligacion,
+                    visual=visual
+                )
+            )
+
+            if resultado:
+
+                return str(
+                    resultado
+                ).strip()
 
         except Exception as exc:
 
@@ -651,12 +623,21 @@ class EvidenciaService:
                 f'{exc}'
             )
 
-            return (
-                anuncio
-                or
-                'Actividad realizada durante '
-                'el periodo reportado.'
-            )
+        # ----------------------------------------------------
+        # RESPALDO
+        # ----------------------------------------------------
+
+        anuncio = str(
+            anuncio or ''
+        ).strip()
+
+        if anuncio:
+            return anuncio
+
+        return (
+            'Actividad realizada durante '
+            'el periodo reportado.'
+        )
 
     # ========================================================
     # COMPATIBILIDAD
@@ -671,30 +652,15 @@ class EvidenciaService:
         """
         Método de compatibilidad con código antiguo.
 
-        IMPORTANTE:
-
         La implementación nueva debe utilizar:
 
             crear_evidencia()
 
         directamente.
-
-        Este método permanece únicamente para código
-        anterior que todavía necesite guardar una imagen
-        independientemente de la creación de la evidencia.
-
-        Returns:
-            str:
-                Ruta final de la imagen.
         """
 
         if not imagen_temporal:
-
             return ''
-
-        # ----------------------------------------------------
-        # OBTENER SIGUIENTE ACTIVIDAD
-        # ----------------------------------------------------
 
         numero_actividad = (
             self._obtener_siguiente_actividad(
@@ -721,7 +687,6 @@ class EvidenciaService:
         """
 
         if not evidencia_id:
-
             return None
 
         return (
@@ -746,7 +711,6 @@ class EvidenciaService:
         """
 
         if not reporte_id:
-
             return []
 
         return (
@@ -775,7 +739,6 @@ class EvidenciaService:
         """
 
         if not reporte_id:
-
             return 0
 
         return (
