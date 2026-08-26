@@ -266,8 +266,7 @@ def _limpiar_texto(texto):
     # Capitalizar primera letra
     # --------------------------------------------------------
 
-    # Capitalizar primera letra de CADA oracion
-    import re
+    # Capitalizar primera letra de CADA oracion    
     def _cap(match):
         return match.group(1) + match.group(2).upper()
     resultado = re.sub(r'(^|[.!?]\s+)([a-záéíóúñ])', _cap, resultado)
