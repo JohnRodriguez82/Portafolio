@@ -66,7 +66,7 @@ def _encontrar_modelo_funcional(key):
 
         client = genai.Client(
             api_key=key,
-            http_options={'timeout': 10000}
+            http_options=types.HttpOptions(timeout=15000)
         )
 
         # ----------------------------------------------------
@@ -519,7 +519,7 @@ def analizar_imagen(
 
         client = genai.Client(
             api_key=key,
-            http_options={'timeout': 30000}
+            http_options=types.HttpOptions(timeout=120000)
         )
 
         # --------------------------------------------------------
@@ -794,7 +794,8 @@ def consolidar_textos_ejecutivo(
     try:
 
         client = genai.Client(
-            api_key=key
+            api_key=key,
+            http_options=types.HttpOptions(timeout=90000)
         )
 
         contexto_obligacion = (
