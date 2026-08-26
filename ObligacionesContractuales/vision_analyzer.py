@@ -266,11 +266,13 @@ def _limpiar_texto(texto):
     # Capitalizar primera letra
     # --------------------------------------------------------
 
-    if resultado:
-        resultado = resultado[0].upper() + resultado[1:]
+    # Capitalizar primera letra de CADA oracion
+    import re
+    def _cap(match):
+        return match.group(1) + match.group(2).upper()
+    resultado = re.sub(r'(^|[.!?]\s+)([a-záéíóúñ])', _cap, resultado)
 
     return resultado
-
 
 # ============================================================
 # OPTIMIZAR IMAGEN PARA IA
