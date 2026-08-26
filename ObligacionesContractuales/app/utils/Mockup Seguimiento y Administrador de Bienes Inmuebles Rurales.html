@@ -1,0 +1,1721 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIM - Seguimiento y Administración de Bienes Inmuebles Rurales</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--v:#8BC34A;--vo:#689F38;--a:#1976D2;--ao:#1565C0;--bg:#f4f6f8;--bd:#cfd8dc;--t:#37474F;--r:#e53935;--y:#F9A825;--o:#EF6C00}
+  body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg);color:var(--t);font-size:13px}
+  .topbar{background:#fff;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:1100}
+  .topbar-left{display:flex;align-items:center;gap:16px}
+  .sit-badge{display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#8BC34A 0%,#4CAF50 100%);color:#fff;padding:6px 16px;border-radius:20px;font-weight:700;font-size:14px}
+  .topbar-title{font-size:15px;color:#555;font-weight:600;letter-spacing:.3px}
+  .topbar-right{display:flex;align-items:center;gap:16px;color:#555;font-size:13px}
+  .user-pill{display:flex;align-items:center;gap:8px;background:#E8F5E9;padding:6px 14px;border-radius:20px}
+  .notif-icon{width:32px;height:32px;background:#E8F5E9;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .app{display:flex;min-height:calc(100vh - 56px)}
+  .sidebar{width:260px;background:var(--v);color:#fff;display:flex;flex-direction:column;box-shadow:2px 0 8px rgba(0,0,0,.15);flex-shrink:0}
+  .sidebar-header{padding:16px;font-weight:700;font-size:14px;background:rgba(0,0,0,.12);color:#fff;display:flex;align-items:center;gap:10px}
+  .sidebar-menu{flex:1;padding:8px 0;display:flex;flex-direction:column}
+  .sidebar-footer{padding:12px 0;border-top:1px solid rgba(255,255,255,.2);margin-top:auto}
+  .menu-item{display:flex;align-items:center;gap:12px;padding:12px 18px;font-size:13px;cursor:pointer;transition:.15s;border-left:4px solid transparent;color:rgba(255,255,255,.85)}
+  .menu-item:hover{background:rgba(255,255,255,.18);color:#fff;border-left-color:#fff}
+  .menu-item.active{background:rgba(255,255,255,.25);color:#fff;font-weight:700;border-left-color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .menu-item .ico{font-size:16px;width:20px;text-align:center}
+  .content{flex:1;min-width:0;display:flex;flex-direction:column}
+  .view{display:none;flex:1;flex-direction:column}
+  .view.active{display:flex}
+  .filter-bar{background:#fff;margin:16px 24px;border:1px solid var(--bd);border-radius:8px;padding:16px 20px}
+  .filter-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .filter-field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px}
+  .filter-field label{font-size:11px;font-weight:600;color:#455A64;text-transform:uppercase;letter-spacing:.3px}
+  .filter-field input,.filter-field select{padding:7px 10px;border:1px solid #B0BEC5;border-radius:4px;font-size:12px;font-family:inherit;background:#fff}
+  .filter-field input:focus,.filter-field select:focus{outline:none;border-color:var(--a)}
+  .btn{padding:8px 18px;border-radius:6px;border:none;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.15s}
+  .btn-blue{background:var(--a);color:#fff}.btn-blue:hover{background:var(--ao)}
+  .btn-green{background:var(--v);color:#fff}.btn-green:hover{background:var(--vo)}
+  .btn-outline{background:#fff;border:1px solid var(--bd);color:#546E7A}.btn-outline:hover{background:#ECEFF1}
+  .btn-red{background:var(--r);color:#fff}
+  .btn-yellow{background:var(--y);color:#fff}
+  .btn-orange{background:var(--o);color:#fff}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .data-table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid var(--bd);border-radius:6px;overflow:hidden}
+  .data-table th{background:#ECEFF1;padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#546E7A;font-weight:700;border-bottom:2px solid var(--bd);white-space:nowrap}
+  .data-table td{padding:10px 12px;border-bottom:1px solid #ECEFF1;vertical-align:middle}
+  .data-table tr:hover td{background:#F1F8E9}
+  .data-table tr.selected td{background:#C8E6C9}
+  .data-table td input[type="checkbox"]{width:16px;height:16px;cursor:pointer}
+  .semaforo{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px}
+  .s-rojo{background:var(--r)}.s-amarillo{background:var(--y)}.s-verde{background:var(--v)}.s-naranja{background:var(--o)}
+  .subtabs{background:#fff;padding:10px 24px 0;display:flex;gap:8px;border-bottom:1px solid var(--bd)}
+  .subtab{padding:8px 18px;border-radius:16px 16px 0 0;font-size:12px;font-weight:700;background:#ECEFF1;color:#546E7A;border:1px solid var(--bd);border-bottom:none;cursor:pointer}
+  .subtab.active{background:var(--v);color:#fff;border-color:var(--vo)}
+  .info-bar{background:#fff;margin:16px 24px;border:1px solid var(--bd);border-radius:8px;padding:16px 20px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px}
+  .info-col{display:flex;flex-direction:column;gap:4px}
+  .info-col .lab{font-size:10px;text-transform:uppercase;color:#78909C;font-weight:700;letter-spacing:.5px}
+  .info-col .val{font-size:12px;color:var(--t);font-weight:600}
+  .info-col .val.green{color:var(--vo)}
+  .info-col .val.red{color:var(--r);font-weight:700}
+  .form-tabs{display:flex;margin:0 24px;border-bottom:3px solid #37474F}
+  .form-tab{padding:10px 20px;font-size:12px;font-weight:700;color:#546E7A;background:#ECEFF1;border:2px solid #37474F;border-bottom:none;border-radius:8px 8px 0 0;margin-right:4px;cursor:pointer;position:relative;top:2px}
+  .form-tab.active{background:#fff;color:var(--t);border-bottom:2px solid #fff;z-index:10}
+  .panel{display:none;padding:20px 24px 40px;animation:fade .25s}
+  .panel.active{display:block}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  /* ===== ACCORDION ===== */
+  .section-card{background:#fff;border:1px solid var(--bd);border-radius:6px;margin-bottom:12px;overflow:hidden}
+  .section-title{background:#ECEFF1;padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;border-bottom:1px solid var(--bd);color:#37474F;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:background .15s}
+  .section-title:hover{background:#CFD8DC}
+  .section-title .arrow{font-size:14px;transition:transform .25s;color:#546E7A}
+  .section-card.collapsed .arrow{transform:rotate(-90deg)}
+  .section-body{padding:14px;max-height:3000px;overflow:hidden;transition:max-height .35s ease,padding .35s ease,opacity .35s ease;opacity:1}
+  .section-card.collapsed .section-body{max-height:0;padding-top:0;padding-bottom:0;opacity:0}
+
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:1100px){.grid-3,.grid-4{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:768px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11px;font-weight:600;color:#455A64}
+  .field label.req::after{content:" *";color:var(--r)}
+  .field input,.field select,.field textarea{padding:7px 10px;border:1px solid #B0BEC5;border-radius:4px;font-size:12px;font-family:inherit;background:#fff}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--a)}
+  .risk-wrap{display:flex;align-items:center;gap:8px}
+  .risk-wrap input{width:56px;text-align:center;font-weight:700}
+  .risk-tag{font-size:10px;padding:2px 8px;border-radius:3px;font-weight:700}
+  .r0{background:#C8E6C9;color:#1B5E20}.r1{background:#FFF9C4;color:#F57F17}.r2{background:#FFCCBC;color:#BF360C}.r3{background:#FFCDD2;color:#B71C1C}
+  .si-no{width:80px}
+  .sost-table{width:100%;border-collapse:collapse;font-size:11px}
+  .sost-table th{background:#ECEFF1;padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#546E7A;border:1px solid var(--bd)}
+  .sost-table td{padding:6px 8px;border:1px solid var(--bd);vertical-align:top;background:#fff}
+  .sost-table td input,.sost-table td select{width:100%;padding:4px 6px;font-size:11px;border:1px solid #B0BEC5;border-radius:3px}
+  .sost-table tr:nth-child(even) td{background:#FAFAFA}
+  .sec-nav-wrap{position:sticky;top:56px;z-index:1000;background:#fff;border-bottom:1px solid var(--bd);box-shadow:0 2px 6px rgba(0,0,0,.06);padding:0 24px}
+  .sec-nav-head{display:flex;align-items:center;gap:8px;padding:8px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;color:#78909C;letter-spacing:.5px}
+  .sec-nav-list{display:flex;gap:6px;padding:4px 0 10px;overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--bd) transparent}
+  .sec-nav-list::-webkit-scrollbar{height:5px}
+  .sec-nav-list::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
+  .sec-item{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:16px;font-size:11px;font-weight:600;color:#546E7A;background:#ECEFF1;border:1px solid transparent;cursor:pointer;white-space:nowrap;transition:.15s;text-decoration:none}
+  .sec-item:hover{background:#CFD8DC;color:var(--t)}
+  .sec-item.active{background:var(--v);color:#fff;border-color:var(--vo)}
+  .sec-num{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:#fff;color:var(--vo)}
+  .sec-item.active .sec-num{background:#fff;color:var(--vo)}
+  .dash-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin:16px 24px}
+  @media(max-width:1300px){.dash-grid{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:1100px){.dash-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:768px){.dash-grid{grid-template-columns:1fr}}
+  .dash-card{background:#fff;border:1px solid var(--bd);border-radius:8px;padding:20px;text-align:center;transition:.15s}
+  .dash-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.08)}
+  .dash-num{font-size:32px;font-weight:800;color:var(--a);margin:8px 0}
+  .dash-label{font-size:12px;color:#78909C;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .dash-chart{height:120px;background:#ECEFF1;border-radius:6px;margin-top:12px;display:flex;align-items:flex-end;justify-content:center;gap:8px;padding:12px}
+  .bar{flex:1;background:var(--v);border-radius:4px 4px 0 0;min-width:24px;transition:.3s}
+  .bar:hover{opacity:.8}
+  .table-wrap{margin:0 24px 24px;overflow-x:auto}
+  .view-title{font-size:18px;font-weight:700;color:var(--t);margin:20px 24px 0}
+  .view-subtitle{font-size:13px;color:#78909C;margin:4px 24px 16px}
+  .actions-bar{display:flex;justify-content:flex-end;gap:10px;padding:12px 24px}
+  .dash-row{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin:0 24px 24px}
+  @media(max-width:1100px){.dash-row{grid-template-columns:1fr}}
+  .dash-wide{background:#fff;border:1px solid var(--bd);border-radius:8px;padding:20px}
+  .dash-wide h3{font-size:14px;color:var(--t);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
+  .progress-wrap{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+  .progress-item{display:flex;align-items:center;gap:10px;font-size:12px}
+  .progress-bar{flex:1;height:16px;background:#ECEFF1;border-radius:8px;overflow:hidden}
+  .progress-fill{height:100%;border-radius:8px}
+
+  /* ===== PANEL BLOQUEADO ===== */
+  .panel.locked input,
+  .panel.locked select,
+  .panel.locked textarea{
+    background:#f5f5f5 !important;
+    pointer-events:none;
+    opacity:.85;
+  }
+  .panel.locked .btn{
+    opacity:.5;
+    pointer-events:none;
+  }
+  .panel.locked .section-title{
+    cursor:default;
+  }
+  .form-tab.locked{
+    background:#ECEFF1 !important;
+    color:#90A4AE !important;
+    cursor:not-allowed;
+    border-color:#B0BEC5 !important;
+  }
+  .form-tab.locked:hover{
+    background:#ECEFF1 !important;
+  }
+
+  /* ===== MODAL ===== */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+  .modal-overlay.active{display:flex}
+  .modal-card{background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.2);width:100%;max-width:480px;margin:20px;overflow:hidden;animation:modalIn .25s ease}
+  @keyframes modalIn{from{opacity:0;transform:translateY(-20px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+  .modal-header{background:linear-gradient(90deg,var(--v),var(--vo));color:#fff;padding:16px 20px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px}
+  .modal-body{padding:24px 20px;font-size:13px;color:var(--t);line-height:1.6}
+  .modal-body p{margin-bottom:8px}
+  .modal-body strong{color:var(--vo)}
+  .modal-footer{display:flex;gap:10px;padding:0 20px 20px;justify-content:flex-end;flex-wrap:wrap}
+
+  @media(max-width:768px){
+    .sidebar{width:200px}
+    .sec-nav-wrap{padding:0 12px}
+    .form-tabs{margin:0 12px}
+    .panel{padding:16px 12px 30px}
+    .info-bar{margin:12px 12px}
+    .filter-bar{margin:12px 12px}
+    .table-wrap{margin:0 12px 20px}
+    .view-title,.view-subtitle{margin-left:12px;margin-right:12px}
+    .dash-grid{margin:12px 12px}
+    .dash-row{margin:0 12px 20px}
+    .actions-bar{padding:12px}
+    .modal-footer{flex-direction:column}
+    .modal-footer .btn{width:100%;justify-content:center}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="sit-badge"><span style="font-size:18px">🌿</span><span>SIM</span></div>
+    <div class="topbar-title">SEGUIMIENTO  Y ADMINISTRACIÓN DE BIENES INMUEBLES RURALES</div>
+  </div>
+  <div class="topbar-right">
+    <div class="user-pill">👤 usuario@ant.gov.co</div>
+    <div class="notif-icon">🔔</div>
+  </div>
+</div>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-header">☰ Menú Principal</div>
+    <div class="sidebar-menu">
+      <div class="menu-item active" data-view="inicio" onclick="showView('inicio')"><span class="ico">🏠</span> Inicio</div>
+      <div class="menu-item" data-view="parametricos" onclick="showView('parametricos')"><span class="ico">📊</span> Datos Paramétricos</div>
+      <div class="menu-item" data-view="predios" onclick="showView('predios')"><span class="ico">🏡</span> Administración de Predios</div>
+      <div class="menu-item" data-view="seguimiento" onclick="showView('seguimiento')"><span class="ico">📋</span> Seguimiento</div>
+      <div class="menu-item" data-view="dashboard" onclick="showView('dashboard')"><span class="ico">📈</span> Dashboard</div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="menu-item" onclick="abrirModalCerrarSesion()" style="color:rgba(255,255,255,.7)"><span class="ico">🔒</span> Cerrar sesión</div>
+    </div>
+  </aside>
+
+  <div class="content">
+
+        <!-- ===== VISTA 0: INICIO ===== -->
+    <div class="view active" id="view-inicio">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 56px);padding:40px 24px;text-align:center;background:linear-gradient(180deg,#fff 0%,#f4f6f8 100%)">
+        <div style="font-size:56px;margin-bottom:16px">🌿</div>
+        <h1 style="font-size:28px;font-weight:800;color:var(--t);margin-bottom:12px;max-width:700px;line-height:1.3">Seguimiento y Administración de Bienes Inmuebles Rurales</h1>
+        <p style="font-size:14px;color:#546E7A;max-width:640px;line-height:1.7;margin-bottom:32px">
+          Bienvenido al Sistema Imformación Misional (SIM) de la Agencia Nacional de Tierras. Esta plataforma permite en este módulo la gestión integral de predios rurales adquiridos por la entidad, facilitando el seguimiento de su estado jurídico, físico, ambiental y productivo a través de visitas de diagnóstico, evaluaciones de sostenibilidad y la consolidación de hallazgos en campo.
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:24px;max-width:720px;width:100%;text-align:left">
+          <div style="background:#fff;border:1px solid var(--bd);border-radius:8px;padding:20px">
+            <h3 style="font-size:14px;font-weight:700;color:var(--vo);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📋 Gestión de Formularios</h3>
+            <p style="font-size:12px;color:#546E7A;line-height:1.6">
+              El sistema cuenta con formularios parametrizables que permiten evaluar cada predio según su etapa procesal: ficha de verificación, diagnóstico de tenencia y consolidación de hallazgos. Cada pregunta puede configurarse con pesos, escalas de riesgo y disparadores automáticos que activan alertas de semáforo.
+            </p>
+          </div>
+          <div style="background:#fff;border:1px solid var(--bd);border-radius:8px;padding:20px">
+            <h3 style="font-size:14px;font-weight:700;color:var(--vo);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📍 Seguimiento en Campo</h3>
+            <p style="font-size:12px;color:#546E7A;line-height:1.6">
+              Los profesionales de la ANT pueden programar visitas, registrar evidencias fotográficas y georreferenciadas, evaluar obligaciones de provisionalidad, identificar conflictos jurídicos, socioambientales y de género, así como definir planes de mejora con plazos y responsables asignados.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+<!-- ===== VISTA 1: DATOS PARAMÉTRICOS ===== -->
+    <div class="view" id="view-parametricos">
+      <div class="view-title">📊 Datos Paramétricos</div>
+      <div class="view-subtitle">Configuración de formularios, preguntas y disparadores del sistema</div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <div class="filter-field"><label>Módulo</label>
+            <select>
+              <option>Todos</option>
+              <option>M1</option>
+              <option>M2</option>
+              <option>M3</option>
+            </select>
+          </div>
+          <div class="filter-field"><label>Sección</label><input type="text" placeholder="Ej: Datos Generales"></div>
+          <div class="filter-field"><label>Variable</label><input type="text" placeholder="Texto de la pregunta"></div>
+          <div class="filter-field"><label>Tipo Dato</label>
+            <select>
+              <option>Todos</option>
+              <option>SI_NO</option>
+              <option>LISTA</option>
+              <option>NUMERICO</option>
+              <option>TEXTO</option>
+            </select>
+          </div>
+          <div class="filter-field"><label>Estado Configuración</label><select><option>Todos</option><option>BORRADOR</option><option>ACTIVA</option><option>INACTIVA</option><option>OBSOLETA</option></select></div>
+          <button class="btn btn-blue" onclick="abrirModalFiltrar()">🔍 Filtrar</button>
+          <button class="btn btn-green" onclick="abrirModalNuevo()">➕ Nuevo</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Módulo</th>
+              <th>Sección</th>
+              <th>Descripción</th>
+              <th>Variable</th>
+              <th>Tipo Dato</th>
+              <th style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px">Opciones Respuesta</th>
+              <th>Peso Pregunta</th>
+              <th>Escala Mínima</th>
+              <th>Escala Máxima</th>
+              <th>Gatillo</th>
+              <th>Tipo Gatillo</th>
+              <th>Umbral Verde - Amarillo</th>
+              <th>Umbral Amarillo - Rojo</th>
+              <th>Estado Configuración</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>M1</td>
+              <td>Datos Generales</td>
+              <td>Configuración 2025-I Predios Rurales</td>
+              <td>¿El predio está a nombre de la ANT?</td>
+              <td>SI_NO</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;text-align:center">—</td>
+              <td>5</td>
+              <td>0</td>
+              <td>3</td>
+              <td>false</td>
+              <td>—</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>ACTIVA</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M1</td>
+              <td>Identificación Jurídico-Administrativo</td>
+              <td>Configuración 2025-I Predios Rurales</td>
+              <td>¿El predio presenta mejoras constructivas o productivas identificadas en campo?</td>
+              <td>LISTA</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px" title='["Bueno","Regular","Malo"]'>["Bueno","Regular","Malo"]</td>
+              <td>10</td>
+              <td>0</td>
+              <td>3</td>
+              <td>true</td>
+              <td>AMARILLO</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>ACTIVA</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M1</td>
+              <td>Estado Formal de la Tenencia</td>
+              <td>Configuración 2025-I Predios Rurales</td>
+              <td>Modalidad formal de tenencia</td>
+              <td>LISTA</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px" title="["Entregado Provisional","Comodato","Adjudicación"]">["Entregado Provisional","Comodato","Adjudicación"]</td>
+              <td>8</td>
+              <td>0</td>
+              <td>3</td>
+              <td>false</td>
+              <td>—</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>ACTIVA</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M2</td>
+              <td>Obligaciones de Provisionalidad</td>
+              <td>Configuración 2025-I Diagnóstico</td>
+              <td>¿No vender, alquilar o prestar el predio?</td>
+              <td>SI_NO</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;text-align:center">—</td>
+              <td>15</td>
+              <td>0</td>
+              <td>3</td>
+              <td>true</td>
+              <td>ROJO</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>ACTIVA</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M2</td>
+              <td>Obligaciones de Provisionalidad</td>
+              <td>Configuración 2025-I Diagnóstico</td>
+              <td>¿No realizar parcelaciones o divisiones?</td>
+              <td>SI_NO</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;text-align:center">—</td>
+              <td>15</td>
+              <td>0</td>
+              <td>3</td>
+              <td>true</td>
+              <td>ROJO</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>ACTIVA</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M2</td>
+              <td>Evaluación de Sostenibilidad</td>
+              <td>Configuración 2025-I Diagnóstico</td>
+              <td>Estado de conservación de recursos naturales</td>
+              <td>LISTA</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px" title='["Óptimo","Aceptable","Deficiente","Crítico"]'>["Óptimo","Aceptable","Deficiente","Crítico"]</td>
+              <td>10</td>
+              <td>0</td>
+              <td>3</td>
+              <td>false</td>
+              <td>—</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>ACTIVA</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M3</td>
+              <td>Identificación de Hallazgos</td>
+              <td>Configuración 2025-I Hallazgos</td>
+              <td>Tipo de hallazgo identificado</td>
+              <td>LISTA</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px" title="["Condición previa","Limitante productiva","Deterioro reciente"]">["Condición previa","Limitante productiva","Deterioro reciente"]</td>
+              <td>5</td>
+              <td>0</td>
+              <td>3</td>
+              <td>false</td>
+              <td>—</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>BORRADOR</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M3</td>
+              <td>Identificación de Hallazgos</td>
+              <td>Configuración 2025-I Hallazgos</td>
+              <td>Nivel del hallazgo</td>
+              <td>LISTA</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px" title="["Verde","Amarillo","Naranja","Rojo"]">["Verde","Amarillo","Naranja","Rojo"]</td>
+              <td>8</td>
+              <td>0</td>
+              <td>3</td>
+              <td>true</td>
+              <td>AMARILLO</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>BORRADOR</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M1</td>
+              <td>Información Catastral y de Extensión</td>
+              <td>Configuración 2025-I Predios Rurales</td>
+              <td>Descripción de determinantes identificados</td>
+              <td>TEXTO</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;text-align:center">—</td>
+              <td>3</td>
+              <td>0</td>
+              <td>3</td>
+              <td>false</td>
+              <td>—</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>ACTIVA</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+            <tr>
+              <td>M2</td>
+              <td>Conflictos Jurídicos</td>
+              <td>Configuración 2025-I Diagnóstico</td>
+              <td>¿Presencia de grupos armados?</td>
+              <td>SI_NO</td>
+              <td style="max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;text-align:center">—</td>
+              <td>20</td>
+              <td>0</td>
+              <td>3</td>
+              <td>true</td>
+              <td>ROJO</td>
+              <td>33.33</td>
+              <td>66.66</td>
+              <td>INACTIVA</td>
+              <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px">✏️ Editar</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 24px 24px;padding:10px 0;border-top:1px solid #cfd8dc">
+        <span style="font-size:12px;color:#78909C">Mostrando <strong>1</strong> a <strong>10</strong> de <strong>156</strong> registros</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px" disabled>← Anterior</button>
+          <button class="btn btn-blue" style="padding:5px 12px;font-size:11px;min-width:32px">1</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">2</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">3</button>
+          <span style="display:flex;align-items:center;padding:0 4px;font-size:12px;color:#78909C">…</span>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">16</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px">Siguiente →</button>
+        </div>
+      </div>
+    </div>
+<!-- ===== VISTA 2: ADMINISTRACIÓN DE PREDIOS ===== -->
+    <div class="view" id="view-predios">
+      <div class="view-title">🏡 Administración de Predios</div>
+      <div class="view-subtitle">Consulta y administración de bienes inmuebles rurales</div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <div class="filter-field"><label>No. Expediente</label><input type="text" placeholder="Ej: 202440003401562885E"></div>
+          <div class="filter-field"><label>Nombre Predio</label><input type="text" placeholder="Ej: FINCA SAN SEBASTIAN"></div>
+          <div class="filter-field"><label>Ubicación</label><select><option>Todas</option><option>Antioquia</option><option>Córdoba</option><option>Sucre</option><option>Bolívar</option></select></div>
+          <div class="filter-field"><label>Subdirección</label><select><option>Todas</option><option>MAG-Medio y Región Caribe</option><option>MAG-Pacífico</option><option>MAG-Orinoquía</option></select></div>
+          <button class="btn btn-blue" onclick="abrirModalFiltrarPredios()">🔍 Filtrar</button>
+        </div>
+      </div>
+      <div class="actions-bar">
+        <button class="btn btn-green" id="btn-seguimiento-predios" disabled onclick="abrirModalSeguimiento()">📍 Hacer seguimiento</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="table-predios">
+          <thead>
+            <tr>
+              <th style="width:40px"><input type="checkbox" id="check-all-predios" onclick="toggleAll(this,'table-predios')"></th>
+              <th>Expediente del predio</th>
+              <th>Ubicación del Predio</th>
+              <th>Nombre del predio</th>
+              <th>Subdirección</th>
+              <th>Fecha de creación</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr onclick="selectRow(this,'table-predios')"><td><input type="checkbox" class="row-check"></td><td>202440003401562885E</td><td>ANTIOQUIA - PUERTO BERRÍO</td><td>FINCA SAN SEBASTIAN</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td>2024-03-15</td></tr>
+            <tr onclick="selectRow(this,'table-predios')"><td><input type="checkbox" class="row-check"></td><td>202440003401563001F</td><td>CÓRDOBA - MONTERÍA</td><td>FINCA EL PROGRESO</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td>2024-04-22</td></tr>
+            <tr onclick="selectRow(this,'table-predios')"><td><input type="checkbox" class="row-check"></td><td>202440003401564112A</td><td>SUCRE - SINCELEJO</td><td>HACIENDA LA ESPERANZA</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td>2024-05-10</td></tr>
+            <tr onclick="selectRow(this,'table-predios')"><td><input type="checkbox" class="row-check"></td><td>202440003401565223B</td><td>BOLÍVAR - CARTAGENA</td><td>FINCA LAS PALMAS</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td>2024-06-01</td></tr>
+            <tr onclick="selectRow(this,'table-predios')"><td><input type="checkbox" class="row-check"></td><td>202440003401566334C</td><td>ANTIOQUIA - CAUCASIA</td><td>EL TRIUNFO</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td>2024-06-18</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 24px 24px;padding:10px 0;border-top:1px solid #cfd8dc">
+        <span style="font-size:12px;color:#78909C">Mostrando <strong>1</strong> a <strong>5</strong> de <strong>1,248</strong> registros</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px" disabled>← Anterior</button>
+          <button class="btn btn-blue" style="padding:5px 12px;font-size:11px;min-width:32px">1</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">2</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">3</button>
+          <span style="display:flex;align-items:center;padding:0 4px;font-size:12px;color:#78909C">…</span>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">250</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px">Siguiente →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VISTA 3: SEGUIMIENTO ===== -->
+    <div class="view" id="view-seguimiento">
+      <div class="view-title">📋 Seguimiento de Predios</div>
+      <div class="view-subtitle">Predios asignados para visita de diagnóstico y seguimiento</div>
+      <div class="filter-bar">
+        <div class="filter-row">
+          <div class="filter-field"><label>No. Expediente</label><input type="text" placeholder="Ej: 202440003401562885E"></div>
+          <div class="filter-field"><label>Nombre Predio</label><input type="text" placeholder="Ej: FINCA SAN SEBASTIAN"></div>
+          <div class="filter-field"><label>Usuario Asignado</label><input type="text" placeholder="Ej: Ing. J. Pérez"></div>
+          <div class="filter-field"><label>Estado Semáforo</label><select><option>Todos</option><option>🟢 Verde</option><option>🟠 Naranja</option><option>🔴 Rojo</option></select></div>
+          <button class="btn btn-blue" onclick="abrirModalFiltrarSeguimiento()">🔍 Filtrar</button>
+        </div>
+      </div>
+      <div class="actions-bar">
+        <button class="btn btn-green" id="btn-gestionar" disabled onclick="gestionarPredio()">⚙️ Gestionar predio</button>
+        <button class="btn btn-yellow" id="btn-reasignar" disabled onclick="abrirModalReasignar()">🔄 Re-Asignar</button>
+        <button class="btn btn-blue" onclick="abrirModalExportarExcel()">📊 Exportar a Excel</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="table-seguimiento">
+          <thead>
+            <tr>
+              <th style="width:40px"><input type="checkbox" id="check-all-seg" onclick="toggleAll(this,'table-seguimiento')"></th>
+              <th>Expediente del predio</th>
+              <th>Ubicación del Predio</th>
+              <th>Nombre del predio</th>
+              <th>Subdirección</th>
+              <th>Estado Semáforo</th>
+              <th>Usuario asignado</th>
+              <th>Fecha de creación</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr onclick="selectRow(this,'table-seguimiento')"><td><input type="checkbox" class="row-check"></td><td>202440003401562885E</td><td>ANTIOQUIA - PUERTO BERRÍO</td><td>FINCA SAN SEBASTIAN</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td><span class="semaforo s-rojo"></span> Rojo</td><td>Ing. J. Pérez</td><td>2024-03-15</td></tr>
+            <tr onclick="selectRow(this,'table-seguimiento')"><td><input type="checkbox" class="row-check"></td><td>202440003401563001F</td><td>CÓRDOBA - MONTERÍA</td><td>FINCA EL PROGRESO</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td><span class="semaforo s-naranja"></span> Naranja</td><td>Ing. M. Gómez</td><td>2024-04-22</td></tr>
+            <tr onclick="selectRow(this,'table-seguimiento')"><td><input type="checkbox" class="row-check"></td><td>202440003401564112A</td><td>SUCRE - SINCELEJO</td><td>HACIENDA LA ESPERANZA</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td><span class="semaforo s-verde"></span> Verde</td><td>Abg. L. Ríos</td><td>2024-05-10</td></tr>
+            <tr onclick="selectRow(this,'table-seguimiento')"><td><input type="checkbox" class="row-check"></td><td>202440003401565223B</td><td>BOLÍVAR - CARTAGENA</td><td>FINCA LAS PALMAS</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td><span class="semaforo s-naranja"></span> Naranja</td><td>Ing. J. Pérez</td><td>2024-06-01</td></tr>
+            <tr onclick="selectRow(this,'table-seguimiento')"><td><input type="checkbox" class="row-check"></td><td>202440003401566334C</td><td>ANTIOQUIA - CAUCASIA</td><td>EL TRIUNFO</td><td>MAG-MEDIO Y REGIÓN CARIBE</td><td><span class="semaforo s-rojo"></span> Rojo</td><td>Ing. M. Gómez</td><td>2024-06-18</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 24px 24px;padding:10px 0;border-top:1px solid #cfd8dc">
+        <span style="font-size:12px;color:#78909C">Mostrando <strong>1</strong> a <strong>5</strong> de <strong>342</strong> registros</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px" disabled>← Anterior</button>
+          <button class="btn btn-blue" style="padding:5px 12px;font-size:11px;min-width:32px">1</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">2</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">3</button>
+          <span style="display:flex;align-items:center;padding:0 4px;font-size:12px;color:#78909C">…</span>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px;min-width:32px">69</button>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:11px">Siguiente →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VISTA 3b: FORMULARIO DE GESTIÓN ===== -->
+    <div class="view" id="view-gestion">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 24px;background:#fff;border-bottom:1px solid var(--bd)">
+        <button class="btn btn-outline" onclick="volverSeguimiento()">← Volver a Seguimiento</button>
+        <span style="font-size:14px;font-weight:700;color:var(--t)">Gestionando: <span style="color:var(--a)">FINCA SAN SEBASTIAN</span> — Expediente 202440003401562885E</span>
+      </div>
+      <div class="subtabs">
+        <div class="subtab active">FORMULARIO</div>
+        <div class="subtab">SOPORTES</div>
+        <div class="subtab">INFORMACIÓN DEL PREDIO</div>
+      </div>
+      <div class="info-bar">
+        <div style="display:flex;gap:40px;flex-wrap:wrap">
+          <div class="info-col"><span class="lab">No. Proceso</span><span class="val">202440003401562885E</span></div>
+          <div class="info-col"><span class="lab">Ruta</span><span class="val">INICIAL</span></div>
+          <div class="info-col"><span class="lab">Nombre Predio</span><span class="val">FINCA SAN SEBASTIAN</span></div>
+          <div class="info-col"><span class="lab">Matrícula Inmobiliaria</span><span class="val">4595</span></div>
+          <div class="info-col"><span class="lab">Subregión</span><span class="val green">MAG-MEDIO Y REGIÓN CARIBE</span></div>
+          <div class="info-col"><span class="lab">Proceso</span><span class="val green">COMPRA DE PREDIOS</span></div>
+          <div class="info-col"><span class="lab">Etapa</span><span class="val">VISITA DE DIAGNÓSTICO</span></div>
+          <div class="info-col"><span class="lab">Ubicación</span><span class="val">ANTIOQUIA - PUERTO BERRÍO</span></div>
+          <div class="info-col"><span class="lab">Círculo Registral</span><span class="val">019-PUERTO BERRÍO</span></div>
+          <div class="info-col"><span class="lab">Estado Semáforo</span><span class="val red">🔴 Rojo</span></div>
+        </div>
+      </div>
+      <div class="sec-nav-wrap" id="secNavWrap">
+        <div class="sec-nav-head">📑 Secciones del formulario</div>
+        <div class="sec-nav-list" id="secNavList"></div>
+      </div>
+      <div class="form-tabs">
+        <div class="form-tab active" onclick="switchTab(1)">FICHA DE VERIFICACIÓN DEL BIEN INMUEBLE EN ADMINISTRACIÓN</div>
+        <div class="form-tab" onclick="switchTab(2)">DIAGNÓSTICO ESTADO DE LA TENENCIA</div>
+        <div class="form-tab" onclick="switchTab(3)">CONSOLIDACIÓN DE HALLAZGOS</div>
+      </div>
+
+      <!-- PESTAÑA 1 -->
+      <div class="panel active" id="panel1">
+        <div class="form-main">
+          <button class="btn btn-blue">💾 Guardar</button>
+          <button class="btn btn-green" onclick="abrirModalFinalizar(1)">✅ Finalizar Tarea M1</button>
+          <div class="section-card collapsed" id="p1-datos">
+            <div class="section-title" onclick="toggleAccordion(this)">Datos Generales <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-4">
+                <div class="field"><label class="req">Fecha visita</label><input type="date" value="2026-07-24"></div>
+                <div class="field"><label class="req">Misional responsable</label><select><option>DAT</option><option>SAITZF</option><option>SUBDAE</option><option>SATN</option></select></div>
+                <div class="field"><label>Profesional responsable</label><input type="text" value="Ing. Agrónomo J. Pérez"></div>
+                <div class="field"><label>Organización o comunidad</label><input type="text" value="ASOCAMPO EL CERRO"></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p1-ident">
+            <div class="section-title" onclick="toggleAccordion(this)">Identificación y Estado Jurídico-Administrativo del Predio <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-3">
+                <div class="field"><label class="req">Fuente u origen del predio</label><select><option>Compra</option><option selected>Procesos Administrativos</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label class="req">Predio a nombre de la ANT</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Predio incorporado FTRRI</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Predio en administración anticipada</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Predio en administración definitiva</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+              </div>
+            </div>
+          </div>
+          
+          
+                    <div class="section-card collapsed" id="p1-soportes">
+            <div class="section-title" onclick="toggleAccordion(this)">Soportes Documentales Disponibles <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-3">
+                <div class="field"><label>Avalúo comercial y/o catastral</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Documentos de gestión catastral</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Acta entrega del predio por la ANT</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Certificado tradición del predio</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Acta de entrega provisional a tenedor, comunidad u organización</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Escritura pública o documento de transferencia</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Ficha de caracterización predial</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label class="req">Plano, levantamiento topográfico o georreferenciación</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label class="req">Inventario de mejoras</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label class="req">Texto que relacione los tenedores, asociados, integrantes o posibles beneficiarios</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Informe técnico jurídico</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Informe UAF o análisis productivo</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Resolución de adjudicación</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Registro fotográfico</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Análisis de imágenes satelitales o fotointerpretación</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Acta de visita a predio</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+              </div>
+            </div>
+          </div>
+<div class="section-card collapsed" id="p1-tenencia" style="margin-bottom:16px">
+            <div class="section-title" onclick="toggleAccordion(this)">Estado Formal de la Tenencia o Entrega <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-3">
+                <div class="field"><label class="req">Modalidad formal</label><select><option>Entregado Provisional</option><option>Comodato</option><option>Adjudicación</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Acta de entrega provisional</label><select class="si-no"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Comodato</label><select class="si-no"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Área registral (Ha)</label><input type="number" step="0.0001" value="125.5000"><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Área predio ANT (Ha)</label><input type="number" step="0.0001" value="142.3000"><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>                
+              </div>
+              <div style="border-top:2px solid #cfd8dc;margin:24px 0 16px 0;padding-top:16px;font-size:12px;font-weight:700;color:#37474F;text-transform:uppercase;letter-spacing:.5px">Información Catastral y de Extensión</div>
+              <div class="grid-3">
+                <div class="field"><label class="req">Aplicación Órdenes Gestión Catastral</label><select><option selected>SI</option><option>NO</option><option>Por verificar</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Porcentaje restrictivo</label><input type="number" step="0.01" value="15.50"><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Porcentaje condicionado</label><input type="number" step="0.01" value="8.25"><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+              </div>
+              <div class="field" style="margin-top:10px"><label>Descripción de determinantes identificados</label><textarea rows="2">Zona de protección de ronda hídrica de 30m sobre quebrada El Guayabo.</textarea><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p1-fisico">
+            <div class="section-title" onclick="toggleAccordion(this)">Estado Físico, Servicios y Mejoras <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-4">
+                <div class="field"><label>Servicios públicos</label><select><option selected>Energía / acueducto</option><option>Todos</option><option>Sin servicios</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Deuda servicios públicos</label><select class="si-no"><option>SI</option><option selected>NO</option><option>Sin información</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Mejoras constructivas</label><select><option>Bueno</option><option selected>Regular</option><option>Malo</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Mejoras productivas</label><select><option>Bueno</option><option selected>Regular</option><option>Malo</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Vías de acceso</label><select><option>Bueno</option><option>Regular</option><option selected>Malo</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Fuentes hídricas</label><select><option selected>Identificadas</option><option>No identificadas</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Áreas conservación</label><select class="si-no"><option>SI</option><option selected>NO</option><option>Por verificar</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+                <div class="field"><label>Áreas productivas</label><select class="si-no"><option selected>SI</option><option>NO</option><option>Por verificar</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p1-tenedores">
+            <div class="section-title" onclick="toggleAccordion(this)">Tenedores, Receptores o Posibles Beneficiarios <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-3">
+                <div class="field"><label class="req">Tipo de tenedor</label><select readonly style="background:#f5f5f5"><option selected>Persona natural individual</option><option>Entrega común y provisoria</option><option>Persona jurídica</option><option>Asociación campesina</option><option>Comunidad étnica</option><option>Terceros ocupantes</option></select></div>
+                <div class="field"><label class="req">Nombre completo</label><input type="text" value="Carlos Alberto Marín" readonly style="background:#f5f5f5"></div>
+                <div class="field"><label>Cédula</label><input type="text" value="79.456.123" readonly style="background:#f5f5f5"></div>
+                <div class="field"><label>Género</label><select readonly style="background:#f5f5f5"><option selected>Masculino</option><option>Femenino</option><option>Otro</option></select></div>
+                <div class="field"><label>Contacto</label><input type="text" value="310 123 4567" readonly style="background:#f5f5f5"></div>
+                <div class="field"><label>Soporte de entrega</label><input type="text" value="Acta 045 de 2023" readonly style="background:#f5f5f5"></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p1-sintesis">
+            <div class="section-title" onclick="toggleAccordion(this)">Síntesis Preliminar para Verificación en Campo <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-2">
+                <div class="field"><label>Estado general del expediente</label><textarea rows="2">Documentación completa. Pendiente verificación de linderos.</textarea></div>
+                <div class="field"><label>Documentos disponibles</label><textarea rows="2">Acta de entrega, certificado de tradición, fotografías aéreas.</textarea></div>
+                <div class="field"><label>Vacíos documentales</label><textarea rows="2">Ninguno identificado.</textarea></div>
+                <div class="field"><label>Alertas iniciales</label><textarea rows="2">Diferencia de área registral vs ANT (+13%).</textarea></div>
+              </div>
+              <div class="field" style="margin-top:10px"><label class="req">Clasificación preliminar para programación de visita</label><select><option>Sin alerta / con vacíos subsanables</option><option selected>Requiere revisión previa</option><option>No programar sin decisión superior</option></select></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PESTAÑA 2 -->
+      <div class="panel" id="panel2">
+        <div class="form-main">
+          <button class="btn btn-blue">💾 Guardar</button>
+          <button class="btn btn-green">🔄 Sincronizar Datos de Campo</button>
+          <button class="btn btn-green" onclick="abrirModalFinalizar(2)">✅ Finalizar Tarea M2</button>
+          <div class="section-card collapsed" id="p2-obligaciones">
+            <div class="section-title" onclick="toggleAccordion(this)">Obligaciones de Provisionalidad <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-4">
+                <div class="field"><label>1. Derechos y responsabilidades sobre el predio</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="2" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>2. No vender, alquilar o prestar el predio</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="3" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>3. No ceder los derechos sobre el predio</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="1" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>4. Usar el predio sin molestar a los vecinos</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>5. Producción agropecuaria asociados</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="2" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>6. No sembrar cultivos ilegales</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>7. Realizar reparaciones necesarias</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="1" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>8. Respetar el agua y caminos de tránsito</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>9. Custodiar el predio</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="2" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>10. Conservar recursos naturales</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>11. No perturbar el bienestar de personas</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>12. Cuidar el terreno y usarlo con responsabilidad</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>13. Pagar servicios públicos a tiempo</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="1" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>14. No construir infraestructura permanente</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>15. No realizar parcelaciones o divisiones</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="3" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>16. No practicar actividades que desmejoren el terreno</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>17. No usar el terreno para actividades ilegales o peligrosas</label><select class="si-no" readonly style="background:#f5f5f5"><option selected>SI</option><option>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p2-juridicos">
+            <div class="section-title" onclick="toggleAccordion(this)">Conflictos Jurídicos <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-4">
+                <div class="field"><label>Art. 426 CP - Estafa</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Art. 250-A - Corrupción privada</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Art. 289 - Falsedad en documento privado</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Art. 261 - Usurpación de inmuebles</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Art. 263 - Invasión de tierras</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Art. 330 - Deforestación</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Art. 347 - Amenaza</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Violencia Sexual y de Género con Denuncia</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p2-conflicto">
+            <div class="section-title" onclick="toggleAccordion(this)">Riesgos Asociados al Conflicto Armado <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-3">
+                <div class="field"><label>Presencia grupos armados</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Testaferrato</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p2-gobernanza">
+            <div class="section-title" onclick="toggleAccordion(this)">Conflictos de Gobernanza <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-3">
+                <div class="field"><label>Cohesión Social</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="1" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Participación y Democracia</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Bajo Nivel de Capacidad</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="2" readonly style="background:#f5f5f5"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p2-genero">
+            <div class="section-title" onclick="toggleAccordion(this)">Conflictos de Género <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-3">
+                <div class="field"><label>Cuántas mujeres participan</label><input type="number" value="3" style="width:80px" readonly style="background:#f5f5f5"><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="1" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Desistimiento mujeres</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Alerta Violencia de género/sexual</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p2-socioambiental">
+            <div class="section-title" onclick="toggleAccordion(this)">Conflictos Socioambientales y Territoriales <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-4">
+                <div class="field"><label>Riesgo ambiental</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="2" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Ordenamiento social del Predio</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Ocupación Irregular</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="0" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Conflicto de Uso</label><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="1" readonly style="background:#f5f5f5"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p2-compatibilidad">
+            <div class="section-title" onclick="toggleAccordion(this)">Compatibilidad <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-3">
+                <div class="field"><label>Categoría o condición del área</label><select readonly style="background:#f5f5f5"><option selected>Área útil/Área condicionada</option><option>Área de protección</option></select><div class="risk-wrap" style="margin-top:4px" ><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="1" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Compatibilidad del uso</label><select readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option><option>Condicionado</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="2" readonly style="background:#f5f5f5"></div></div>
+                <div class="field"><label>Acción recomendada por compatibilidad</label><select readonly style="background:#f5f5f5"><option selected>Continuar</option><option>Ajustar manejo</option><option>Suspender</option></select><div class="risk-wrap" style="margin-top:4px"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><input type="number" min="0" max="3" value="1" readonly style="background:#f5f5f5"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card collapsed" id="p2-sostenibilidad">
+            <div class="section-title" onclick="toggleAccordion(this)">Evaluación de Sostenibilidad <span class="arrow">▼</span></div>
+            <div class="section-body" style="overflow-x:auto">
+              <table class="sost-table">
+                <thead><tr><th>Indicador</th><th>Valor / Estado</th><th>Evalúe de 0 a 3 el nivel de riesgo</th></tr></thead>
+                <tbody>
+                  <tr><td>Compactación</td><td><select readonly style="background:#f5f5f5"><option>Baja</option><option selected>Media</option><option>Alta</option></select></td><td><div class="risk-wrap"><input readonly type="number" min="0" max="3" value="1" style="width:60px"></div></td></tr>
+                  <tr><td>Erosión</td><td><select readonly style="background:#f5f5f5"><option>No evidente</option><option selected>Laminar</option><option>Surcos</option><option>Cárcavas</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="2" style="width:60px"></div></td></tr>
+                  <tr><td>Suelo desnudo</td><td><select readonly style="background:#f5f5f5"><option>Baja</option><option>Media</option><option selected>Alta</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="2" style="width:60px"></div></td></tr>
+                  <tr><td>Fertilidad aparente</td><td><select readonly style="background:#f5f5f5"><option selected>Buena</option><option>Media</option><option>Baja</option><option>Sin información</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Salinización</td><td><select readonly style="background:#f5f5f5"><option>Muy severa</option><option>Severa</option><option selected>Moderada</option><option>Ligera</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="1" style="width:60px"</div></td></tr>
+                  <tr><td>Degradación de suelo por desertificación</td><td><select readonly style="background:#f5f5f5"><option selected>Muy severa</option><option>Severa</option><option>Moderada</option><option>Ligera</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="3" style="width:60px"></div></td></tr>
+                  <tr><td>Manejo actual del suelo</td><td><select readonly style="background:#f5f5f5"><option selected>Adecuado</option><option>Insuficiente</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Fuentes hídricas</td><td><select readonly style="background:#f5f5f5"><option>Protegidas</option><option selected>Intervenidas</option><option>Contaminadas</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="2" style="width:60px"></div></td></tr>
+                  <tr><td>Rondas o fajas</td><td><select readonly style="background:#f5f5f5"><option selected>Respetadas</option><option>Parcial</option><option>Incumplidas</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Drenajes naturales</td><td><select readonly style="background:#f5f5f5"><option selected>Conservados</option><option>Alterados</option><option>Obstruidos</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Canales o drenajes artificiales</td><td><select readonly style="background:#f5f5f5"><option selected>Existentes</option><option>No existentes</option><option>Obstruidos</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Zonas inundables</td><td><select readonly style="background:#f5f5f5"><option selected>Uso compatible</option><option>Condicionado</option><option>Uso incompatible</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Bosques o reservorios naturales</td><td><select readonly style="background:#f5f5f5"><option selected>Conservados</option><option>Intervenidos</option><option>Degradados</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Árboles dispersos</td><td><select readonly style="background:#f5f5f5"><option selected>Conservados</option><option>Eliminados</option><option>En recuperación</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Áreas de restauración</td><td><select readonly style="background:#f5f5f5"><option>En recuperación</option><option selected>Establecidas</option><option>Sin establecer</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Quemas</td><td><select readonly style="background:#f5f5f5"><option>No evidentes</option><option selected>Recientes</option><option>Frecuentes</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="2" style="width:60px"></div></td></tr>
+                  <tr><td>Tala</td><td><select readonly style="background:#f5f5f5"><option selected>No evidente</option><option>Puntual</option><option>Frecuente</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Residuos o contaminación</td><td><select readonly style="background:#f5f5f5"><option selected>No evidente</option><option>Puntual</option><option>Frecuente</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Cultivos transitorios</td><td><select readonly style="background:#f5f5f5"><option selected>Compatibles</option><option>Condicionados</option><option>Incompatibles</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Cultivos permanentes</td><td><select readonly style="background:#f5f5f5"><option selected>Compatibles</option><option>Condicionados</option><option>Incompatibles</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Ganadería</td><td><select readonly style="background:#f5f5f5"><option selected>Extensiva</option><option>Rotacional</option><option>Intensiva</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="1" style="width:60px"></div></td></tr>
+                  <tr><td>Sistemas agroforestales</td><td><select readonly style="background:#f5f5f5"><option selected>Presentes</option><option>Incipientes</option><option>Ausentes</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Adecuación de suelos</td><td><select readonly style="background:#f5f5f5"><option selected>Realizada</option><option>Parcial</option><option>No realizada</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Infraestructura productiva</td><td><select readonly style="background:#f5f5f5"><option selected>Adecuada</option><option>Insuficiente</option><option>No existe</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Vivienda rural</td><td><select readonly style="background:#f5f5f5"><option selected>Existente</option><option>Nueva</option><option>En construcción</option><option>Ausente</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Cercas internas</td><td><select readonly style="background:#f5f5f5"><option selected>Existentes</option><option>Nuevas</option><option>En construcción</option><option>Ausentes</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Caminos internos</td><td><select readonly style="background:#f5f5f5"><option selected>Conservados</option><option>Deteriorados</option><option>Inexistentes</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Corrales o bodegas</td><td><select readonly style="background:#f5f5f5"><option selected>Existentes</option><option>Nuevas</option><option>Ausentes</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Infraestructura en zonas de riesgo</td><td><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="0" style="width:60px"></div></td></tr>
+                  <tr><td>Posee plan de finca</td><td><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="1" style="width:60px"></td></tr>
+                  <tr><td>Posee asistencia técnica</td><td><select class="si-no" readonly style="background:#f5f5f5"><option>SI</option><option selected>NO</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="2" style="width:60px"></div></td></tr>
+                  <tr><td>Acceso a crédito</td><td><select readonly style="background:#f5f5f5"><option>Ninguno</option><option selected>Insuficiente</option><option>Suficiente</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="1" style="width:60px"></div></td></tr>
+                  <tr><td>Capacidad financiera</td><td><select readonly style="background:#f5f5f5"><option>Ninguna</option><option selected>Limitada</option><option>Adecuada</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="2" style="width:60px"></div></td></tr>
+                  <tr><td>Maquinaria y herramientas</td><td><select readonly style="background:#f5f5f5"><option selected>Inexistente</option><option>Insuficiente</option><option>Adecuada</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="2" style="width:60px"></div></td></tr>
+                  <tr><td>Limitantes de la producción</td><td><select readonly style="background:#f5f5f5"><option selected>Aspectos físicos</option><option>Económicos</option><option>Técnicos</option><option>Sociales</option></select></td><td><div class="risk-wrap"><input type="number" min="0" max="3" value="2" style="width:60px"></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PESTAÑA 3 -->
+      <div class="panel" id="panel3">
+        <div class="form-main">
+          <button class="btn btn-blue">💾 Guardar</button>
+          <button class="btn btn-green" onclick="abrirModalFinalizar(3)">✅ Finalizar Tarea M3</button>
+          <div class="section-card collapsed" id="p3-h1">
+            <div class="section-title" onclick="toggleAccordion(this)">Identificación de Hallazgos <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-2">
+                <!--<div class="field"><label class="req">Hallazgo identificado</label><input type="text" value="Diferencia de área registral vs levantamiento ANT"></div>-->
+                <div class="field"><label class="req">Hallazgo identificado</label><textarea rows="2">Diferencia de área registral vs levantamiento ANT</textarea></div>
+				<div class="field"><label class="req">Descripción clara del hallazgo</label><textarea rows="2">El área determinada por el equipo de campo (142.3 Ha) supera en un 13.3% el área registral (125.5 Ha). Se requiere aclaración catastral.</textarea></div>
+              </div>
+              <div class="grid-4">
+                <div class="field"><label class="req">Tipo de hallazgo</label><textarea rows="2">Condición previa, Limitante productiva, Deterioro reciente, Uso inadecuado, Afectación ambiental, Conflicto de uso</textarea></div>
+				<div class="field"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><div class="risk-wrap"><input type="number" min="0" max="3" value="2"><span class="risk-tag r2">RIESGO MODERADO</span></div></div>
+				<div class="field"><label class="req">Causa probable</label><textarea rows="2">Falta de asistencia, Desconocimiento</textarea></div>
+				<div class="field"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><div class="risk-wrap"><input type="number" min="0" max="3" value="2"><span class="risk-tag r2">RIESGO MODERADO</span></div></div>
+				<!--<div class="field"><label class="req">Tipo de hallazgo</label><select><option>Condición previa</option><option>Limitante productiva</option><option selected>Deterioro reciente</option><option>Uso inadecuado</option><option>Afectación ambiental</option><option>Conflicto de uso</option><option>Incumplimiento</option><option>Otro</option></select></div>
+                <div class="field"><label class="req">Causa probable</label><select><option>Condición natural</option><option>Falta de asistencia</option><option selected>Desconocimiento</option><option>Presión productiva</option><option>Conflicto interno</option><option>Acción de terceros</option><option>Incumplimiento</option><option>Otro</option></select></div>
+                <div class="field"><label class="req">Evidencia del hallazgo</label><select><option selected>Fotografía</option><option>GPS</option><option>Entrevista</option><option>Acta</option><option>Imagen satelital</option><option>Informe técnico</option><option>Concepto previo</option><option>Otro</option></select></div>
+                <div class="field"><label class="req">Nivel del hallazgo</label><select><option>Verde</option><option>Amarillo</option><option selected>Naranja</option><option>Rojo</option></select></div>
+                <div class="field"><label class="req">Repetible por hallazgo</label><select><option>Seguimiento ordinario</option><option selected>Recomendación técnica</option><option>Plan de mejora</option><option>Concepto</option><option>Ruta institucional</option></select></div>
+                <div class="field"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><div class="risk-wrap"><input type="number" min="0" max="3" value="2"><span class="risk-tag r2">RIESGO MODERADO</span></div></div>-->
+              </div>
+			  <div class="grid-3">                
+				<div class="field"><label class="req">Evidencia del hallazgo</label><textarea rows="2">Fotografía,GPS, Entrevista</textarea></div>				
+				<div class="field"><label class="req">Nivel del hallazgo</label><textarea rows="2">Verde, Naranja, Rojo</textarea></div>
+				<div class="field"><label class="req">Repetible por hallazgo</label><textarea rows="2">Seguimiento ordinario, Recomendación técnica </textarea></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p3-plan1">
+            <div class="section-title" onclick="toggleAccordion(this)">Plan de Mejora o Manejo Predial <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-2">
+			  
+			    <div class="field"><label class="req">Hallazgo identificado (referencia)</label><textarea rows="2">Diferencia de área registral vs levantamiento ANT</textarea></div>
+				<div class="field"><label class="req">Acción de mejora</label><textarea rows="2">Acción técnica, Correctiva, Preventiva</textarea></div>
+				<div class="field"><label class="req">Responsable</label><textarea rows="2">Condición natural,  Falta de asistencia, Desconocimiento, Presión productiva</textarea></div>
+				<div class="field"><label class="req">Plazo</label><textarea rows="2">1-3 meses, 3-6 meses, 6-12 meses</textarea></div>
+				<div class="field"><label class="req">Apoyo requerido</label><textarea rows="2">Asistencia técnica, Concepto ambiental, Capacitación, Articulación institucional</textarea></div>
+				<div class="field"><label class="req">Evidencia esperada</label><textarea rows="2">Fotos, Puntos GPS, Acta, Cronograma</textarea></div>
+				<div class="field"><label class="req">Seguimiento</label><textarea rows="2">Pendiente, En curso, Cumplido, Vencido, No aplica</textarea></div>
+				
+
+                <!--<div class="field"><label>Hallazgo identificado (referencia)</label><input type="text" value="Diferencia de área registral vs levantamiento ANT" readonly style="background:#f5f5f5"></div>
+                <div class="field"><label class="req">Acción de mejora</label><select><option selected>Acción técnica</option><option>Correctiva</option><option>Preventiva</option></select></div>
+                <div class="field"><label class="req">Responsable</label><select><option>Condición natural</option><option>Falta de asistencia</option><option>Desconocimiento</option><option>Presión productiva</option><option>Conflicto interno</option><option selected>Acción de terceros</option><option>Incumplimiento</option><option>Otro</option></select></div>
+                <div class="field"><label class="req">Plazo</label><select><option selected>Inmediata</option><option>1-3 meses</option><option>3-6 meses</option><option>6-12 meses</option></select></div>
+                <div class="field"><label class="req">Apoyo requerido</label><select><option selected>Asistencia técnica</option><option>Concepto ambiental</option><option>Capacitación</option><option>Articulación institucional</option></select></div>
+                <div class="field"><label class="req">Evidencia esperada</label><select><option selected>Fotos</option><option>Puntos GPS</option><option>Acta</option><option>Cronograma</option><option>Visita</option><option>Concepto</option></select></div>
+                <div class="field"><label class="req">Seguimiento</label><select><option selected>Pendiente</option><option>En curso</option><option>Cumplido</option><option>Vencido</option><option>No aplica</option></select></div>-->
+              </div>
+            </div>
+          </div>
+          <!--<div class="section-card collapsed" id="p3-h2">
+            <div class="section-title" onclick="toggleAccordion(this)">Segundo Hallazgo - Ocupación Irregular <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-2">
+                <div class="field"><label class="req">Hallazgo identificado</label><input type="text" value="Ocupación irregular por terceros en linderos norte"></div>
+                <div class="field"><label>Descripción clara del hallazgo</label><textarea rows="2">Se identificó una familia ocupando aproximadamente 2 hectáreas en el lindero norte del predio sin documentación que acredite tenencia legal.</textarea></div>
+              </div>
+              <div class="grid-3">
+                <div class="field"><label class="req">Tipo de hallazgo</label><select><option>Condición previa</option><option>Limitante productiva</option><option>Deterioro reciente</option><option>Uso inadecuado</option><option>Afectación ambiental</option><option selected>Conflicto de uso</option><option>Incumplimiento</option><option>Otro</option></select></div>
+                <div class="field"><label class="req">Causa probable</label><select><option>Condición natural</option><option>Falta de asistencia</option><option>Desconocimiento</option><option>Presión productiva</option><option>Conflicto interno</option><option selected>Acción de terceros</option><option>Incumplimiento</option><option>Otro</option></select></div>
+                <div class="field"><label class="req">Evidencia del hallazgo</label><select><option selected>Fotografía</option><option>GPS</option><option>Entrevista</option><option>Acta</option><option>Imagen satelital</option><option>Informe técnico</option><option>Concepto previo</option><option>Otro</option></select></div>
+                <div class="field"><label class="req">Nivel del hallazgo</label><select><option>Verde</option><option>Amarillo</option><option>Naranja</option><option selected>Rojo</option></select></div>
+                <div class="field"><label class="req">Repetible por hallazgo</label><select><option>Seguimiento ordinario</option><option>Recomendación técnica</option><option>Plan de mejora</option><option>Concepto</option><option selected>Ruta institucional</option></select></div>
+                <div class="field"><label class="req">Evalúe de 0 a 3 el nivel de riesgo</label><div class="risk-wrap"><input type="number" min="0" max="3" value="3"><span class="risk-tag r3">RIESGO ALTO</span></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card collapsed" id="p3-plan2">
+            <div class="section-title" onclick="toggleAccordion(this)">Plan de Mejora - Ocupación Irregular <span class="arrow">▼</span></div>
+            <div class="section-body">
+              <div class="grid-2">
+                <div class="field"><label>Hallazgo identificado (referencia)</label><input type="text" value="Ocupación irregular por terceros en linderos norte" readonly style="background:#f5f5f5"></div>
+                <div class="field"><label class="req">Acción de mejora</label><select><option>Acción técnica</option><option selected>Correctiva</option><option>Preventiva</option></select></div>
+                <div class="field"><label class="req">Responsable</label><select><option>Condición natural</option><option>Falta de asistencia</option><option>Desconocimiento</option><option>Presión productiva</option><option>Conflicto interno</option><option selected>Acción de terceros</option><option>Incumplimiento</option><option>Otro</option></select></div>
+                <div class="field"><label class="req">Plazo</label><select><option>Inmediata</option><option>1-3 meses</option><option selected>3-6 meses</option><option>6-12 meses</option></select></div>
+                <div class="field"><label class="req">Apoyo requerido</label><select><option>Asistencia técnica</option><option>Concepto ambiental</option><option>Capacitación</option><option selected>Articulación institucional</option></select></div>
+                <div class="field"><label class="req">Evidencia esperada</label><select><option>Fotos</option><option>Puntos GPS</option><option selected>Acta</option><option>Cronograma</option><option>Visita</option><option>Concepto</option></select></div>
+                <div class="field"><label class="req">Seguimiento</label><select><option selected>Pendiente</option><option>En curso</option><option>Cumplido</option><option>Vencido</option><option>No aplica</option></select></div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:10px;padding:10px 0 30px">
+            <button class="btn btn-outline">➕ Agregar nuevo hallazgo</button>
+            <button class="btn btn-blue">✓ Consolidar y cerrar verificación</button>
+          </div>-->
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VISTA 4: DASHBOARD ===== -->
+    <div class="view" id="view-dashboard">
+      <div class="view-title">📈 Dashboard de Seguimiento</div>
+      <div class="view-subtitle">Resumen general del estado de predios y seguimientos</div>
+
+      <!-- Segmentadores -->
+      <div class="filter-bar">
+        <div class="filter-row">
+          <div class="filter-field"><label>Departamento</label>
+            <select>
+              <option>Todos</option>
+              <option>Antioquia</option>
+              <option>Bolívar</option>
+              <option>Córdoba</option>
+              <option>Sucre</option>
+              <option>Meta</option>
+              <option>Caquetá</option>
+            </select>
+          </div>
+          <div class="filter-field"><label>Municipio</label>
+            <select>
+              <option>Todos</option>
+              <option>Puerto Berrío</option>
+              <option>Montería</option>
+              <option>Sincelejo</option>
+              <option>Cartagena</option>
+              <option>Caucasia</option>
+              <option>Villavicencio</option>
+            </select>
+          </div>
+          <div class="filter-field"><label>Estado Semáforo</label>
+            <select>
+              <option>Todos</option>
+              <option>🟢 Verde</option>
+              <option>🟠 Naranja</option>
+              <option>🔴 Rojo</option>
+            </select>
+          </div>
+          <button class="btn btn-blue" onclick="abrirModalFiltrarDashboard()">🔍 Filtrar</button>
+        </div>
+      </div>
+      <!-- Fichas de totales (solo cantidades) -->
+      <div class="dash-grid">
+        <div class="dash-card">
+          <div class="dash-label">Total Predios</div>
+          <div class="dash-num">1,248</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-label">En Seguimiento</div>
+          <div class="dash-num" style="color:var(--a)">342</div>
+        </div>
+		<div class="dash-card">
+          <div class="dash-label">Sin Seguimiento Iniciado</div>
+          <div class="dash-num" style="color:var(--a)">906</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-label">En Alertas Rojas</div>
+          <div class="dash-num" style="color:var(--r)">28</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-label">Visita este mes</div>
+          <div class="dash-num" style="color:var(--vo)">86</div>
+        </div>
+      </div>
+	  
+      <!-- Mapa de Colombia -->
+      <div class="dash-row" style="grid-template-columns:1fr;margin:16px 24px 0">
+        <div class="dash-wide" style="display:flex;align-items:center;gap:20px">
+          <div style="flex:1">
+            <h3 style="font-size:14px;color:var(--t);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">🗺️ Distribución Geográfica de Predios</h3>
+            <p style="font-size:12px;color:#78909C;line-height:1.6;margin-bottom:12px">
+              Visualización de la ubicación de los predios bajo seguimiento en el territorio nacional. Los puntos indican la concentración de bienes inmuebles rurales por región.
+            </p>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#546E7A"><span style="width:10px;height:10px;border-radius:50%;background:var(--v)"></span> Bajo riesgo</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#546E7A"><span style="width:10px;height:10px;border-radius:50%;background:var(--o)"></span> Moderado</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#546E7A"><span style="width:10px;height:10px;border-radius:50%;background:var(--r)"></span> Alto riesgo</div>
+            </div>
+          </div>
+          <div style="width:280px;flex-shrink:0">
+            <svg viewBox="0 0 400 460" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,.1))">
+              <!-- Silueta Colombia -->
+              <path d="M180,20 L195,15 L210,18 L225,25 L240,22 L255,28 L270,35 L285,32 L300,38 L315,45 L325,55 L330,70 L335,85 L340,100 L338,115 L335,130 L330,145 L325,160 L320,175 L315,190 L310,205 L305,220 L300,235 L295,250 L290,265 L285,280 L280,295 L275,310 L270,325 L265,340 L260,355 L255,370 L250,385 L245,400 L240,415 L235,430 L230,445 L220,450 L210,445 L200,440 L190,435 L180,430 L170,425 L160,420 L150,415 L140,410 L130,405 L120,400 L110,395 L100,390 L90,385 L80,380 L70,375 L60,370 L55,360 L50,350 L48,340 L50,330 L55,320 L60,310 L65,300 L70,290 L75,280 L80,270 L85,260 L90,250 L95,240 L100,230 L105,220 L110,210 L115,200 L120,190 L125,180 L130,170 L135,160 L140,150 L145,140 L150,130 L155,120 L160,110 L165,100 L170,90 L175,80 L178,70 L180,60 L182,50 L181,40 L180,30 Z" fill="#C8E6C9" stroke="#4CAF50" stroke-width="2"/>
+              <!-- Departamentos (líneas divisorias simplificadas) -->
+              <path d="M180,20 L182,120 M182,120 L120,190 M182,120 L250,130 M250,130 L310,205 M250,130 L260,355 M120,190 L60,310 M120,190 L150,415 M310,205 L280,295" fill="none" stroke="#81C784" stroke-width="1" opacity="0.6"/>
+              <!-- Puntos de predios -->
+              <!-- Antioquia - Puerto Berrío (Rojo) -->
+              <circle cx="175" cy="165" r="6" fill="#e53935" stroke="#fff" stroke-width="1.5"/>
+              <circle cx="175" cy="165" r="10" fill="#e53935" opacity="0.25"/>
+              <!-- Córdoba - Montería (Amarillo) -->
+              <circle cx="155" cy="140" r="5" fill="#F9A825" stroke="#fff" stroke-width="1.5"/>
+              <circle cx="155" cy="140" r="8" fill="#F9A825" opacity="0.25"/>
+              <!-- Sucre - Sincelejo (Verde) -->
+              <circle cx="168" cy="148" r="5" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Bolívar - Cartagena (Naranja) -->
+              <circle cx="185" cy="155" r="5" fill="#EF6C00" stroke="#fff" stroke-width="1.5"/>
+              <circle cx="185" cy="155" r="8" fill="#EF6C00" opacity="0.25"/>
+              <!-- Meta (Verde) -->
+              <circle cx="240" cy="220" r="5" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Caquetá (Verde) -->
+              <circle cx="255" cy="290" r="5" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Nariño (Rojo) -->
+              <circle cx="145" cy="340" r="5" fill="#e53935" stroke="#fff" stroke-width="1.5"/>
+              <!-- Cauca (Naranja) -->
+              <circle cx="155" cy="310" r="4" fill="#EF6C00" stroke="#fff" stroke-width="1.5"/>
+              <!-- Chocó (Verde) -->
+              <circle cx="130" cy="200" r="4" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Valle (Verde) -->
+              <circle cx="165" cy="295" r="4" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Huila (Verde) -->
+              <circle cx="195" cy="305" r="4" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Tolima (Verde) -->
+              <circle cx="195" cy="260" r="4" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Boyacá (Verde) -->
+              <circle cx="215" cy="210" r="4" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Santander (Verde) -->
+              <circle cx="220" cy="185" r="4" fill="#8BC34A" stroke="#fff" stroke-width="1.5"/>
+              <!-- Norte de Santander (Naranja) -->
+              <circle cx="225" cy="165" r="4" fill="#EF6C00" stroke="#fff" stroke-width="1.5"/>
+              <!-- Labels -->
+              <text x="175" y="158" font-size="8" fill="#37474F" text-anchor="middle" font-weight="600">ANT</text>
+              <text x="155" y="133" font-size="7" fill="#37474F" text-anchor="middle">COR</text>
+              <text x="185" y="148" font-size="7" fill="#37474F" text-anchor="middle">BOL</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="dash-row">
+        <div class="dash-wide">
+          <h3>📊 Distribución por Estado de Semáforo</h3>
+          <div class="progress-wrap">
+            <div class="progress-item"><span style="width:80px">Verde</span><div class="progress-bar"><div class="progress-fill" style="width:65%;background:var(--v)"></div></div><span style="width:40px;text-align:right">65%</span></div>
+            <div class="progress-item"><span style="width:80px">Naranja</span><div class="progress-bar"><div class="progress-fill" style="width:18%;background:var(--o)"></div></div><span style="width:40px;text-align:right">18%</span></div>
+            <div class="progress-item"><span style="width:80px">Rojo</span><div class="progress-bar"><div class="progress-fill" style="width:17%;background:var(--r)"></div></div><span style="width:40px;text-align:right">17%</span></div>
+          </div>
+        </div>
+        <div class="dash-wide">
+          <h3>🏡 Predios por Subdirección</h3>
+          <div class="progress-wrap">
+            <div class="progress-item"><span style="width:120px;font-size:11px">MAG-Medio y Caribe</span><div class="progress-bar"><div class="progress-fill" style="width:45%;background:var(--a)"></div></div><span style="width:40px;text-align:right">45%</span></div>
+            <div class="progress-item"><span style="width:120px;font-size:11px">MAG-Pacífico</span><div class="progress-bar"><div class="progress-fill" style="width:25%;background:var(--a)"></div></div><span style="width:40px;text-align:right">25%</span></div>
+            <div class="progress-item"><span style="width:120px;font-size:11px">MAG-Orinoquía</span><div class="progress-bar"><div class="progress-fill" style="width:20%;background:var(--a)"></div></div><span style="width:40px;text-align:right">20%</span></div>
+            <div class="progress-item"><span style="width:120px;font-size:11px">MAG-Amazonía</span><div class="progress-bar"><div class="progress-fill" style="width:10%;background:var(--a)"></div></div><span style="width:40px;text-align:right">10%</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="dash-row" style="grid-template-columns:1fr 1fr">
+        <div class="dash-wide">
+          <h3>📋 Hallazgos por Tipo</h3>
+          <div class="progress-wrap">
+            <div class="progress-item"><span style="width:140px;font-size:11px">Deterioro reciente</span><div class="progress-bar"><div class="progress-fill" style="width:32%;background:var(--o)"></div></div><span style="width:40px;text-align:right">32</span></div>
+            <div class="progress-item"><span style="width:140px;font-size:11px">Conflicto de uso</span><div class="progress-bar"><div class="progress-fill" style="width:28%;background:var(--o)"></div></div><span style="width:40px;text-align:right">28</span></div>
+            <div class="progress-item"><span style="width:140px;font-size:11px">Uso inadecuado</span><div class="progress-bar"><div class="progress-fill" style="width:18%;background:var(--o)"></div></div><span style="width:40px;text-align:right">18</span></div>
+            <div class="progress-item"><span style="width:140px;font-size:11px">Afectación ambiental</span><div class="progress-bar"><div class="progress-fill" style="width:15%;background:var(--o)"></div></div><span style="width:40px;text-align:right">15</span></div>
+            <div class="progress-item"><span style="width:140px;font-size:11px">Incumplimiento</span><div class="progress-bar"><div class="progress-fill" style="width:7%;background:var(--o)"></div></div><span style="width:40px;text-align:right">7</span></div>
+          </div>
+        </div>
+        <div class="dash-wide">
+          <h3>👥 Usuarios con más asignaciones</h3>
+          <div class="progress-wrap">
+            <div class="progress-item"><span style="width:140px;font-size:11px">Ing. J. Pérez</span><div class="progress-bar"><div class="progress-fill" style="width:78%;background:var(--vo)"></div></div><span style="width:40px;text-align:right">42</span></div>
+            <div class="progress-item"><span style="width:140px;font-size:11px">Ing. M. Gómez</span><div class="progress-bar"><div class="progress-fill" style="width:65%;background:var(--vo)"></div></div><span style="width:40px;text-align:right">35</span></div>
+            <div class="progress-item"><span style="width:140px;font-size:11px">Abg. L. Ríos</span><div class="progress-bar"><div class="progress-fill" style="width:50%;background:var(--vo)"></div></div><span style="width:40px;text-align:right">27</span></div>
+            <div class="progress-item"><span style="width:140px;font-size:11px">Dra. A. Martínez</span><div class="progress-bar"><div class="progress-fill" style="width:35%;background:var(--vo)"></div></div><span style="width:40px;text-align:right">19</span></div>
+            <div class="progress-item"><span style="width:140px;font-size:11px">Ing. C. López</span><div class="progress-bar"><div class="progress-fill" style="width:22%;background:var(--vo)"></div></div><span style="width:40px;text-align:right">12</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ===== MODAL: FILTRAR DATOS PARAMÉTRICOS ===== -->
+    <div class="modal-overlay" id="modal-filtrar">
+      <div class="modal-card">
+        <div class="modal-header">🔍 Filtrar datos paramétricos</div>
+        <div class="modal-body">
+          <p>Se están aplicando los filtros seleccionados sobre la configuración de formularios.</p>
+          <p style="font-size:11px;color:#78909C">La grilla se actualizará con los registros que coincidan con los criterios de búsqueda.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalFiltrar()">❌ Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+        <!-- ===== MODAL: NUEVO REGISTRO PARAMÉTRICO ===== -->
+    <div class="modal-overlay" id="modal-nuevo">
+      <div class="modal-card" style="max-width:820px;max-height:92vh;overflow-y:auto">
+        <div class="modal-header">➕ Nuevo Registro Paramétrico</div>
+        <div class="modal-body">
+          <div class="grid-2" style="gap:12px">
+            <div class="field"><label class="req">Módulo</label>
+              <select>
+                <option value="">-- Seleccione --</option>
+                <option value="M1">M1 --&gt; (datos del formulario pestaña 1)</option>
+                <option value="M2">M2 --&gt; (datos del formulario pestaña 2)</option>
+                <option value="M3">M3 --&gt; (datos del formulario pestaña 3)</option>
+              </select>
+            </div>
+            <div class="field"><label class="req">Sección</label><input type="text" maxlength="50" placeholder="Ej: Datos Generales"></div>
+            <div class="field"><label class="req">Descripción</label><input type="text" maxlength="100" placeholder="Ej: Configuración 2025-I Predios Rurales"></div>
+            <div class="field"><label class="req">Variable</label><input type="text" maxlength="500" placeholder="Texto visible para el evaluador en el formulario"></div>
+            <div class="field"><label class="req">Tipo Dato</label>
+              <select id="tipo-dato-nuevo" onchange="toggleOpcionesRespuesta(this)">
+                <option value="">-- Seleccione --</option>
+                <option value="SI_NO">SI_NO</option>
+                <option value="LISTA">LISTA</option>
+                <option value="ESCALA">NUMERICO</option>
+                <option value="TEXTO">TEXTO</option>
+              </select>
+            </div>
+            <div class="field opciones-campo" style="display:none"><label>Opciones Respuesta (JSON)</label><input type="text" placeholder='["Titulado","Poseedor","Ocupante"]'></div>
+            <div class="field"><label class="req">Peso Pregunta</label><input type="number" min="1" placeholder="Ej: 5"></div>
+            <div class="field"><label class="req">Escala Mínima</label><input type="number" value="0" placeholder="0"></div>
+            <div class="field"><label class="req">Escala Máxima</label><input type="number" value="3" placeholder="3"></div>
+            <div class="field"><label>Gatillo</label>
+              <select id="gatillo-nuevo" onchange="toggleGatillo(this)">
+                <option value="false">false</option>
+                <option value="true">true</option>
+              </select>
+            </div>
+            <div class="field gatillo-campo" style="display:none"><label class="req">Tipo Gatillo</label>
+              <select>
+                <option value="">-- Seleccione --</option>
+                <option value="ROJO">ROJO</option>
+                <option value="AMARILLO">AMARILLO</option>
+              </select>
+            </div>
+            
+            
+            <div class="field"><label class="req">Umbral Verde - Amarillo</label><input type="number" step="0.01" min="0" max="1" value="33.33" placeholder="33.33"></div>
+            <div class="field"><label class="req">Umbral Amarillo - Rojo</label><input type="number" step="0.01" min="0" max="1" value="66.66" placeholder="66.66"></div>
+            <div class="field"><label class="req">Estado Configuración</label>
+              <select>
+                <option>BORRADOR</option>
+                <option selected>ACTIVA</option>
+                <option>INACTIVA</option>
+                <option>OBSOLETA</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalNuevo()">❌ Cancelar</button>
+          <button class="btn btn-green" onclick="guardarNuevo()">💾 Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL: CONFIRMACIÓN GUARDADO ===== -->
+    <div class="modal-overlay" id="modal-guardado">
+      <div class="modal-card" style="max-width:420px">
+        <div class="modal-header">✅ Registro guardado</div>
+        <div class="modal-body">
+          <p>El registro paramétrico se ha guardado exitosamente en la base de datos.</p>
+          <p style="font-size:11px;color:#78909C">La configuración quedará disponible para su uso en los formularios de evaluación.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-green" onclick="cerrarModalGuardado()">✓ Aceptar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL: FILTRAR PREDIOS ===== -->
+    <div class="modal-overlay" id="modal-filtrar-predios">
+      <div class="modal-card">
+        <div class="modal-header">🔍 Filtrar predios</div>
+        <div class="modal-body">
+          <p>Se están aplicando los filtros seleccionados sobre la administración de predios.</p>
+          <p style="font-size:11px;color:#78909C">La grilla se actualizará con los registros que coincidan con los criterios de búsqueda.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalFiltrarPredios()">❌ Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+<!-- ===== MODAL: CERRAR SESIÓN ===== -->
+    <div class="modal-overlay" id="modal-cerrar-sesion">
+      <div class="modal-card" style="max-width:420px">
+        <div class="modal-header">🔒 Cerrar sesión</div>
+        <div class="modal-body">
+          <p>¿Está seguro de que desea cerrar su sesión en el sistema?</p>
+          <p style="font-size:11px;color:#78909C">Deberá volver a ingresar sus credenciales para acceder nuevamente a la plataforma.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalCerrarSesion()">❌ Cancelar</button>
+          <button class="btn btn-red" onclick="confirmarCerrarSesion()">🔒 Cerrar sesión</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL: FILTRAR SEGUIMIENTO ===== -->
+    <div class="modal-overlay" id="modal-filtrar-seguimiento">
+      <div class="modal-card">
+        <div class="modal-header">🔍 Filtrar seguimientos</div>
+        <div class="modal-body">
+          <p>Se están aplicando los filtros seleccionados sobre la bandeja de seguimiento de predios.</p>
+          <p style="font-size:11px;color:#78909C">La grilla se actualizará con los registros que coincidan con los criterios de búsqueda.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalFiltrarSeguimiento()">❌ Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL: SESIÓN CERRADA ===== -->
+    <div class="modal-overlay" id="modal-cerrado-exito">
+      <div class="modal-card" style="max-width:420px">
+        <div class="modal-header">✅ Sesión cerrada</div>
+        <div class="modal-body">
+          <p>Sesión cerrada exitosamente. Redirigiendo al inicio de sesión...</p>
+          <p style="font-size:11px;color:#78909C">Gracias por utilizar el Sistema de Información Misional (SIM).</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-green" onclick="cerrarModalCerradoExito()">✓ Aceptar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL: PREDIO YA EN SEGUIMIENTO ===== -->
+    <div class="modal-overlay" id="modal-predio-en-seguimiento">
+      <div class="modal-card" style="max-width:480px">
+        <div class="modal-header">⚠️ Advertencia</div>
+        <div class="modal-body">
+          <p>El predio o uno de los predios seleccionado ya se encuentra en seguimiento.</p>
+          <p style="font-size:11px;color:#78909C">Por favor verifique la bandeja de seguimiento para gestionar este predio.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-green" onclick="cerrarModalPredioEnSeguimiento()">✓ Aceptar</button>
+        </div>
+      </div>
+    </div>
+
+<!-- ===== MODAL: HACER SEGUIMIENTO ===== -->
+    <div class="modal-overlay" id="modal-seguimiento">
+      <div class="modal-card" style="max-width:520px">
+        <div class="modal-header">📍 Confirmar seguimiento</div>
+        <div class="modal-body">
+          <p>¿Realizar seguimiento a <strong>los predios seleccionados</strong>?</p>
+          <p style="font-size:11px;color:#78909C;margin-bottom:16px">Esta acción asignará los predios seleccionados a la bandeja de seguimiento para su gestión.</p>
+          <div class="field" style="margin-top:12px">
+            <label class="req">Asignar a usuario</label>
+            <select id="asignar-usuario-seguimiento" style="width:100%;padding:8px 10px;border:1px solid #B0BEC5;border-radius:4px;font-size:12px;font-family:inherit;background:#fff">
+              <option value="">-- Seleccione un usuario --</option>
+              <option value="jperez">Ing. J. Pérez</option>
+              <option value="mgomez">Ing. M. Gómez</option>
+              <option value="lrios">Abg. L. Ríos</option>
+              <option value="amartinez">Dra. A. Martínez</option>
+              <option value="clopez">Ing. C. López</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalSeguimiento()">❌ Cancelar</button>
+          <button class="btn btn-green" onclick="aceptarYSeleccionarOtro()">✅ Aceptar y seleccionar otro</button>
+          <button class="btn btn-blue" onclick="aceptarEIrSeguimiento()">📋 Aceptar e ir a seguimiento</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+    <!-- ===== MODAL: FINALIZAR TAREA ===== -->
+    <div class="modal-overlay" id="modal-finalizar">
+      <div class="modal-card" style="max-width:560px">
+        <div class="modal-header" style="background:linear-gradient(90deg,var(--vo),var(--v))">✅ Finalizar Tarea</div>
+        <div class="modal-body">
+          <p id="modal-finalizar-texto"></p>
+          <p style="font-size:11px;color:#78909C;margin-top:8px">Una vez finalizada, esta acción no podrá revertirse.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalFinalizar()">❌ Cancelar</button>
+          <button class="btn btn-green" id="btn-confirmar-finalizar" onclick="confirmarFinalizar()">✅ Confirmar y continuar</button>
+        </div>
+      </div>
+    </div>
+
+<script>
+// ===== MODALES DATOS PARAMÉTRICOS =====
+function abrirModalFiltrar(){ document.getElementById('modal-filtrar').classList.add('active'); }
+function cerrarModalFiltrar(){ document.getElementById('modal-filtrar').classList.remove('active'); }
+function abrirModalNuevo(){ document.getElementById('modal-nuevo').classList.add('active'); }
+function cerrarModalNuevo(){ document.getElementById('modal-nuevo').classList.remove('active'); }
+// ===== MODAL FINALIZAR TAREA =====
+const nombresPestanas = {
+  1: 'FICHA DE VERIFICACIÓN DEL BIEN INMUEBLE EN ADMINISTRACIÓN',
+  2: 'DIAGNÓSTICO ESTADO DE LA TENENCIA',
+  3: 'CONSOLIDACIÓN DE HALLAZGOS'
+};
+let tabFinalizar = 1;
+
+function abrirModalFinalizar(tabNum){
+  tabFinalizar = tabNum;
+  const modal = document.getElementById('modal-finalizar');
+  const texto = document.getElementById('modal-finalizar-texto');
+  const btn = document.getElementById('btn-confirmar-finalizar');
+  const nombre = nombresPestanas[tabNum];
+
+  if(tabNum === 3){
+    texto.innerHTML = '¿Está seguro de finalizar la tarea? El sistema valida <strong>' + nombre + '</strong> y si todo está Ok, queda el análisis cerrado y queda todo de solo lectura.';
+    btn.textContent = '✅ Confirmar y cerrar análisis';
+  } else {
+    texto.innerHTML = '¿Está seguro de finalizar la tarea? El sistema valida <strong>' + nombre + '</strong> y si todo está Ok, continúa a la siguiente pestaña y deja la pestaña de solo lectura.';
+    btn.textContent = '✅ Confirmar y continuar';
+  }
+  modal.classList.add('active');
+}
+
+function cerrarModalFinalizar(){
+  document.getElementById('modal-finalizar').classList.remove('active');
+}
+
+function confirmarFinalizar(){
+  cerrarModalFinalizar();
+  bloquearPestana(tabFinalizar);
+  if(tabFinalizar < 3){
+    switchTab(tabFinalizar + 1);
+  }
+}
+
+function bloquearPestana(tabNum){
+  const panel = document.getElementById('panel' + tabNum);
+  const tab = document.querySelectorAll('.form-tab')[tabNum - 1];
+  if(panel) panel.classList.add('locked');
+  if(tab){
+    tab.classList.add('locked');
+    tab.innerHTML = '🔒 ' + tab.textContent.replace('🔒 ','');
+    tab.onclick = null;
+  }
+}
+
+function toggleGatillo(select){
+  const campos = document.querySelectorAll('.gatillo-campo');
+  campos.forEach(c=>c.style.display = select.value==='true' ? 'flex' : 'none');
+}
+function toggleOpcionesRespuesta(select){
+  const campo = document.querySelector('.opciones-campo');
+  if(campo) campo.style.display = select.value==='LISTA' ? 'flex' : 'none';
+}
+function guardarNuevo(){
+  cerrarModalNuevo();
+  document.getElementById('modal-guardado').classList.add('active');
+}
+function cerrarModalGuardado(){
+  document.getElementById('modal-guardado').classList.remove('active');
+}
+
+// ===== MODAL CERRAR SESIÓN =====
+function abrirModalCerrarSesion(){ document.getElementById('modal-cerrar-sesion').classList.add('active'); }
+function cerrarModalCerrarSesion(){ document.getElementById('modal-cerrar-sesion').classList.remove('active'); }
+function confirmarCerrarSesion(){
+  cerrarModalCerrarSesion();
+  document.getElementById('modal-cerrado-exito').classList.add('active');
+}
+function cerrarModalCerradoExito(){
+  document.getElementById('modal-cerrado-exito').classList.remove('active');
+}
+
+// ===== MODAL FILTRAR SEGUIMIENTO =====
+function abrirModalFiltrarSeguimiento(){ document.getElementById('modal-filtrar-seguimiento').classList.add('active'); }
+function cerrarModalFiltrarSeguimiento(){ document.getElementById('modal-filtrar-seguimiento').classList.remove('active'); }
+
+// ===== MODAL FILTRAR PREDIOS =====
+function abrirModalFiltrarPredios(){ document.getElementById('modal-filtrar-predios').classList.add('active'); }
+function cerrarModalFiltrarPredios(){ document.getElementById('modal-filtrar-predios').classList.remove('active'); }
+
+
+// ===== MODAL RE-ASIGNAR =====
+function abrirModalReasignar(){ document.getElementById('modal-reasignar').classList.add('active'); }
+function cerrarModalReasignar(){ document.getElementById('modal-reasignar').classList.remove('active'); }
+function confirmarReasignar(){
+  const usuario = document.getElementById('reasignar-usuario').value;
+  if(!usuario){ alert('Por favor seleccione un usuario para la re-asignación.'); return; }
+  cerrarModalReasignar();
+  alert('Predio re-asignado exitosamente.');
+}
+
+// ===== MODAL EXPORTAR EXCEL =====
+function abrirModalExportarExcel(){ document.getElementById('modal-exportar-excel').classList.add('active'); }
+function cerrarModalExportarExcel(){ document.getElementById('modal-exportar-excel').classList.remove('active'); }
+
+// ===== MODAL FILTRAR DASHBOARD =====
+function abrirModalFiltrarDashboard(){ document.getElementById('modal-filtrar-dashboard').classList.add('active'); }
+function cerrarModalFiltrarDashboard(){ document.getElementById('modal-filtrar-dashboard').classList.remove('active'); }
+
+// ===== NAVEGACIÓN DE VISTAS =====
+function showView(viewName){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
+  const target = document.getElementById('view-'+viewName);
+  if(target) target.classList.add('active');
+  const menu = document.querySelector('.menu-item[data-view="'+viewName+'"]');
+  if(menu) menu.classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ===== SELECCIÓN DE FILAS EN TABLAS =====
+function selectRow(row, tableId){
+  const checkbox = row.querySelector('.row-check');
+  if(event.target.type !== 'checkbox'){
+    checkbox.checked = !checkbox.checked;
+  }
+  updateRowSelection(tableId);
+}
+
+function toggleAll(masterCheckbox, tableId){
+  const table = document.getElementById(tableId);
+  table.querySelectorAll('.row-check').forEach(cb=>{
+    cb.checked = masterCheckbox.checked;
+  });
+  updateRowSelection(tableId);
+}
+
+function updateRowSelection(tableId){
+  const table = document.getElementById(tableId);
+  const checked = table.querySelectorAll('.row-check:checked');
+  table.querySelectorAll('tbody tr').forEach(row=>{
+    const cb = row.querySelector('.row-check');
+    row.classList.toggle('selected', cb && cb.checked);
+  });
+  if(tableId === 'table-predios'){
+    document.getElementById('btn-seguimiento-predios').disabled = checked.length === 0;
+  }
+  if(tableId === 'table-seguimiento'){
+    document.getElementById('btn-gestionar').disabled = checked.length === 0;
+    document.getElementById('btn-reasignar').disabled = checked.length === 0;
+  }
+}
+
+// ===== MODAL HACER SEGUIMIENTO =====
+function abrirModalSeguimiento(){
+  const table = document.getElementById('table-predios');
+  const rows = table.querySelectorAll('tbody tr');
+  let primerRegistroSeleccionado = false;
+  rows.forEach((row, index) => {
+    const cb = row.querySelector('.row-check');
+    if(cb && cb.checked && index === 0){
+      primerRegistroSeleccionado = true;
+    }
+  });
+  if(primerRegistroSeleccionado){
+    document.getElementById('modal-predio-en-seguimiento').classList.add('active');
+  } else {
+    document.getElementById('modal-seguimiento').classList.add('active');
+  }
+}
+function cerrarModalSeguimiento(){
+  document.getElementById('modal-seguimiento').classList.remove('active');
+}
+function cerrarModalPredioEnSeguimiento(){
+  document.getElementById('modal-predio-en-seguimiento').classList.remove('active');
+}
+function aceptarYSeleccionarOtro(){
+  cerrarModalSeguimiento();
+  // Desmarcar checkboxes
+  document.querySelectorAll('#table-predios .row-check').forEach(cb=>cb.checked=false);
+  document.getElementById('check-all-predios').checked=false;
+  updateRowSelection('table-predios');
+}
+function aceptarEIrSeguimiento(){
+  cerrarModalSeguimiento();
+  showView('seguimiento');
+}
+
+// ===== GESTIONAR PREDIO =====
+function gestionarPredio(){
+  const table = document.getElementById('table-seguimiento');
+  const checked = table.querySelectorAll('.row-check:checked');
+  if(checked.length === 0) return;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
+  document.getElementById('view-gestion').classList.add('active');
+  switchTab(1);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function volverSeguimiento(){
+  document.getElementById('view-gestion').classList.remove('active');
+  showView('seguimiento');
+}
+
+// ===== ACCORDION =====
+function toggleAccordion(titleEl){
+  const card = titleEl.closest('.section-card');
+  card.classList.toggle('collapsed');
+}
+
+// ===== FORMULARIO TABS Y SCROLL SPY =====
+const sectionMap = {
+  1: [
+    {id:'p1-datos', label:'Datos Generales'},
+    {id:'p1-ident', label:'Jurídico-Administrativo'},
+    {id:'p1-soportes', label:'Soportes Documentales'},
+    {id:'p1-tenencia', label:'Tenencia o Entrega'},
+    {id:'p1-fisico', label:'Físico y Servicios'},
+    {id:'p1-tenedores', label:'Tenedores'},
+    {id:'p1-sintesis', label:'Síntesis Preliminar'}
+  ],
+  2: [
+    {id:'p2-obligaciones', label:'Obligaciones Provisionalidad'},
+    {id:'p2-juridicos', label:'Conflictos Jurídicos'},
+    {id:'p2-conflicto', label:'Conflicto Armado'},
+    {id:'p2-gobernanza', label:'Gobernanza'},
+    {id:'p2-genero', label:'Género'},
+    {id:'p2-socioambiental', label:'Socioambiental'},
+    {id:'p2-compatibilidad', label:'Compatibilidad'},
+    {id:'p2-sostenibilidad', label:'Sostenibilidad'}
+  ],
+  3: [
+    {id:'p3-h1', label:'Identificación de Hallazgos'},
+    {id:'p3-plan1', label:'Plan de Mejora'},
+    //{id:'p3-h2', label:'Ocupación Irregular'},
+    //{id:'p3-plan2', label:'Plan Mejora Ocupación'}
+  ]
+};
+
+let currentTab = 1;
+
+function renderSecNav(tabNum){
+  const list = document.getElementById('secNavList');
+  const sections = sectionMap[tabNum] || [];
+  list.innerHTML = sections.map((s,i)=>{
+    return `<a class="sec-item" href="#${s.id}" onclick="scrollToSec(event,'${s.id}')">`+
+           `<div class="sec-num">${i+1}</div><span>${s.label}</span></a>`;
+  }).join('');
+}
+
+function switchTab(n){
+  currentTab = n;
+  document.querySelectorAll('.form-tab').forEach((t,i)=>t.classList.toggle('active',i===n-1));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n-1));
+  renderSecNav(n);
+  document.getElementById('secNavList').scrollLeft = 0;
+}
+
+function scrollToSec(e,id){
+  if(e) e.preventDefault();
+  const el = document.getElementById(id);
+  if(!el) return;
+  // Expandir la sección si está colapsada
+  el.classList.remove('collapsed');
+  const topbarH = 56;
+  const secNavH = document.getElementById('secNavWrap').offsetHeight;
+  const formTabsH = document.querySelector('.form-tabs').offsetHeight;
+  const offset = topbarH + secNavH + formTabsH + 16;
+  const top = el.getBoundingClientRect().top + window.scrollY - offset;
+  window.scrollTo({top: top, behavior:'smooth'});
+}
+
+function updateActiveSec(){
+  const sections = sectionMap[currentTab] || [];
+  const items = document.querySelectorAll('.sec-item');
+  const topbarH = 56;
+  const secNavH = document.getElementById('secNavWrap').offsetHeight;
+  const formTabsH = document.querySelector('.form-tabs').offsetHeight;
+  const offset = topbarH + secNavH + formTabsH + 20;
+  let activeIdx = 0;
+  sections.forEach((s,i)=>{
+    const el = document.getElementById(s.id);
+    if(!el) return;
+    const rect = el.getBoundingClientRect();
+    if(rect.top <= offset + 50) activeIdx = i;
+  });
+  items.forEach((item,i)=>{
+    item.classList.toggle('active', i === activeIdx);
+  });
+  if(items[activeIdx]){
+    items[activeIdx].scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
+  }
+}
+
+let ticking = false;
+window.addEventListener('scroll', ()=>{
+  if(!ticking){
+    window.requestAnimationFrame(()=>{
+      updateActiveSec();
+      ticking = false;
+    });
+    ticking = true;
+  }
+});
+
+// Inicializar
+renderSecNav(1);
+setTimeout(()=>{
+  const firstItem = document.querySelector('.sec-item');
+  if(firstItem) firstItem.classList.add('active');
+}, 100);
+</script>
+
+
+    <!-- ===== MODAL: RE-ASIGNAR ===== -->
+    <div class="modal-overlay" id="modal-reasignar">
+      <div class="modal-card" style="max-width:520px">
+        <div class="modal-header" style="background:linear-gradient(90deg,#F9A825,#EF6C00)">🔄 Re-Asignar Predio</div>
+        <div class="modal-body">
+          <p>Esta acción permitirá cambiar la asignación del predio seleccionado a otro usuario del sistema.</p>
+          <p style="font-size:11px;color:#78909C;margin-bottom:16px">Asegúrese de seleccionar el usuario correcto antes de confirmar la re-asignación.</p>
+          <div class="field" style="margin-top:12px">
+            <label class="req">Asignar a usuario</label>
+            <select id="reasignar-usuario" style="width:100%;padding:8px 10px;border:1px solid #B0BEC5;border-radius:4px;font-size:12px;font-family:inherit;background:#fff">
+              <option value="">-- Seleccione un usuario --</option>
+              <option value="jperez">Ing. J. Pérez</option>
+              <option value="mgomez">Ing. M. Gómez</option>
+              <option value="lrios">Abg. L. Ríos</option>
+              <option value="amartinez">Dra. A. Martínez</option>
+              <option value="clopez">Ing. C. López</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalReasignar()">❌ Cerrar</button>
+          <button class="btn btn-green" onclick="confirmarReasignar()">✅ Asignar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MODAL: EXPORTAR EXCEL ===== -->
+    <div class="modal-overlay" id="modal-exportar-excel">
+      <div class="modal-card" style="max-width:480px">
+        <div class="modal-header" style="background:linear-gradient(90deg,#1976D2,#1565C0)">📊 Exportar a Excel</div>
+        <div class="modal-body">
+          <p>Se generará un archivo Excel con la información actual de la grilla de seguimiento de predios.</p>
+          <p style="font-size:11px;color:#78909C">El archivo incluirá todos los registros visibles aplicando los filtros activos.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-green" onclick="cerrarModalExportarExcel()">✓ Aceptar</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ===== MODAL: FILTRAR DASHBOARD ===== -->
+    <div class="modal-overlay" id="modal-filtrar-dashboard">
+      <div class="modal-card" style="max-width:480px">
+        <div class="modal-header">🔍 Filtrar Dashboard</div>
+        <div class="modal-body">
+          <p>Se están aplicando los filtros seleccionados sobre el dashboard de seguimiento.</p>
+          <p style="font-size:11px;color:#78909C">Los indicadores y gráficos se actualizarán con los registros que coincidan con los criterios de búsqueda.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="cerrarModalFiltrarDashboard()">❌ Cerrar</button>
+          <button class="btn btn-green" onclick="cerrarModalFiltrarDashboard()">✓ Aplicar filtros</button>
+        </div>
+      </div>
+    </div>
+
+</body>
+</html>
