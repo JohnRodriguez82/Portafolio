@@ -3,6 +3,7 @@ from flask_login import UserMixin
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import zlib
+import re
 
 db = SQLAlchemy()
 
@@ -113,61 +114,49 @@ class Evidencia(db.Model):
             visual_limpio = ''
         return anuncio_limpio, visual_limpio
 
-    def generar_descripcion_automatica(self, obligacion):
-        import re
-        import zlib
+    def generar_descripcion_automatica(self, obligacion, visual=None):
+    anuncio = (self.anuncio_usuario or "").strip()
+    visual = (visual or "").strip()
 
-        anuncio = self.anuncio_usuario.strip()
-        visual = (self.descripcion_visual_ia or "").strip()
-        anuncio_limpio, visual_limpio = self._extraer_contenido_funcional(anuncio, visual)
+    contenido = self._extraer_contenido_funcional(
+        anuncio,
+        visual
+    )
 
-        if not anuncio_limpio:
-            anuncio_limpio = "Actividad contractual realizada durante el periodo reportado."
+    if not contenido:
+        contenido = anuncio or "la actividad contractual prevista"
 
-        oraciones = []
+    templates = [
+        (
+            f"Durante el periodo reportado se adelantó {contenido}. "
+            f"Esta actividad se desarrolló en el marco de la obligación "
+            f"contractual y contribuye al avance de las actividades "
+            f"previstas para el cumplimiento del objeto contractual."
+        ),
+        (
+            f"En el marco de la obligación contractual, se llevó a cabo "
+            f"{contenido}. La actividad permitió avanzar en la "
+            f"estructuración, desarrollo y consolidación de los componentes "
+            f"requeridos, de acuerdo con las necesidades identificadas "
+            f"durante el periodo reportado."
+        ),
+        (
+            f"Como parte de las actividades programadas, se realizó "
+            f"{contenido}. Esta gestión permitió fortalecer el desarrollo "
+            f"de los componentes asociados a la obligación y dar "
+            f"continuidad a las acciones técnicas y funcionales previstas "
+            f"para el periodo."
+        ),
+        (
+            f"Durante el periodo se desarrolló {contenido}. La labor "
+            f"realizada representa un avance en la ejecución de las "
+            f"actividades contractuales, contribuyendo a la implementación "
+            f"y consolidación de los resultados previstos."
+        ),
+    ]
 
-        # Oracion 1: accion principal (el anuncio del usuario, que YA es una oracion completa)
-        if not anuncio_limpio.endswith(('.', '!', '?')):
-            anuncio_limpio += '.'
-        oraciones.append(anuncio_limpio)
+    return random.choice(templates)
 
-        # Oracion 2: enriquecimiento con lo que vio la IA (si existe y es diferente)
-        if visual_limpio:
-            if not visual_limpio.endswith(('.', '!', '?')):
-                visual_limpio += '.'
-            # Conectores fluidos; el hash garantiza variedad pero determinismo
-            conectores = [
-                "Asimismo, se evidencia que {}",
-                "De igual manera, {}",
-                "En consecuencia, {}",
-                "Adicionalmente, {}",
-                "De manera complementaria, {}",
-            ]
-            idx = zlib.crc32(visual_limpio.encode('utf-8')) % len(conectores)
-            # Adaptar la visual al conector (primera letra minuscula porque el conector ya inicia la oracion)
-            visual_adaptada = visual_limpio[0].lower() + visual_limpio[1:] if visual_limpio else ''
-            oracion2 = conectores[idx].format(visual_adaptada)
-            oracion2 = oracion2.replace('..', '.').replace('. .', '.').strip()
-            oraciones.append(oracion2)
-
-        # Oracion 3: cierre contractual (contexto de la obligacion)
-        cierres = [
-            "Esta accion contribuye al cumplimiento de la obligacion contractual y fortalece el avance del objeto del contrato.",
-            "El desarrollo de esta tarea responde a los compromisos establecidos en el contrato y aporta al logro de los resultados esperados.",
-            "Esta labor se desarrollo conforme a lo planeado y dentro de los terminos pactados, garantizando la continuidad operativa del proyecto.",
-            "La actividad fue ejecutada de manera oportuna y contribuye al seguimiento de los indicadores de gestion definidos.",
-            "Dicha accion representa un avance significativo en el cumplimiento de los compromisos contractuales y aporta al cumplimiento de las metas establecidas.",
-        ]
-        idx = zlib.crc32((anuncio_limpio + obligacion.descripcion).encode('utf-8')) % len(cierres)
-        oraciones.append(cierres[idx])
-
-        # Unir y capitalizar correctamente despues de cada punto
-        parrafo = ' '.join(oraciones)
-        def _cap(match):
-            return match.group(1) + match.group(2).upper()
-        parrafo = re.sub(r'(^|[.!?]\s+)([a-záéíóúñ])', _cap, parrafo)
-
-        return parrafo
 
     def __repr__(self):
         return f'<Evidencia {self.numero_actividad}>'
