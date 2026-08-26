@@ -266,7 +266,8 @@ def _limpiar_texto(texto):
     # Capitalizar primera letra
     # --------------------------------------------------------
 
-    # Capitalizar primera letra de CADA oracion    
+    # Capitalizar primera letra de CADA oracion
+
     def _cap(match):
         return match.group(1) + match.group(2).upper()
     resultado = re.sub(r'(^|[.!?]\s+)([a-záéíóúñ])', _cap, resultado)
@@ -484,11 +485,17 @@ def analizar_imagen(
     """
     Analiza una imagen mediante Gemini.
 
-    La IA recibe tres elementos:
+    Gemini NO redacta aquí el párrafo contractual final.
 
-    1. La imagen (optimizada: redimensionada y comprimida).
-    2. La obligacion contractual.
-    3. El contexto escrito por el usuario.
+    Su función es analizar técnicamente la evidencia y
+    entregar información adicional que posteriormente será
+    utilizada por Evidencia/modelos.py para construir:
+
+        descripcion_actividad
+
+    La respuesta de esta función se guarda como:
+
+        descripcion_visual_ia
     """
 
     key = (
@@ -500,6 +507,11 @@ def analizar_imagen(
     )
 
     if not key:
+
+        print(
+            '[VisionAnalyzer] '
+            'No existe API key de Gemini.'
+        )
 
         return None
 
@@ -520,34 +532,42 @@ def analizar_imagen(
 
         client = genai.Client(
             api_key=key,
-            http_options=types.HttpOptions(timeout=120000)
+            http_options=types.HttpOptions(
+                timeout=120000
+            )
         )
 
-        # --------------------------------------------------------
-        # OPTIMIZAR IMAGEN ANTES DE ENVIARLA A GEMINI
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # OPTIMIZAR IMAGEN
+        # ----------------------------------------------------
 
-        imagen_optimizada = optimizar_imagen_para_ia(
-            image_path,
-            max_width=1024,
-            quality=85
+        imagen_optimizada = (
+            optimizar_imagen_para_ia(
+                image_path,
+                max_width=1024,
+                quality=85
+            )
         )
 
-        image_bytes = imagen_optimizada.read()
+        image_bytes = (
+            imagen_optimizada.read()
+        )
 
         mime = 'image/jpeg'
 
-        # --------------------------------------------------------
-        # Restaurar puntero del archivo original para que
-        # EvidenciaService pueda guardarlo despues.
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # RESTAURAR PUNTERO
+        # ----------------------------------------------------
 
         try:
 
-            if hasattr(
-                image_path,
-                'stream'
-            ) and image_path.stream:
+            if (
+                hasattr(
+                    image_path,
+                    'stream'
+                )
+                and image_path.stream
+            ):
 
                 image_path.stream.seek(0)
 
@@ -562,126 +582,208 @@ def analizar_imagen(
 
             print(
                 '[VisionAnalyzer] '
-                'No fue posible restaurar el puntero '
-                f'del archivo original: {exc}'
+                'No fue posible restaurar el '
+                f'puntero: {exc}'
             )
 
         # ----------------------------------------------------
-        # Contexto
+        # CONTEXTO
         # ----------------------------------------------------
 
         contexto = (
-            contexto_obligacion
-            or
-            'No se proporciono la descripcion de la obligacion.'
+            str(
+                contexto_obligacion
+                or ''
+            )
+            .strip()
         )
 
         anuncio = (
-            anuncio_usuario
-            or
-            'No se proporciono contexto adicional.'
+            str(
+                anuncio_usuario
+                or ''
+            )
+            .strip()
         )
 
+        if not contexto:
+
+            contexto = (
+                'No se proporcionó la '
+                'descripción de la obligación.'
+            )
+
+        if not anuncio:
+
+            anuncio = (
+                'No se proporcionó '
+                'contexto adicional.'
+            )
+
         # ----------------------------------------------------
-        # Prompt contractual
+        # PROMPT DE ANÁLISIS VISUAL
         # ----------------------------------------------------
 
         prompt = f"""
-Eres un redactor de informes de ejecucion contractual
-para entidades publicas.
+Eres un analista técnico especializado en evidencias
+para informes de ejecución contractual de entidades
+públicas.
 
-Analiza la imagen adjunta y redacta UN PARRAFO
-profesional que describa la actividad contractual
-realizada.
+Tu función es analizar la evidencia suministrada y
+proporcionar información técnica adicional que pueda
+utilizarse posteriormente para redactar el párrafo
+contractual de la actividad.
 
-OBLIGACION CONTRACTUAL:
+OBLIGACIÓN CONTRACTUAL:
+
 {contexto}
 
-CONTEXTO DEL USUARIO:
+ANUNCIO O CONTEXTO PROPORCIONADO POR EL USUARIO:
+
 {anuncio}
 
-INSTRUCCIONES:
+ANALIZA LOS ELEMENTOS QUE PUEDAN IDENTIFICARSE CON
+SEGURIDAD Y DESCRIBE, CUANDO APLIQUE:
 
-1. Usa el contexto del usuario como BASE, pero
-   ENRIQUECELO con lo que ves en la imagen.
+- funcionalidades;
+- módulos;
+- formularios;
+- campos;
+- botones;
+- tablas;
+- interfaces;
+- configuraciones;
+- componentes técnicos;
+- documentos;
+- información textual legible;
+- avances funcionales;
+- relaciones entre los elementos identificados.
 
-2. Describe los elementos funcionales o tecnicos
-   visibles: formularios, campos, modulos,
-   mockups, tablas, interfaces, configuraciones,
-   esquemas, documentos, etc.
+REGLAS:
 
-3. Relaciona la actividad con la obligacion
-   contractual.
+1. Utiliza el anuncio del usuario como contexto de
+   interpretación.
 
-4. Escribe UN SOLO PARRAFO de 4 a 6 oraciones.
+2. Aporta información adicional obtenida del análisis
+   visual.
 
-5. NO digas "en la imagen", "se observa",
-   "la imagen muestra", "fotografia",
-   "captura de pantalla".
+3. No repitas innecesariamente el anuncio.
 
-6. NO inventes datos, cantidades, nombres,
-   fechas, porcentajes ni reuniones.
+4. No inventes información.
 
-7. Usa lenguaje formal y tecnico.
+5. No inventes fechas, cantidades, porcentajes,
+   nombres, reuniones, aprobaciones o resultados.
 
-8. Entrega SOLO el parrafo, sin titulos ni listas.
+6. No afirmes que una actividad está terminada si la
+   evidencia solamente permite identificar un avance.
+
+7. No utilices expresiones como:
+   "en la imagen",
+   "se observa",
+   "la imagen muestra",
+   "captura de pantalla",
+   "fotografía",
+   "evidencia fotográfica".
+
+8. Utiliza lenguaje técnico y profesional.
+
+9. Escribe entre 3 y 5 oraciones sustanciales.
+
+10. Entrega únicamente el texto descriptivo.
+
+11. No escribas "IA vio:".
+
+12. Este texto será utilizado posteriormente para
+    construir el párrafo profesional de la actividad.
 """
 
-        response = client.models.generate_content(
-            model=modelo,
-            contents=[
-                prompt,
-                types.Part.from_bytes(
-                    data=image_bytes,
-                    mime_type=mime
+        # ----------------------------------------------------
+        # LLAMADA A GEMINI
+        # ----------------------------------------------------
+
+        response = (
+            client.models.generate_content(
+                model=modelo,
+                contents=[
+                    prompt,
+                    types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type=mime
+                    )
+                ],
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    max_output_tokens=512
                 )
-            ],
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=512
             )
         )
 
-        raw_text = response.text.strip() if response.text else None
+        raw_text = (
+            response.text.strip()
+            if response.text
+            else None
+        )
 
-        print(f'[VisionAnalyzer] Modelo: {modelo}')
-        print(f'[VisionAnalyzer] Raw response: {repr(raw_text)[:300]}')
+        print(
+            f'[VisionAnalyzer] Modelo: {modelo}'
+        )
 
-        if raw_text:
-            descripcion = _limpiar_texto(raw_text)
-            print(f'[VisionAnalyzer] Limpio: {repr(descripcion)[:300]}')
-            if not descripcion:
-                print('[VisionAnalyzer] WARNING: _limpiar_texto dejo el texto vacio. Usando raw.')
-                descripcion = raw_text
-        else:
-            descripcion = None
-            print('[VisionAnalyzer] Gemini retorno texto vacio o None.')
+        print(
+            '[VisionAnalyzer] Raw response: '
+            f'{repr(raw_text)[:500]}'
+        )
+
+        if not raw_text:
+
+            print(
+                '[VisionAnalyzer] '
+                'Gemini retornó texto vacío.'
+            )
+
+            return None
+
+        descripcion = _limpiar_texto(
+            raw_text
+        )
+
+        if not descripcion:
+
+            descripcion = (
+                raw_text.strip()
+            )
+
+        print(
+            '[VisionAnalyzer] '
+            'Descripción visual IA: '
+            f'{repr(descripcion)[:500]}'
+        )
 
         return descripcion
 
-    except Exception as e:
+    except Exception as exc:
 
         print(
-            f'[VisionAnalyzer] '
-            f'Error con modelo {modelo}: {e}'
+            '[VisionAnalyzer] '
+            f'Error con modelo {modelo}: {exc}'
         )
 
         return None
 
     finally:
 
-        # --------------------------------------------------------
-        # MUY IMPORTANTE:
-        # devolver el archivo al inicio para que posteriormente
-        # EvidenciaService pueda guardarlo correctamente.
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # RESTAURAR ARCHIVO
+        # ----------------------------------------------------
 
         try:
 
-            if hasattr(
-                image_path,
-                'stream'
-            ) and image_path.stream:
+            if (
+                hasattr(
+                    image_path,
+                    'stream'
+                )
+                and image_path.stream
+            ):
 
                 image_path.stream.seek(0)
 
@@ -696,266 +798,9 @@ INSTRUCCIONES:
 
             print(
                 '[VisionAnalyzer] '
-                'No fue posible restaurar el puntero '
-                f'del archivo: {exc}'
+                'No fue posible restaurar el '
+                f'puntero: {exc}'
             )
-
-
-# ============================================================
-# CONSOLIDAR ACTIVIDADES
-# ============================================================
-
-def consolidar_textos_ejecutivo(
-    descripciones,
-    api_key=None,
-    obligacion=None,
-    periodo=None
-):
-    """
-    Consolida las actividades de un reporte mensual
-    en un unico parrafo ejecutivo.
-
-    La obligacion contractual se utiliza como contexto
-    para que el resumen explique la relacion entre las
-    actividades y el cumplimiento contractual.
-    """
-
-    if not descripciones:
-
-        return (
-            'Durante el periodo reportado no se '
-            'registraron actividades.'
-        )
-
-    # --------------------------------------------------------
-    # Limpiar descripciones
-    # --------------------------------------------------------
-
-    descripciones_limpias = []
-
-    for descripcion in descripciones:
-
-        if not descripcion:
-
-            continue
-
-        texto = _limpiar_texto(
-            descripcion
-        )
-
-        if texto:
-
-            descripciones_limpias.append(
-                texto
-            )
-
-    if not descripciones_limpias:
-
-        return (
-            'Durante el periodo reportado no se '
-            'registraron actividades.'
-        )
-
-    # --------------------------------------------------------
-    # Una sola actividad
-    # --------------------------------------------------------
-
-    if len(descripciones_limpias) == 1:
-
-        return descripciones_limpias[0]
-
-    # --------------------------------------------------------
-    # API KEY
-    # --------------------------------------------------------
-
-    key = (
-        _limpiar_key(api_key)
-        or
-        os.environ.get(
-            'GEMINI_API_KEY'
-        )
-    )
-
-    if not key:
-
-        return _consolidar_manual(
-            descripciones_limpias
-        )
-
-    modelo = _encontrar_modelo_funcional(
-        key
-    )
-
-    if not modelo:
-
-        return _consolidar_manual(
-            descripciones_limpias
-        )
-
-    try:
-
-        client = genai.Client(
-            api_key=key,
-            http_options=types.HttpOptions(timeout=90000)
-        )
-
-        contexto_obligacion = (
-            obligacion
-            or
-            'No especificada.'
-        )
-
-        contexto_periodo = (
-            periodo
-            or
-            'Periodo reportado.'
-        )
-
-        actividades = "\n".join(
-            [
-                f'{i + 1}. {texto}'
-                for i, texto
-                in enumerate(
-                    descripciones_limpias
-                )
-            ]
-        )
-
-        prompt = f"""
-Eres un redactor especializado en informes
-de ejecucion contractual para entidades publicas.
-
-Debes consolidar las actividades realizadas durante
-un periodo en UN SOLO PARRAFO EJECUTIVO.
-
-OBLIGACION CONTRACTUAL:
-
-{contexto_obligacion}
-
-PERIODO:
-
-{contexto_periodo}
-
-ACTIVIDADES REGISTRADAS:
-
-{actividades}
-
-OBJETIVO:
-
-Redacta un unico parrafo que explique de manera
-clara, profesional y coherente las principales
-actividades desarrolladas y su contribucion al
-cumplimiento de la obligacion contractual.
-
-REGLAS:
-
-1. Escribe UN SOLO PARRAFO.
-
-2. Utiliza lenguaje formal, tecnico y administrativo.
-
-3. Integra las actividades en una narrativa coherente.
-
-4. NO enumeres las actividades.
-
-5. Evita repetir las mismas palabras.
-
-6. Agrupa actividades relacionadas.
-
-7. Utiliza conectores naturales:
-   "Durante el periodo...",
-   "Asimismo...",
-   "De manera complementaria...",
-   "Posteriormente...",
-   "Como resultado...",
-   "Finalmente...".
-
-8. Prioriza:
-   - acciones realizadas;
-   - gestiones adelantadas;
-   - avances;
-   - productos;
-   - resultados;
-   - seguimiento;
-   - contribucion contractual.
-
-9. NO inventes informacion.
-
-10. NO inventes cantidades, porcentajes,
-    fechas, resultados, nombres, reuniones,
-    entregables o aprobaciones.
-
-11. NO menciones:
-    imagenes,
-    fotografias,
-    capturas,
-    pantallazos,
-    evidencias,
-    archivos adjuntos.
-
-12. NO utilices:
-    "se observa",
-    "se evidencia",
-    "la imagen muestra",
-    "como se ve".
-
-13. Evita frases vacias como:
-    "se realizaron las actividades correspondientes",
-    cuando no aporten informacion concreta.
-
-14. No exageres el cumplimiento.
-
-15. Si la informacion demuestra solamente un avance,
-    revision, gestion o seguimiento, utiliza ese
-    nivel de certeza.
-
-16. El texto debe parecer redactado por un profesional
-    responsable de un informe contractual.
-
-17. Cuando exista informacion suficiente,
-    procura una extension aproximada de 100 a 180 palabras.
-
-18. Entrega unicamente el parrafo final.
-"""
-
-        response = client.models.generate_content(
-            model=modelo,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=512
-            )
-        )
-
-        if response.text:
-
-            resultado = _limpiar_texto(
-                response.text
-            )
-
-            # ------------------------------------------------
-            # Convertir saltos de linea en espacio para
-            # garantizar un unico parrafo.
-            # ------------------------------------------------
-
-            resultado = re.sub(
-                r'\s+',
-                ' ',
-                resultado
-            ).strip()
-
-            return resultado
-
-    except Exception as e:
-
-        print(
-            '[VisionAnalyzer] '
-            'Error al consolidar con Gemini: '
-            f'{e}'
-        )
-
-    return _consolidar_manual(
-        descripciones_limpias
-    )
 
 
 # ============================================================
