@@ -41,7 +41,7 @@ Ese servicio es el responsable de persistirla.
 """
 
 from datetime import date, datetime
-from vision_analyzer import analizar_imagen_con_reintentos
+from vision_analyzer import analizar_imagen, analizar_imagen_con_reintentos
 
 
 class CargaMasivaService:
@@ -558,7 +558,11 @@ class CargaMasivaService:
 
         descripcion = None
 
-        if imagen_temporal and api_key:
+        if (
+            imagen_temporal
+            and
+            api_key
+        ):
 
             try:
 
@@ -603,14 +607,6 @@ class CargaMasivaService:
                         '[CargaMasiva] '
                         f'Gemini no generó descripción '
                         f'para "{nombre_imagen}".'
-                    )
-
-                    errores.append(
-                        (
-                            f'Fila {numero_fila}: '
-                            f'Gemini no generó descripción '
-                            f'para "{nombre_imagen}".'
-                        )
                     )
 
             except Exception as exc:
