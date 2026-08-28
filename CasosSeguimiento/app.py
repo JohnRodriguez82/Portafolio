@@ -1,24 +1,40 @@
 """
-CasosSeguimiento v2.1
+CasosSeguimiento v2.2
 Sistema de seguimiento de casos profesionales.
 
-Cambios principales:
-- Configuración inicial guiada por pasos.
-- La configuración queda editable después de finalizar.
-- Menú principal permanente.
-- Separación entre Configuración y Seguimiento.
-- Profesionales editables en cualquier momento.
-- Parámetros de seguimiento editables.
-- No es necesario eliminar config.enc para modificar la configuración.
+Cambios principales v2.2:
+- La base de datos conserva todos los casos.
+- El motor de seguimiento analiza solamente los
+  profesionales configurados.
+- KPI exclusivamente sobre profesionales en seguimiento.
+- Alertas exclusivamente sobre profesionales en seguimiento.
+- Gráficas exclusivamente sobre profesionales en seguimiento.
+- Correos exclusivamente sobre profesionales en seguimiento.
+- La grilla permite visualizar:
+    * Solo seguimiento
+    * Todos los casos
+- Comparación de profesionales tolerante a:
+    * Mayúsculas/minúsculas.
+    * Acentos.
+    * Espacios repetidos.
 """
 
 import os
-from datetime import datetime, date
+
+from datetime import (
+    datetime,
+    date,
+)
 
 import pandas as pd
 import streamlit as st
 
-from database import get_db, Caso, LogAlerta, LogProcesamiento
+from database import (
+    get_db,
+    Caso,
+    LogAlerta,
+    LogProcesamiento,
+)
 
 from config_manager import (
     config_exists,
@@ -27,24 +43,38 @@ from config_manager import (
     get_email_settings,
     get_encargado,
     get_profesionales,
+    get_profesionales_seguimiento_nombres,
+    get_profesionales_seguimiento_normalizados,
     get_campos_excel,
     get_tipo_archivo,
     get_filtro_nombre_adjunto,
+    normalizar_nombre_profesional,
     _campos_default,
 )
 
-from email_processor import check_emails_and_download_excel
-from excel_parser import procesar_archivo
-from email_sender import enviar_resumen_casos
-from scheduler_service import iniciar_scheduler
+from email_processor import (
+    check_emails_and_download_excel,
+)
+
+from excel_parser import (
+    procesar_archivo,
+)
+
+from email_sender import (
+    enviar_resumen_casos,
+)
+
+from scheduler_service import (
+    iniciar_scheduler,
+)
 
 
 # ============================================================
-# CONFIGURACIÓN DE STREAMLIT
+# CONFIGURACIÓN STREAMLIT
 # ============================================================
 
 st.set_page_config(
-    page_title="Casos Seguimiento v2.1",
+    page_title="Casos Seguimiento v2.2",
     page_icon="📋",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -96,22 +126,6 @@ st.markdown(
         border-radius: 5px;
     }
 
-    .campo-card {
-        background: #f8f9fa;
-        padding: 15px;
-        border-radius: 10px;
-        margin: 8px 0;
-        border: 1px solid #dee2e6;
-    }
-
-    .campo-obligatorio {
-        border-left: 4px solid #dc3545;
-    }
-
-    .campo-opcional {
-        border-left: 4px solid #28a745;
-    }
-
     .menu-card {
         background: linear-gradient(
             135deg,
@@ -124,6 +138,20 @@ st.markdown(
         margin-bottom: 15px;
     }
 
+    .seguimiento-activo {
+        background-color: #e8f5e9;
+        border-left: 5px solid #4caf50;
+        padding: 10px;
+        border-radius: 5px;
+    }
+
+    .seguimiento-info {
+        background-color: #e3f2fd;
+        border-left: 5px solid #2196f3;
+        padding: 10px;
+        border-radius: 5px;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -134,13 +162,19 @@ st.markdown(
 # SCHEDULER
 # ============================================================
 
-if "scheduler_started" not in st.session_state:
+if (
+    "scheduler_started"
+    not in st.session_state
+):
 
     if config_exists():
 
         try:
+
             iniciar_scheduler()
+
         except Exception:
+
             pass
 
         st.session_state.scheduler_started = True
@@ -156,11 +190,15 @@ def inicializar_navegacion():
 
         if config_exists():
 
-            st.session_state.pagina = "inicio"
+            st.session_state.pagina = (
+                "inicio"
+            )
 
         else:
 
-            st.session_state.pagina = "configuracion_inicial"
+            st.session_state.pagina = (
+                "configuracion_inicial"
+            )
 
     if "config_step" not in st.session_state:
 
@@ -176,49 +214,234 @@ inicializar_navegacion()
 # FUNCIONES GENERALES
 # ============================================================
 
-def calcular_dias(fecha_ingreso):
+def calcular_dias(
+    fecha_ingreso,
+):
 
     if not fecha_ingreso:
+
         return 0
 
-    return (date.today() - fecha_ingreso).days
+    return (
+        date.today()
+        - fecha_ingreso
+    ).days
 
 
 def estado_visual(
     dias,
     estado_db,
-    fecha_validacion
+    fecha_validacion,
+    dias_resolucion=10,
+    dias_alerta=2,
 ):
+    """
+    Calcula el estado visual utilizando los parámetros
+    configurados.
+    """
 
-    if estado_db == "RESUELTO" or fecha_validacion:
+    if (
+        estado_db == "RESUELTO"
+        or fecha_validacion
+    ):
 
-        return "✅ RESUELTO", "green"
+        return (
+            "✅ RESUELTO",
+            "green",
+        )
 
-    if dias > 10:
+    limite_preventivo = (
+        dias_resolucion
+        - dias_alerta
+    )
 
-        return "🚨 VENCIDO", "red"
+    if dias > dias_resolucion:
 
-    if dias == 8:
+        return (
+            "🚨 VENCIDO",
+            "red",
+        )
 
-        return "⚠️ 2 DÍAS RESTANTES", "orange"
+    if dias >= limite_preventivo:
 
-    if dias >= 9:
+        if dias_resolucion - dias == 0:
 
-        return "🔴 CRÍTICO", "red"
+            return (
+                "🔴 CRÍTICO",
+                "red",
+            )
 
-    return "🔵 PENDIENTE", "blue"
+        return (
+            "⚠️ ALERTA PREVENTIVA",
+            "orange",
+        )
+
+    return (
+        "🔵 PENDIENTE",
+        "blue",
+    )
 
 
 def guardar_y_mostrar_mensaje(
     cfg,
-    mensaje="Configuración guardada correctamente."
+    mensaje=(
+        "Configuración guardada correctamente."
+    ),
 ):
 
-    save_config(cfg)
+    save_config(
+        cfg
+    )
 
-    st.success(mensaje)
+    st.success(
+        mensaje
+    )
 
     st.session_state.config_saved = True
+
+
+def obtener_parametros_seguimiento():
+
+    cfg = load_config()
+
+    dias_resolucion = int(
+        cfg.get(
+            "tiempo_resolucion_dias",
+            10,
+        )
+    )
+
+    dias_alerta = int(
+        cfg.get(
+            "dias_alerta_previa",
+            2,
+        )
+    )
+
+    return (
+        dias_resolucion,
+        dias_alerta,
+    )
+
+
+def profesional_en_seguimiento(
+    profesional,
+    profesionales_normalizados=None,
+):
+    """
+    Comprueba si el profesional pertenece a la población
+    configurada para seguimiento.
+    """
+
+    if profesionales_normalizados is None:
+
+        profesionales_normalizados = (
+            get_profesionales_seguimiento_normalizados()
+        )
+
+    nombre = (
+        normalizar_nombre_profesional(
+            profesional
+        )
+    )
+
+    return (
+        bool(nombre)
+        and nombre
+        in profesionales_normalizados
+    )
+
+
+def filtrar_casos_seguimiento(
+    casos,
+):
+    """
+    Filtra objetos Caso dejando solamente los profesionales
+    configurados para seguimiento.
+    """
+
+    profesionales_normalizados = (
+        get_profesionales_seguimiento_normalizados()
+    )
+
+    return [
+        caso
+        for caso in casos
+        if profesional_en_seguimiento(
+            caso.profesional,
+            profesionales_normalizados,
+        )
+    ]
+
+
+def construir_dataframe_casos(
+    casos,
+):
+    """
+    Convierte objetos Caso a DataFrame.
+    No aplica filtros de seguimiento.
+    """
+
+    dias_resolucion, dias_alerta = (
+        obtener_parametros_seguimiento()
+    )
+
+    data = []
+
+    for c in casos:
+
+        dias = calcular_dias(
+            c.fecha_ingreso
+        )
+
+        estado_str, color = (
+            estado_visual(
+                dias,
+                c.estado,
+                c.fecha_validacion,
+                dias_resolucion,
+                dias_alerta,
+            )
+        )
+
+        row = {
+            "ID": c.id,
+            "Número Caso": c.numero_caso,
+            "Sede": c.sede,
+            "Sección": c.seccion,
+            "Estudios": c.estudios,
+            "Órgano": c.organo,
+            "Fecha Ingreso": c.fecha_ingreso,
+            "Fecha Validación": c.fecha_validacion,
+            "Profesional": c.profesional,
+            "Estado DB": c.estado,
+            "Días": dias,
+            "Estado Visual": estado_str,
+            "Color": color,
+            "Última Actualización":
+                c.fecha_ultima_actualizacion,
+        }
+
+        if c.campos_extra:
+
+            for key, value in (
+                c.campos_extra.items()
+            ):
+
+                row[
+                    key.replace(
+                        "_",
+                        " ",
+                    ).title()
+                ] = value
+
+        data.append(
+            row
+        )
+
+    return pd.DataFrame(
+        data
+    )
 
 
 # ============================================================
@@ -229,17 +452,28 @@ def configurar_correo():
 
     cfg = load_config()
 
-    email_cfg = cfg.get("email", {})
-    encargado_cfg = cfg.get("encargado", {})
-
-    st.subheader("📧 Correo y encargado")
-
-    st.info(
-        "Configure el correo utilizado para recibir archivos "
-        "y enviar alertas."
+    email_cfg = cfg.get(
+        "email",
+        {},
     )
 
-    with st.form("config_correo"):
+    encargado_cfg = cfg.get(
+        "encargado",
+        {},
+    )
+
+    st.subheader(
+        "📧 Correo y encargado"
+    )
+
+    st.info(
+        "Configure el correo utilizado para recibir "
+        "archivos y enviar alertas."
+    )
+
+    with st.form(
+        "config_correo"
+    ):
 
         col1, col2 = st.columns(2)
 
@@ -247,13 +481,21 @@ def configurar_correo():
 
             email = st.text_input(
                 "Correo electrónico",
-                value=email_cfg.get("email", ""),
-                placeholder="seguimiento@empresa.com",
+                value=email_cfg.get(
+                    "email",
+                    "",
+                ),
+                placeholder=(
+                    "seguimiento@empresa.com"
+                ),
             )
 
             password = st.text_input(
                 "Contraseña / App Password",
-                value=email_cfg.get("password", ""),
+                value=email_cfg.get(
+                    "password",
+                    "",
+                ),
                 type="password",
                 help=(
                     "Para Gmail se recomienda utilizar "
@@ -267,7 +509,7 @@ def configurar_correo():
                 "Servidor IMAP",
                 value=email_cfg.get(
                     "imap_server",
-                    "imap.gmail.com"
+                    "imap.gmail.com",
                 ),
             )
 
@@ -275,7 +517,7 @@ def configurar_correo():
                 "Servidor SMTP",
                 value=email_cfg.get(
                     "smtp_server",
-                    "smtp.gmail.com"
+                    "smtp.gmail.com",
                 ),
             )
 
@@ -288,7 +530,7 @@ def configurar_correo():
                 value=int(
                     email_cfg.get(
                         "imap_port",
-                        993
+                        993,
                     )
                 ),
                 step=1,
@@ -301,7 +543,7 @@ def configurar_correo():
                 value=int(
                     email_cfg.get(
                         "smtp_port",
-                        587
+                        587,
                     )
                 ),
                 step=1,
@@ -317,7 +559,7 @@ def configurar_correo():
             "Nombre completo",
             value=encargado_cfg.get(
                 "nombre",
-                ""
+                "",
             ),
         )
 
@@ -346,20 +588,29 @@ def configurar_correo():
                 cfg["email"] = {
                     "email": email.strip(),
                     "password": password,
-                    "imap_server": imap_server.strip(),
-                    "smtp_server": smtp_server.strip(),
-                    "imap_port": int(imap_port),
-                    "smtp_port": int(smtp_port),
+                    "imap_server":
+                        imap_server.strip(),
+                    "smtp_server":
+                        smtp_server.strip(),
+                    "imap_port":
+                        int(imap_port),
+                    "smtp_port":
+                        int(smtp_port),
                 }
 
                 cfg["encargado"] = {
-                    "nombre": nombre_encargado.strip(),
-                    "email": email.strip(),
+                    "nombre":
+                        nombre_encargado.strip(),
+                    "email":
+                        email.strip(),
                 }
 
                 guardar_y_mostrar_mensaje(
                     cfg,
-                    "✅ Datos de correo y encargado guardados."
+                    (
+                        "✅ Datos de correo y "
+                        "encargado guardados."
+                    ),
                 )
 
 
@@ -373,7 +624,7 @@ def configurar_campos():
 
     campos = cfg.get(
         "campos_excel",
-        _campos_default()
+        _campos_default(),
     )
 
     st.subheader(
@@ -382,25 +633,38 @@ def configurar_campos():
 
     st.info(
         "Puede activar, desactivar o modificar "
-        "los campos que se utilizan para procesar "
-        "los archivos."
+        "los campos utilizados para procesar archivos."
     )
 
-    with st.form("config_campos"):
+    with st.form(
+        "config_campos"
+    ):
 
         campos_editados = []
 
-        for i, campo in enumerate(campos):
+        for i, campo in enumerate(
+            campos
+        ):
 
             cols = st.columns(
-                [2, 2, 3, 1, 1, 1]
+                [
+                    2,
+                    2,
+                    3,
+                    1,
+                    1,
+                    1,
+                ]
             )
 
             with cols[0]:
 
                 cid = st.text_input(
                     f"ID {i + 1}",
-                    value=campo.get("id", ""),
+                    value=campo.get(
+                        "id",
+                        "",
+                    ),
                     key=f"cid_{i}",
                 )
 
@@ -410,7 +674,7 @@ def configurar_campos():
                     f"Nombre {i + 1}",
                     value=campo.get(
                         "nombre",
-                        ""
+                        "",
                     ),
                     key=f"cname_{i}",
                 )
@@ -421,7 +685,7 @@ def configurar_campos():
                     f"Sinónimos {i + 1}",
                     value=campo.get(
                         "sinonimos",
-                        ""
+                        "",
                     ),
                     key=f"csin_{i}",
                 )
@@ -436,10 +700,11 @@ def configurar_campos():
 
                 tipo_actual = campo.get(
                     "tipo",
-                    "texto"
+                    "texto",
                 )
 
                 if tipo_actual not in tipos:
+
                     tipo_actual = "texto"
 
                 ctipo = st.selectbox(
@@ -457,7 +722,7 @@ def configurar_campos():
                     "Obligatorio",
                     value=campo.get(
                         "obligatorio",
-                        False
+                        False,
                     ),
                     key=f"coblig_{i}",
                 )
@@ -468,7 +733,7 @@ def configurar_campos():
                     "Activo",
                     value=campo.get(
                         "activo",
-                        True
+                        True,
                     ),
                     key=f"cactivo_{i}",
                 )
@@ -477,12 +742,18 @@ def configurar_campos():
 
                 campos_editados.append(
                     {
-                        "id": cid.strip(),
-                        "nombre": cname.strip(),
-                        "tipo": ctipo,
-                        "obligatorio": coblig,
-                        "sinonimos": csin.strip(),
-                        "activo": True,
+                        "id":
+                            cid.strip(),
+                        "nombre":
+                            cname.strip(),
+                        "tipo":
+                            ctipo,
+                        "obligatorio":
+                            coblig,
+                        "sinonimos":
+                            csin.strip(),
+                        "activo":
+                            True,
                     }
                 )
 
@@ -493,7 +764,13 @@ def configurar_campos():
         )
 
         cols = st.columns(
-            [2, 2, 3, 1, 1]
+            [
+                2,
+                2,
+                3,
+                1,
+                1,
+            ]
         )
 
         with cols[0]:
@@ -544,34 +821,47 @@ def configurar_campos():
 
         if guardar:
 
-            if new_id.strip() and new_name.strip():
+            if (
+                new_id.strip()
+                and new_name.strip()
+            ):
 
                 campos_editados.append(
                     {
-                        "id": new_id.strip(),
-                        "nombre": new_name.strip(),
-                        "tipo": new_tipo,
-                        "obligatorio": new_oblig,
-                        "sinonimos": new_sin.strip(),
-                        "activo": True,
+                        "id":
+                            new_id.strip(),
+                        "nombre":
+                            new_name.strip(),
+                        "tipo":
+                            new_tipo,
+                        "obligatorio":
+                            new_oblig,
+                        "sinonimos":
+                            new_sin.strip(),
+                        "activo":
+                            True,
                     }
                 )
 
             if not campos_editados:
 
                 st.error(
-                    "Debe existir al menos un campo activo."
+                    "Debe existir al menos "
+                    "un campo activo."
                 )
 
             else:
 
-                cfg["campos_excel"] = campos_editados
+                cfg[
+                    "campos_excel"
+                ] = campos_editados
 
                 guardar_y_mostrar_mensaje(
                     cfg,
                     (
                         f"✅ Se guardaron "
-                        f"{len(campos_editados)} campos activos."
+                        f"{len(campos_editados)} "
+                        "campos activos."
                     ),
                 )
 
@@ -586,26 +876,32 @@ def configurar_archivo():
 
     tipo_actual = cfg.get(
         "tipo_archivo",
-        "excel"
+        "excel",
     )
 
     filtro_actual = cfg.get(
         "filtro_nombre_adjunto",
-        ""
+        "",
     )
 
     st.subheader(
         "📁 Tipo de archivo y adjunto"
     )
 
-    with st.form("config_archivo"):
+    with st.form(
+        "config_archivo"
+    ):
 
         tipo_archivo = st.radio(
             "Formato de archivo",
-            ["excel", "csv"],
+            [
+                "excel",
+                "csv",
+            ],
             horizontal=True,
             index=(
-                0 if tipo_actual == "excel"
+                0
+                if tipo_actual == "excel"
                 else 1
             ),
         )
@@ -630,15 +926,20 @@ def configurar_archivo():
 
         if guardar:
 
-            cfg["tipo_archivo"] = tipo_archivo
+            cfg[
+                "tipo_archivo"
+            ] = tipo_archivo
 
-            cfg["filtro_nombre_adjunto"] = (
-                filtro.strip()
-            )
+            cfg[
+                "filtro_nombre_adjunto"
+            ] = filtro.strip()
 
             guardar_y_mostrar_mensaje(
                 cfg,
-                "✅ Configuración del archivo guardada."
+                (
+                    "✅ Configuración del "
+                    "archivo guardada."
+                ),
             )
 
 
@@ -652,13 +953,22 @@ def configurar_profesionales():
 
     profesionales = cfg.get(
         "profesionales",
-        []
+        [],
     )
 
     nombres_actuales = [
-        p.get("nombre", "")
+        p.get(
+            "nombre",
+            "",
+        )
         for p in profesionales
-        if p.get("nombre")
+        if isinstance(
+            p,
+            dict,
+        )
+        and p.get(
+            "nombre"
+        )
     ]
 
     st.subheader(
@@ -666,13 +976,17 @@ def configurar_profesionales():
     )
 
     st.info(
-        "Seleccione los profesionales que deben "
-        "ser incluidos en el seguimiento."
+        "Los profesionales registrados aquí constituyen "
+        "la población oficial de seguimiento. "
+        "Los demás profesionales pueden permanecer "
+        "en la base de datos sin generar alertas."
     )
 
     profesionales_input = st.text_area(
-        "Profesionales",
-        value=", ".join(nombres_actuales),
+        "Profesionales bajo seguimiento",
+        value=", ".join(
+            nombres_actuales
+        ),
         height=150,
         placeholder=(
             "Dr. Pérez, Dra. López, "
@@ -697,13 +1011,15 @@ def configurar_profesionales():
 
             lista = [
                 p.strip()
-                for p in profesionales_input.split(",")
+                for p
+                in profesionales_input.split(",")
                 if p.strip()
             ]
 
-            # Eliminar duplicados
             lista = list(
-                dict.fromkeys(lista)
+                dict.fromkeys(
+                    lista
+                )
             )
 
             if not lista:
@@ -715,21 +1031,32 @@ def configurar_profesionales():
 
             else:
 
-                cfg["profesionales"] = [
+                cfg[
+                    "profesionales"
+                ] = [
                     {
-                        "nombre": nombre,
-                        "especialidad": "",
+                        "nombre":
+                            nombre,
+                        "especialidad":
+                            "",
                     }
-                    for nombre in lista
+                    for nombre
+                    in lista
                 ]
 
-                if "tiempo_resolucion_dias" not in cfg:
+                if (
+                    "tiempo_resolucion_dias"
+                    not in cfg
+                ):
 
                     cfg[
                         "tiempo_resolucion_dias"
                     ] = 10
 
-                if "dias_alerta_previa" not in cfg:
+                if (
+                    "dias_alerta_previa"
+                    not in cfg
+                ):
 
                     cfg[
                         "dias_alerta_previa"
@@ -739,13 +1066,14 @@ def configurar_profesionales():
                     cfg,
                     (
                         f"✅ Se guardaron "
-                        f"{len(lista)} profesionales."
+                        f"{len(lista)} "
+                        "profesionales bajo seguimiento."
                     ),
                 )
 
 
 # ============================================================
-# PARÁMETROS DE SEGUIMIENTO
+# PARÁMETROS
 # ============================================================
 
 def configurar_parametros():
@@ -756,7 +1084,9 @@ def configurar_parametros():
         "⏱️ Parámetros de seguimiento"
     )
 
-    with st.form("config_parametros"):
+    with st.form(
+        "config_parametros"
+    ):
 
         dias_resolucion = st.number_input(
             "Días máximos para resolver un caso",
@@ -765,7 +1095,7 @@ def configurar_parametros():
             value=int(
                 cfg.get(
                     "tiempo_resolucion_dias",
-                    10
+                    10,
                 )
             ),
         )
@@ -777,7 +1107,7 @@ def configurar_parametros():
             value=int(
                 cfg.get(
                     "dias_alerta_previa",
-                    2
+                    2,
                 )
             ),
         )
@@ -792,15 +1122,22 @@ def configurar_parametros():
 
             cfg[
                 "tiempo_resolucion_dias"
-            ] = int(dias_resolucion)
+            ] = int(
+                dias_resolucion
+            )
 
             cfg[
                 "dias_alerta_previa"
-            ] = int(dias_alerta)
+            ] = int(
+                dias_alerta
+            )
 
             guardar_y_mostrar_mensaje(
                 cfg,
-                "✅ Parámetros de seguimiento guardados."
+                (
+                    "✅ Parámetros de "
+                    "seguimiento guardados."
+                ),
             )
 
 
@@ -815,8 +1152,8 @@ def pagina_configuracion():
     )
 
     st.caption(
-        "Todos los cambios quedan almacenados "
-        "y pueden modificarse posteriormente."
+        "La configuración puede modificarse en cualquier "
+        "momento sin eliminar la base de datos."
     )
 
     tabs = st.tabs(
@@ -882,7 +1219,9 @@ def pantalla_configuracion_inicial():
         not in pasos
     ):
 
-        st.session_state.config_step = pasos[0]
+        st.session_state.config_step = (
+            pasos[0]
+        )
 
     step = st.radio(
         "Paso de configuración",
@@ -893,7 +1232,9 @@ def pantalla_configuracion_inicial():
         horizontal=True,
     )
 
-    st.session_state.config_step = step
+    st.session_state.config_step = (
+        step
+    )
 
     st.divider()
 
@@ -916,15 +1257,28 @@ def pantalla_configuracion_inicial():
         cfg = load_config()
 
         tiene_correo = bool(
-            cfg.get("email", {}).get("email")
+            cfg.get(
+                "email",
+                {},
+            ).get(
+                "email"
+            )
         )
 
         tiene_encargado = bool(
-            cfg.get("encargado", {}).get("nombre")
+            cfg.get(
+                "encargado",
+                {},
+            ).get(
+                "nombre"
+            )
         )
 
         tiene_profesionales = bool(
-            cfg.get("profesionales")
+            cfg.get(
+                "profesionales",
+                [],
+            )
         )
 
         if (
@@ -941,10 +1295,13 @@ def pantalla_configuracion_inicial():
                 use_container_width=True,
             ):
 
-                st.session_state.pagina = "inicio"
+                st.session_state.pagina = (
+                    "inicio"
+                )
+
                 st.session_state.pop(
                     "config_step",
-                    None
+                    None,
                 )
 
                 st.rerun()
@@ -964,7 +1321,11 @@ def dashboard():
 
     try:
 
-        casos = db.query(Caso).all()
+        casos = (
+            db.query(
+                Caso
+            ).all()
+        )
 
     finally:
 
@@ -980,81 +1341,102 @@ def dashboard():
 
         return
 
-    data = []
+    # --------------------------------------------------------
+    # SEPARACIÓN DE POBLACIONES
+    # --------------------------------------------------------
 
-    for c in casos:
+    casos_seguimiento = (
+        filtrar_casos_seguimiento(
+            casos
+        )
+    )
 
-        dias = calcular_dias(
-            c.fecha_ingreso
+    df_todos = (
+        construir_dataframe_casos(
+            casos
+        )
+    )
+
+    df_seguimiento = (
+        construir_dataframe_casos(
+            casos_seguimiento
+        )
+    )
+
+    profesionales_configurados = (
+        get_profesionales_seguimiento_nombres()
+    )
+
+    st.markdown(
+        f"""
+        <div class="seguimiento-info">
+        🎯 <b>Población de seguimiento:</b>
+        {len(profesionales_configurados)}
+        profesionales configurados.
+        <br>
+        📊 <b>Casos bajo seguimiento:</b>
+        {len(df_seguimiento)}
+        &nbsp;&nbsp;|&nbsp;&nbsp;
+        📁 <b>Casos totales en base:</b>
+        {len(df_todos)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not profesionales_configurados:
+
+        st.error(
+            "No hay profesionales configurados para "
+            "seguimiento. Vaya a "
+            "⚙️ Configuración general → Profesionales."
         )
 
-        estado_str, color = estado_visual(
-            dias,
-            c.estado,
-            c.fecha_validacion,
-        )
+        return
 
-        row = {
-            "ID": c.id,
-            "Número Caso": c.numero_caso,
-            "Sede": c.sede,
-            "Sección": c.seccion,
-            "Estudios": c.estudios,
-            "Órgano": c.organo,
-            "Fecha Ingreso": c.fecha_ingreso,
-            "Fecha Validación": c.fecha_validacion,
-            "Profesional": c.profesional,
-            "Estado DB": c.estado,
-            "Días": dias,
-            "Estado Visual": estado_str,
-            "Color": color,
-            "Última Actualización":
-                c.fecha_ultima_actualizacion,
-        }
+    # --------------------------------------------------------
+    # KPI
+    #
+    # IMPORTANTE:
+    # Siempre se calculan sobre df_seguimiento.
+    # --------------------------------------------------------
 
-        if c.campos_extra:
-
-            for k, v in c.campos_extra.items():
-
-                row[
-                    k.replace(
-                        "_",
-                        " "
-                    ).title()
-                ] = v
-
-        data.append(row)
-
-    df = pd.DataFrame(data)
-
-    total = len(df)
+    total = len(
+        df_seguimiento
+    )
 
     resueltos = len(
-        df[
-            df["Estado DB"]
-            == "RESUELTO"
+        df_seguimiento[
+            df_seguimiento[
+                "Estado DB"
+            ] == "RESUELTO"
         ]
     )
 
     vencidos = len(
-        df[
-            df["Color"]
-            == "red"
+        df_seguimiento[
+            df_seguimiento[
+                "Color"
+            ] == "red"
         ]
     )
 
     preventiva = len(
-        df[
-            df["Color"]
-            == "orange"
+        df_seguimiento[
+            df_seguimiento[
+                "Color"
+            ] == "orange"
         ]
     )
 
-    pendientes = (
-        total
-        - resueltos
-        - vencidos
-        - preventiva
+    pendientes = len(
+        df_seguimiento[
+            ~df_seguimiento[
+                "Estado DB"
+            ].isin(
+                ["RESUELTO"]
+            )
+        ]
     )
 
     kpi1, kpi2, kpi3, kpi4, kpi5 = (
@@ -1064,36 +1446,36 @@ def dashboard():
     with kpi1:
 
         st.metric(
-            "TOTAL CASOS",
-            total
+            "TOTAL EN SEGUIMIENTO",
+            total,
         )
 
     with kpi2:
 
         st.metric(
             "RESUELTOS",
-            resueltos
+            resueltos,
         )
 
     with kpi3:
 
         st.metric(
             "PENDIENTES",
-            pendientes
+            pendientes,
         )
 
     with kpi4:
 
         st.metric(
             "ALERTA PREVENTIVA",
-            preventiva
+            preventiva,
         )
 
     with kpi5:
 
         st.metric(
             "VENCIDOS",
-            vencidos
+            vencidos,
         )
 
     st.divider()
@@ -1104,7 +1486,8 @@ def dashboard():
             f"""
             <div class="alert-vencido">
             🚨 <b>ATENCIÓN:</b>
-            {vencidos} casos vencidos.
+            {vencidos} casos vencidos
+            dentro de la población bajo seguimiento.
             </div>
             """,
             unsafe_allow_html=True,
@@ -1116,7 +1499,8 @@ def dashboard():
             f"""
             <div class="alert-preventiva">
             ⚠️ {preventiva} casos requieren
-            atención preventiva.
+            atención preventiva dentro de la
+            población bajo seguimiento.
             </div>
             """,
             unsafe_allow_html=True,
@@ -1124,94 +1508,160 @@ def dashboard():
 
     st.divider()
 
-    col1, col2, col3 = st.columns(3)
+    # --------------------------------------------------------
+    # FILTROS DE GRILLA
+    # --------------------------------------------------------
+
+    st.subheader(
+        "📋 Listado de casos"
+    )
+
+    col1, col2, col3, col4 = (
+        st.columns(4)
+    )
 
     with col1:
 
-        profesionales = sorted(
+        vista_casos = st.selectbox(
+            "Vista de casos",
+            [
+                "Solo seguimiento",
+                "Todos los casos",
+            ],
+        )
+
+    if vista_casos == "Solo seguimiento":
+
+        df_base = (
+            df_seguimiento.copy()
+        )
+
+    else:
+
+        df_base = (
+            df_todos.copy()
+        )
+
+    with col2:
+
+        profesionales_grilla = sorted(
             [
                 p
-                for p in df[
+                for p
+                in df_base[
                     "Profesional"
-                ].dropna().unique()
-                if p
+                ]
+                .dropna()
+                .unique()
+                if str(p).strip()
             ]
         )
 
         filtro_prof = st.multiselect(
             "Profesional",
-            profesionales,
-        )
-
-    with col2:
-
-        filtro_estado = st.multiselect(
-            "Estado",
-            sorted(
-                df[
-                    "Estado Visual"
-                ].unique()
-            ),
+            profesionales_grilla,
         )
 
     with col3:
 
-        sedes = sorted(
+        estados_grilla = sorted(
+            df_base[
+                "Estado Visual"
+            ]
+            .dropna()
+            .unique()
+        )
+
+        filtro_estado = st.multiselect(
+            "Estado",
+            estados_grilla,
+        )
+
+    with col4:
+
+        sedes_grilla = sorted(
             [
                 s
-                for s in df[
+                for s
+                in df_base[
                     "Sede"
-                ].dropna().unique()
-                if s
+                ]
+                .dropna()
+                .unique()
+                if str(s).strip()
             ]
         )
 
         filtro_sede = st.multiselect(
             "Sede",
-            sedes,
+            sedes_grilla,
         )
 
-    df_filtered = df.copy()
+    df_filtered = (
+        df_base.copy()
+    )
 
     if filtro_prof:
 
-        df_filtered = df_filtered[
+        df_filtered = (
             df_filtered[
-                "Profesional"
-            ].isin(filtro_prof)
-        ]
+                df_filtered[
+                    "Profesional"
+                ].isin(
+                    filtro_prof
+                )
+            ]
+        )
 
     if filtro_estado:
 
-        df_filtered = df_filtered[
+        df_filtered = (
             df_filtered[
-                "Estado Visual"
-            ].isin(filtro_estado)
-        ]
+                df_filtered[
+                    "Estado Visual"
+                ].isin(
+                    filtro_estado
+                )
+            ]
+        )
 
     if filtro_sede:
 
-        df_filtered = df_filtered[
+        df_filtered = (
             df_filtered[
-                "Sede"
-            ].isin(filtro_sede)
-        ]
+                df_filtered[
+                    "Sede"
+                ].isin(
+                    filtro_sede
+                )
+            ]
+        )
 
-    st.subheader(
-        "📋 Listado de casos"
-    )
+    if vista_casos == "Todos los casos":
+
+        st.info(
+            "ℹ️ Esta vista permite consultar la "
+            "base completa. Los KPI, alertas y "
+            "gráficas superiores y posteriores "
+            "continúan calculándose únicamente "
+            "sobre profesionales bajo seguimiento."
+        )
 
     columnas_ocultar = [
         "Color",
         "Estado DB",
     ]
 
-    display_df = df_filtered.drop(
-        columns=[
-            c
-            for c in columnas_ocultar
-            if c in df_filtered.columns
-        ]
+    display_df = (
+        df_filtered.drop(
+            columns=[
+                column
+                for column
+                in columnas_ocultar
+                if column
+                in df_filtered.columns
+            ]
+        )
     )
 
     st.dataframe(
@@ -1220,9 +1670,22 @@ def dashboard():
         height=450,
     )
 
+    st.caption(
+        f"Mostrando {len(display_df)} "
+        f"de {len(df_base)} casos de la vista seleccionada."
+    )
+
     st.divider()
 
-    col_g1, col_g2 = st.columns(2)
+    # --------------------------------------------------------
+    # GRÁFICAS
+    #
+    # Siempre usan df_seguimiento.
+    # --------------------------------------------------------
+
+    col_g1, col_g2 = (
+        st.columns(2)
+    )
 
     with col_g1:
 
@@ -1231,9 +1694,10 @@ def dashboard():
         )
 
         prof_counts = (
-            df[
-                df["Estado DB"]
-                != "RESUELTO"
+            df_seguimiento[
+                df_seguimiento[
+                    "Estado DB"
+                ] != "RESUELTO"
             ]["Profesional"]
             .value_counts()
         )
@@ -1244,6 +1708,13 @@ def dashboard():
                 prof_counts
             )
 
+        else:
+
+            st.info(
+                "No existen casos pendientes "
+                "en seguimiento."
+            )
+
     with col_g2:
 
         st.subheader(
@@ -1251,8 +1722,9 @@ def dashboard():
         )
 
         estado_counts = (
-            df["Estado Visual"]
-            .value_counts()
+            df_seguimiento[
+                "Estado Visual"
+            ].value_counts()
         )
 
         if not estado_counts.empty:
@@ -1262,13 +1734,34 @@ def dashboard():
                 import plotly.express as px
 
                 fig = px.pie(
-                    values=estado_counts.values,
-                    names=estado_counts.index,
+                    values=(
+                        estado_counts.values
+                    ),
+                    names=(
+                        estado_counts.index
+                    ),
+                    color=(
+                        estado_counts.index
+                    ),
+                    color_discrete_map={
+                        "✅ RESUELTO":
+                            "#38ef7d",
+                        "🔵 PENDIENTE":
+                            "#6dd5ed",
+                        "⚠️ ALERTA PREVENTIVA":
+                            "#ffd200",
+                        "🔴 CRÍTICO":
+                            "#ff6b6b",
+                        "🚨 VENCIDO":
+                            "#ef473a",
+                    },
                 )
 
                 fig.update_traces(
                     textposition="inside",
-                    textinfo="percent+label",
+                    textinfo=(
+                        "percent+label"
+                    ),
                 )
 
                 st.plotly_chart(
@@ -1281,6 +1774,12 @@ def dashboard():
                 st.bar_chart(
                     estado_counts
                 )
+
+        else:
+
+            st.info(
+                "No hay datos para graficar."
+            )
 
 
 # ============================================================
@@ -1297,7 +1796,10 @@ def pagina_procesar():
 
     if tipo == "excel":
 
-        ext_label = "Excel (.xlsx, .xls)"
+        ext_label = (
+            "Excel (.xlsx, .xls)"
+        )
+
         ext_accept = [
             "xlsx",
             "xls",
@@ -1305,8 +1807,13 @@ def pagina_procesar():
 
     else:
 
-        ext_label = "CSV (.csv)"
-        ext_accept = ["csv"]
+        ext_label = (
+            "CSV (.csv)"
+        )
+
+        ext_accept = [
+            "csv"
+        ]
 
     st.info(
         f"Modo: **{ext_label}** | "
@@ -1314,7 +1821,9 @@ def pagina_procesar():
         f"'{get_filtro_nombre_adjunto() or 'Cualquiera'}'"
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2 = (
+        st.columns(2)
+    )
 
     with col1:
 
@@ -1339,29 +1848,39 @@ def pagina_procesar():
             if files:
 
                 st.success(
-                    f"📎 {len(files)} archivo(s) encontrado(s)."
+                    f"📎 {len(files)} "
+                    "archivo(s) encontrado(s)."
                 )
 
                 for f in files:
 
                     with st.spinner(
-                        f"Procesando {os.path.basename(f)}..."
+                        "Procesando "
+                        f"{os.path.basename(f)}..."
                     ):
 
-                        res = procesar_archivo(f)
+                        res = (
+                            procesar_archivo(
+                                f
+                            )
+                        )
 
                     if res["ok"]:
 
                         st.success(
-                            f"✅ {os.path.basename(f)}: "
-                            f"{res['insertados']} insertados, "
-                            f"{res['actualizados']} actualizados."
+                            f"✅ "
+                            f"{os.path.basename(f)}: "
+                            f"{res['insertados']} "
+                            "insertados, "
+                            f"{res['actualizados']} "
+                            "actualizados."
                         )
 
                     else:
 
                         st.error(
-                            f"❌ {res.get('error')}"
+                            f"❌ "
+                            f"{res.get('error')}"
                         )
 
             else:
@@ -1384,11 +1903,13 @@ def pagina_procesar():
 
         if uploaded:
 
-            upload_dir = "data/uploads"
+            upload_dir = (
+                "data/uploads"
+            )
 
             os.makedirs(
                 upload_dir,
-                exist_ok=True
+                exist_ok=True,
             )
 
             tmp_path = os.path.join(
@@ -1405,7 +1926,7 @@ def pagina_procesar():
 
             with open(
                 tmp_path,
-                "wb"
+                "wb",
             ) as f:
 
                 f.write(
@@ -1416,22 +1937,27 @@ def pagina_procesar():
                 "Procesando archivo..."
             ):
 
-                res = procesar_archivo(
-                    tmp_path
+                res = (
+                    procesar_archivo(
+                        tmp_path
+                    )
                 )
 
             if res["ok"]:
 
                 st.success(
-                    f"✅ Procesado: "
-                    f"{res['insertados']} insertados, "
-                    f"{res['actualizados']} actualizados."
+                    "✅ Procesado: "
+                    f"{res['insertados']} "
+                    "insertados, "
+                    f"{res['actualizados']} "
+                    "actualizados."
                 )
 
             else:
 
                 st.error(
-                    f"❌ {res.get('error')}"
+                    f"❌ "
+                    f"{res.get('error')}"
                 )
 
 
@@ -1471,23 +1997,31 @@ def mostrar_logs():
         df_logs = pd.DataFrame(
             [
                 {
-                    "Fecha": l.fecha_proceso,
-                    "Archivo": os.path.basename(
-                        l.archivo
-                    ),
-                    "Insertados": l.insertados,
-                    "Actualizados": l.actualizados,
-                    "Errores": l.errores,
-                    "Detalle": (
-                        l.detalle[:150]
-                        + "..."
-                        if l.detalle
-                        and len(l.detalle) > 150
-                        else (
-                            l.detalle
-                            or ""
-                        )
-                    ),
+                    "Fecha":
+                        l.fecha_proceso,
+                    "Archivo":
+                        os.path.basename(
+                            l.archivo
+                        ),
+                    "Insertados":
+                        l.insertados,
+                    "Actualizados":
+                        l.actualizados,
+                    "Errores":
+                        l.errores,
+                    "Detalle":
+                        (
+                            l.detalle[:150]
+                            + "..."
+                            if l.detalle
+                            and len(
+                                l.detalle
+                            ) > 150
+                            else (
+                                l.detalle
+                                or ""
+                            )
+                        ),
                 }
                 for l in logs
             ]
@@ -1507,86 +2041,153 @@ def mostrar_logs():
 # ALERTAS
 # ============================================================
 
+def obtener_casos_para_alertas():
+
+    db = get_db()
+
+    try:
+
+        casos = (
+            db.query(
+                Caso
+            ).all()
+        )
+
+    finally:
+
+        db.close()
+
+    casos_seguimiento = (
+        filtrar_casos_seguimiento(
+            casos
+        )
+    )
+
+    return casos_seguimiento
+
+
+def calcular_alertas_casos(
+    casos,
+):
+    """
+    Calcula alertas exclusivamente sobre los casos
+    pertenecientes a profesionales bajo seguimiento.
+    """
+
+    hoy = date.today()
+
+    dias_resolucion, dias_alerta = (
+        obtener_parametros_seguimiento()
+    )
+
+    vencidos = []
+
+    preventivos = []
+
+    pendientes = []
+
+    for caso in casos:
+
+        if (
+            caso.estado == "RESUELTO"
+            or not caso.fecha_ingreso
+        ):
+
+            continue
+
+        dias = (
+            hoy
+            - caso.fecha_ingreso
+        ).days
+
+        pendientes.append(
+            caso
+        )
+
+        if dias > dias_resolucion:
+
+            vencidos.append(
+                caso
+            )
+
+        elif (
+            dias
+            >= (
+                dias_resolucion
+                - dias_alerta
+            )
+        ):
+
+            preventivos.append(
+                caso
+            )
+
+    return (
+        pendientes,
+        vencidos,
+        preventivos,
+    )
+
+
 def pagina_alertas():
 
     st.header(
         "📤 Alertas e informes"
     )
 
-    db = get_db()
-
-    try:
-
-        casos = db.query(Caso).all()
-
-    finally:
-
-        db.close()
-
-    hoy = date.today()
-
-    vencidos = []
-    preventivos = []
-    pendientes = []
-
-    cfg = load_config()
-
-    dias_resolucion = int(
-        cfg.get(
-            "tiempo_resolucion_dias",
-            10
-        )
+    profesionales = (
+        get_profesionales_seguimiento_nombres()
     )
 
-    dias_alerta = int(
-        cfg.get(
-            "dias_alerta_previa",
-            2
+    if not profesionales:
+
+        st.error(
+            "No hay profesionales configurados "
+            "para seguimiento."
         )
+
+        return
+
+    casos_seguimiento = (
+        obtener_casos_para_alertas()
     )
 
-    for c in casos:
+    (
+        pendientes,
+        vencidos,
+        preventivos,
+    ) = calcular_alertas_casos(
+        casos_seguimiento
+    )
 
-        if (
-            c.estado == "RESUELTO"
-            or not c.fecha_ingreso
-        ):
+    st.markdown(
+        f"""
+        <div class="seguimiento-activo">
+        🎯 Las alertas se calculan exclusivamente
+        sobre los {len(profesionales)}
+        profesionales configurados para seguimiento.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-            continue
-
-        dias = (
-            hoy - c.fecha_ingreso
-        ).days
-
-        pendientes.append(c)
-
-        if dias > dias_resolucion:
-
-            vencidos.append(c)
-
-        elif (
-            dias
-            >= dias_resolucion
-            - dias_alerta
-        ):
-
-            preventivos.append(c)
-
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = (
+        st.columns(3)
+    )
 
     col1.metric(
         "Vencidos",
-        len(vencidos)
+        len(vencidos),
     )
 
     col2.metric(
         "Preventivos",
-        len(preventivos)
+        len(preventivos),
     )
 
     col3.metric(
         "Pendientes",
-        len(pendientes)
+        len(pendientes),
     )
 
     st.divider()
@@ -1595,7 +2196,7 @@ def pagina_alertas():
 
     destino = enc.get(
         "email",
-        ""
+        "",
     )
 
     st.subheader(
@@ -1616,11 +2217,13 @@ def pagina_alertas():
             "Enviando correo..."
         ):
 
-            ok, err = enviar_resumen_casos(
-                destino,
-                pendientes,
-                vencidos,
-                preventivos,
+            ok, err = (
+                enviar_resumen_casos(
+                    destino,
+                    pendientes,
+                    vencidos,
+                    preventivos,
+                )
             )
 
         if ok:
@@ -1646,7 +2249,9 @@ def pagina_alertas():
     try:
 
         logs = (
-            db.query(LogAlerta)
+            db.query(
+                LogAlerta
+            )
             .order_by(
                 LogAlerta.fecha_envio.desc()
             )
@@ -1708,7 +2313,9 @@ def pagina_inicio():
         "Seleccione la operación que desea realizar."
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2 = (
+        st.columns(2)
+    )
 
     with col1:
 
@@ -1776,25 +2383,29 @@ def pagina_inicio():
 
     cfg = load_config()
 
-    profesionales = cfg.get(
-        "profesionales",
-        []
+    profesionales = (
+        cfg.get(
+            "profesionales",
+            [],
+        )
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = (
+        st.columns(3)
+    )
 
     with col1:
 
         st.metric(
-            "Profesionales configurados",
-            len(profesionales)
+            "Profesionales bajo seguimiento",
+            len(profesionales),
         )
 
     with col2:
 
         st.metric(
             "Tipo de archivo",
-            get_tipo_archivo().upper()
+            get_tipo_archivo().upper(),
         )
 
     with col3:
@@ -1803,8 +2414,8 @@ def pagina_inicio():
             "Días de resolución",
             cfg.get(
                 "tiempo_resolucion_dias",
-                10
-            )
+                10,
+            ),
         )
 
 
@@ -1852,7 +2463,7 @@ def mostrar_sidebar():
         )
 
         st.caption(
-            "Versión 2.1"
+            "Versión 2.2"
         )
 
         st.divider()
@@ -1863,12 +2474,16 @@ def mostrar_sidebar():
 
             nombre = enc.get(
                 "nombre",
-                "No configurado"
+                "No configurado",
             )
 
             email = enc.get(
                 "email",
-                "No configurado"
+                "No configurado",
+            )
+
+            profesionales = (
+                get_profesionales_seguimiento_nombres()
             )
 
             st.write(
@@ -1877,6 +2492,11 @@ def mostrar_sidebar():
 
             st.write(
                 f"**Correo:** {email}"
+            )
+
+            st.write(
+                "**Profesionales en seguimiento:** "
+                f"{len(profesionales)}"
             )
 
             st.divider()
@@ -1938,31 +2558,19 @@ def mostrar_sidebar():
 
 def main():
 
-    # --------------------------------------------------------
-    # PRIMERA EJECUCIÓN
-    # --------------------------------------------------------
-
     if not config_exists():
 
         st.session_state.pagina = (
             "configuracion_inicial"
         )
 
-    # --------------------------------------------------------
-    # SIDEBAR
-    # --------------------------------------------------------
-
     if config_exists():
 
         mostrar_sidebar()
 
-    # --------------------------------------------------------
-    # PÁGINA ACTUAL
-    # --------------------------------------------------------
-
     pagina = st.session_state.get(
         "pagina",
-        "inicio"
+        "inicio",
     )
 
     if pagina == "configuracion_inicial":
