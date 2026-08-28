@@ -1,5 +1,5 @@
 """
-CasosSeguimiento v2.2
+CasosSeguimiento v2.3
 Sistema de seguimiento de casos profesionales.
 
 Cambios principales v2.2:
@@ -1813,34 +1813,101 @@ def dashboard():
     col_g1, col_g2 = (
         st.columns(2)
     )
+    
+    # ------------------------------------------------------------
+    # GRÁFICA 1 - CASOS POR PROFESIONAL
+    # ------------------------------------------------------------
 
     with col_g1:
 
-        st.subheader(
-            "📈 Casos por profesional"
-        )
+    st.subheader(
+        "📈 Casos por profesional"
+    )
 
-        prof_counts = (
-            df_seguimiento[
-                df_seguimiento[
-                    "Estado DB"
-                ] != "RESUELTO"
-            ]["Profesional"]
+    profesionales_configurados = (
+        get_profesionales_seguimiento_nombres()
+    )
+
+    profesionales_configurados = [
+        str(p).strip()
+        for p in profesionales_configurados
+        if str(p).strip()
+    ]
+
+    # Solamente casos pendientes.
+    df_pendientes = df_seguimiento[
+        df_seguimiento["Estado DB"] != "RESUELTO"
+    ].copy()
+
+    if not df_pendientes.empty:
+
+        conteos = (
+            df_pendientes[
+                "Profesional"
+            ]
+            .astype(str)
+            .str.strip()
             .value_counts()
         )
 
-        if not prof_counts.empty:
+    else:
 
-            st.bar_chart(
-                prof_counts
-            )
+        conteos = pd.Series(
+            dtype="int64"
+        )
 
-        else:
+    # Crear la serie partiendo de los profesionales
+    # configurados, incluso cuando tengan cero casos.
+    datos_profesionales = {}
 
-            st.info(
-                "No existen casos pendientes "
-                "en seguimiento."
-            )
+    for profesional in profesionales_configurados:
+
+        clave = normalizar_nombre_profesional(
+            profesional
+        )
+
+        total_profesional = 0
+
+        for nombre, cantidad in conteos.items():
+
+            if (
+                normalizar_nombre_profesional(
+                    nombre
+                )
+                == clave
+            ):
+
+                total_profesional = int(
+                    cantidad
+                )
+
+                break
+
+        datos_profesionales[
+            profesional
+        ] = total_profesional
+
+    prof_counts = pd.Series(
+        datos_profesionales,
+        dtype="int64",
+    )
+
+    if not prof_counts.empty:
+
+        st.bar_chart(
+            prof_counts
+        )
+
+    else:
+
+        st.info(
+            "No hay profesionales configurados "
+            "para seguimiento."
+        )
+
+    # ------------------------------------------------------------
+    # GRÁFICA 2 - DISTRIBUCIÓN DE ESTADOS
+    # ------------------------------------------------------------
 
     with col_g2:
 
@@ -2003,13 +2070,20 @@ def pagina_procesar():
                             "actualizados."
                         )
 
+                        if st.button(
+                            "🔄 Actualizar tablero",
+                            key="actualizar_tablero_archivo",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            st.rerun()
+
                     else:
 
                         st.error(
                             f"❌ "
                             f"{res.get('error')}"
                         )
-
             else:
 
                 st.info(
@@ -2071,14 +2145,23 @@ def pagina_procesar():
                 )
 
             if res["ok"]:
-
+                
                 st.success(
-                    "✅ Procesado: "
+                    f"✅ "
+                    f"{os.path.basename(f)}: "
                     f"{res['insertados']} "
                     "insertados, "
                     f"{res['actualizados']} "
                     "actualizados."
                 )
+
+                if st.button(
+                    "🔄 Actualizar tablero",
+                    key="actualizar_tablero_archivo",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    st.rerun()
 
             else:
 
@@ -2086,7 +2169,6 @@ def pagina_procesar():
                     f"❌ "
                     f"{res.get('error')}"
                 )
-
 
 # ============================================================
 # LOGS
@@ -2590,7 +2672,7 @@ def mostrar_sidebar():
         )
 
         st.caption(
-            "Versión 2.2"
+            "Versión 2.3.1"
         )
 
         st.divider()
