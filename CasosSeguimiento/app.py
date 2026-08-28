@@ -356,18 +356,16 @@ def estado_visual(
     # Fecha de Validación se considera pendiente.
     if fecha_limite:
 
-        estado, color, _ = (
-            obtener_estado_visual(
-                fecha_limite=fecha_limite,
-                fecha_resolucion=None,
-                estado_db=ESTADO_PENDIENTE,
-                dias_alerta=dias_alerta,
-            )
+        resultado = obtener_estado_visual(
+            fecha_limite=fecha_limite,
+            fecha_resolucion=None,
+            estado_db="PENDIENTE",
+            dias_alerta=dias_alerta,
         )
 
         return (
-            estado,
-            color,
+            resultado[0],
+            resultado[1],
         )
 
     # ========================================================
