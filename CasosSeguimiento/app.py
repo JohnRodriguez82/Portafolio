@@ -223,21 +223,19 @@ def calcular_dias(
     fecha_validacion=None,
 ):
     """
-    Calcula los días reales del caso.
+    Calcula los días de atención del caso.
 
-    Pendiente:
-        Hoy - fecha de ingreso
+    - Sin fecha de validación:
+        caso pendiente → hoy - fecha_ingreso
 
-    Resuelto:
-        Fecha de resolución - fecha de ingreso
+    - Con fecha de validación:
+        caso resuelto → fecha_validacion - fecha_ingreso
     """
 
     if not fecha_ingreso:
-        return 0
+        return None
 
-    # Caso resuelto:
-    # los días quedan congelados en el tiempo real
-    # que tardó en resolverse.
+    # Caso resuelto
     if fecha_validacion:
 
         try:
@@ -249,15 +247,28 @@ def calcular_dias(
                 ).days,
             )
 
-        except (
-            TypeError,
-            ValueError,
-        ):
-            pass
+        except (TypeError, ValueError):
+            return None
 
-    # Caso pendiente:
-    # continúa aumentando diariamente.
+    # Caso pendiente
     try:
+        return max(
+            0,
+            (
+                date.today()
+                - fecha_ingreso
+            ).days,
+        )
+
+    except (TypeError, ValueError):
+        return None
+
+    # --------------------------------------------------------
+    # PENDIENTE
+    # --------------------------------------------------------
+
+    try:
+
         return max(
             0,
             (
@@ -270,7 +281,8 @@ def calcular_dias(
         TypeError,
         ValueError,
     ):
-        return 0
+
+        return None
 
 def estado_visual(
     dias,
