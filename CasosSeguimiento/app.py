@@ -1820,90 +1820,90 @@ def dashboard():
 
     with col_g1:
 
-    st.subheader(
-        "📈 Casos por profesional"
-    )
-
-    profesionales_configurados = (
-        get_profesionales_seguimiento_nombres()
-    )
-
-    profesionales_configurados = [
-        str(p).strip()
-        for p in profesionales_configurados
-        if str(p).strip()
-    ]
-
-    # Solamente casos pendientes.
-    df_pendientes = df_seguimiento[
-        df_seguimiento["Estado DB"] != "RESUELTO"
-    ].copy()
-
-    if not df_pendientes.empty:
-
-        conteos = (
-            df_pendientes[
-                "Profesional"
-            ]
-            .astype(str)
-            .str.strip()
-            .value_counts()
+        st.subheader(
+            "📈 Casos por profesional"
         )
 
-    else:
-
-        conteos = pd.Series(
-            dtype="int64"
+        profesionales_configurados = (
+            get_profesionales_seguimiento_nombres()
         )
 
-    # Crear la serie partiendo de los profesionales
-    # configurados, incluso cuando tengan cero casos.
-    datos_profesionales = {}
+        profesionales_configurados = [
+            str(p).strip()
+            for p in profesionales_configurados
+            if str(p).strip()
+        ]
 
-    for profesional in profesionales_configurados:
+        # Solamente casos pendientes.
+        df_pendientes = df_seguimiento[
+            df_seguimiento["Estado DB"] != "RESUELTO"
+        ].copy()
 
-        clave = normalizar_nombre_profesional(
-            profesional
+        if not df_pendientes.empty:
+
+            conteos = (
+                df_pendientes[
+                    "Profesional"
+                ]
+                .astype(str)
+                .str.strip()
+                .value_counts()
+            )
+
+        else:
+
+            conteos = pd.Series(
+                dtype="int64"
+            )
+
+        # Crear la serie partiendo de los profesionales
+        # configurados, incluso cuando tengan cero casos.
+        datos_profesionales = {}
+
+        for profesional in profesionales_configurados:
+
+            clave = normalizar_nombre_profesional(
+                profesional
+            )
+
+            total_profesional = 0
+
+            for nombre, cantidad in conteos.items():
+
+                if (
+                    normalizar_nombre_profesional(
+                        nombre
+                    )
+                    == clave
+                ):
+
+                    total_profesional = int(
+                        cantidad
+                    )
+
+                    break
+
+            datos_profesionales[
+                profesional
+            ] = total_profesional
+
+        prof_counts = pd.Series(
+            datos_profesionales,
+            dtype="int64",
         )
 
-        total_profesional = 0
+        if not prof_counts.empty:
 
-        for nombre, cantidad in conteos.items():
+            st.bar_chart(
+                prof_counts
+            )
 
-            if (
-                normalizar_nombre_profesional(
-                    nombre
-                )
-                == clave
-            ):
+        else:
 
-                total_profesional = int(
-                    cantidad
-                )
-
-                break
-
-        datos_profesionales[
-            profesional
-        ] = total_profesional
-
-    prof_counts = pd.Series(
-        datos_profesionales,
-        dtype="int64",
-    )
-
-    if not prof_counts.empty:
-
-        st.bar_chart(
-            prof_counts
-        )
-
-    else:
-
-        st.info(
-            "No hay profesionales configurados "
-            "para seguimiento."
-        )
+            st.info(
+                "No hay profesionales configurados "
+                "para seguimiento."
+            )
 
     # ------------------------------------------------------------
     # GRÁFICA 2 - DISTRIBUCIÓN DE ESTADOS
