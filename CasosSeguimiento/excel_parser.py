@@ -22,6 +22,17 @@ import pandas as pd
 from config_manager import get_campos_excel, get_tipo_archivo
 from database import Caso, LogProcesamiento, get_db
 
+from config_manager import (
+    get_campos_excel,
+    get_tipo_archivo,
+    load_config,
+)
+
+from cumplimiento import (
+    calcular_fecha_limite,
+    calcular_dias_retraso,
+    calcular_cumplimiento,
+)
 
 # ============================================================
 # CONSTANTES
@@ -167,6 +178,65 @@ def _parse_fecha(valor):
 
     return None
 
+def _obtener_dias_resolucion():
+    """
+    Obtiene el plazo configurado.
+    """
+    try:
+        cfg = load_config()
+
+        return int(
+            cfg.get(
+                "tiempo_resolucion_dias",
+                10,
+            )
+        )
+
+    except Exception:
+        return 10
+
+def _calcular_datos_cumplimiento(
+    fecha_ingreso,
+    fecha_validacion,
+):
+    """
+    Calcula fecha límite, días de retraso y
+    cumplimiento.
+
+    Para casos nuevos se utiliza la configuración
+    vigente.
+    """
+
+    dias_resolucion = (
+        _obtener_dias_resolucion()
+    )
+
+    fecha_limite = (
+        calcular_fecha_limite(
+            fecha_ingreso,
+            dias_resolucion,
+        )
+    )
+
+    dias_retraso = (
+        calcular_dias_retraso(
+            fecha_limite,
+            fecha_validacion,
+        )
+    )
+
+    cumplimiento = (
+        calcular_cumplimiento(
+            fecha_limite,
+            fecha_validacion,
+        )
+    )
+
+    return (
+        fecha_limite,
+        dias_retraso,
+        cumplimiento,
+    )
 
 # ============================================================
 # COLUMNAS
@@ -597,6 +667,14 @@ def procesar_archivo(filepath: str) -> dict:
                 # ------------------------------------------------
                 # ACTUALIZAR
                 # ------------------------------------------------
+                (
+                    nueva_fecha_limite,
+                    nuevos_dias_retraso,
+                    nuevo_cumplimiento,
+                ) = _calcular_datos_cumplimiento(
+                    fecha_ingreso,
+                    fecha_validacion,
+                )
 
                 if existe:
 
@@ -605,6 +683,9 @@ def procesar_archivo(filepath: str) -> dict:
                     campos_a_comparar = {
                         "fecha_ingreso": fecha_ingreso,
                         "fecha_validacion": fecha_validacion,
+                        "fecha_limite": fecha_limite,
+                        "dias_retraso": dias_retraso,
+                        "cumplimiento_plazo": cumplimiento,
                         "estado": estado,
                         "profesional": profesional,
                         "sede": valores.get(
@@ -710,11 +791,22 @@ def procesar_archivo(filepath: str) -> dict:
                 # ------------------------------------------------
 
                 else:
+                    (
+                        fecha_limite,
+                        dias_retraso,
+                        cumplimiento,
+                    ) = _calcular_datos_cumplimiento(
+                        fecha_ingreso,
+                        fecha_validacion,
+                    )
 
                     nuevo = Caso(
                         numero_caso=numero_caso,
                         fecha_ingreso=fecha_ingreso,
                         fecha_validacion=fecha_validacion,
+                        fecha_limite=fecha_limite,
+                        dias_retraso=dias_retraso,
+                        cumplimiento_plazo=cumplimiento,
                         estado=estado,
                         profesional=profesional,
                         sede=valores.get(
