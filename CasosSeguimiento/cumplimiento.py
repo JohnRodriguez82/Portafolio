@@ -146,27 +146,18 @@ def obtener_estado_visual(
     """
     Determina el estado visual del caso.
 
-    Reglas:
+    La Fecha de Validación/Resolución es la que
+    determina si el caso está realmente resuelto.
 
-    1. RESUELTO + fecha de resolución:
-       se determina si cumplió o no el plazo.
-
-    2. RESUELTO sin fecha de resolución:
-       se muestra como RESUELTO - SIN FECHA.
-       No se asume que fue resuelto a tiempo.
-
-    3. PENDIENTE:
-       se calcula según la fecha límite.
+    Si no existe fecha de resolución, el caso
+    se considera PENDIENTE.
     """
 
     # ========================================================
-    # CASO RESUELTO CON FECHA
+    # RESUELTO CON FECHA DE RESOLUCIÓN
     # ========================================================
 
-    if (
-        estado_db == ESTADO_RESUELTO
-        and fecha_resolucion is not None
-    ):
+    if fecha_resolucion:
 
         if not fecha_limite:
 
@@ -176,20 +167,23 @@ def obtener_estado_visual(
                 0,
             )
 
-        dias_retraso = (
-            calcular_dias_retraso(
-                fecha_limite,
-                fecha_resolucion,
-            )
+        dias_retraso = calcular_dias_retraso(
+            fecha_limite,
+            fecha_resolucion,
         )
 
         if dias_retraso > 0:
 
+            unidad = (
+                "día"
+                if dias_retraso == 1
+                else "días"
+            )
+
             return (
                 (
                     "🟠 RESUELTO FUERA DE TIEMPO "
-                    f"({dias_retraso} "
-                    f"{'día' if dias_retraso == 1 else 'días'})"
+                    f"({dias_retraso} {unidad})"
                 ),
                 "orange",
                 dias_retraso,
@@ -202,29 +196,13 @@ def obtener_estado_visual(
         )
 
     # ========================================================
-    # CASO RESUELTO SIN FECHA
-    # ========================================================
-
-    if (
-        estado_db == ESTADO_RESUELTO
-        and fecha_resolucion is None
-    ):
-
-        return (
-            "🟣 RESUELTO - SIN FECHA",
-            "purple",
-            0,
-        )
-
-    # ========================================================
-    # CASO PENDIENTE
+    # SIN FECHA DE RESOLUCIÓN = PENDIENTE
     # ========================================================
 
     return calcular_estado_pendiente(
         fecha_limite,
         dias_alerta=dias_alerta,
     )
-
 
 
 def detalle_cumplimiento(
