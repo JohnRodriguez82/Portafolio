@@ -294,25 +294,32 @@ def estado_visual(
     dias_alerta=2,
 ):
     """
-    Estado visual v2.3.
+    Determina el estado visual del caso.
 
-    Utiliza los datos históricos almacenados
-    cuando están disponibles.
+    Regla principal:
+    La Fecha de Validación determina si el caso
+    está realmente resuelto.
+
+    - Sin Fecha de Validación:
+        PENDIENTE, aunque Estado DB diga RESUELTO.
+
+    - Con Fecha de Validación:
+        RESUELTO y se determina si cumplió el plazo.
     """
 
-    if (
-        estado_db == "RESUELTO"
-        or fecha_validacion
-    ):
+    # ========================================================
+    # CASO RESUELTO
+    # ========================================================
+    # La fecha de validación es la evidencia real
+    # de que el caso fue resuelto.
+    if fecha_validacion:
 
         if dias_retraso is None:
 
             dias_retraso = 0
 
-            if (
-                fecha_limite
-                and fecha_validacion
-            ):
+            if fecha_limite:
+
                 dias_retraso = max(
                     0,
                     (
@@ -342,20 +349,31 @@ def estado_visual(
             "green",
         )
 
+    # ========================================================
+    # CASO PENDIENTE
+    # ========================================================
+    # Aunque el Estado DB diga RESUELTO, si no existe
+    # Fecha de Validación se considera pendiente.
     if fecha_limite:
 
         estado, color, _ = (
             obtener_estado_visual(
                 fecha_limite=fecha_limite,
                 fecha_resolucion=None,
-                estado_db=estado_db,
+                estado_db=ESTADO_PENDIENTE,
                 dias_alerta=dias_alerta,
             )
         )
 
-        return estado, color
+        return (
+            estado,
+            color,
+        )
 
-    # Compatibilidad con registros antiguos
+    # ========================================================
+    # COMPATIBILIDAD CON REGISTROS ANTIGUOS
+    # ========================================================
+
     limite_preventivo = (
         dias_resolucion
         - dias_alerta
@@ -386,6 +404,7 @@ def estado_visual(
         "🔵 PENDIENTE",
         "blue",
     )
+
 
 
 def guardar_y_mostrar_mensaje(
