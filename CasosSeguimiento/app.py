@@ -68,6 +68,10 @@ from scheduler_service import (
     iniciar_scheduler,
 )
 
+from cumplimiento import (
+    obtener_estado_visual,
+    detalle_cumplimiento,
+)
 
 # ============================================================
 # CONFIGURACIÓN STREAMLIT
@@ -232,12 +236,16 @@ def estado_visual(
     dias,
     estado_db,
     fecha_validacion,
+    fecha_limite=None,
+    dias_retraso=None,
     dias_resolucion=10,
     dias_alerta=2,
 ):
     """
-    Calcula el estado visual utilizando los parámetros
-    configurados.
+    Estado visual v2.3.
+
+    Utiliza los datos históricos almacenados
+    cuando están disponibles.
     """
 
     if (
@@ -245,11 +253,57 @@ def estado_visual(
         or fecha_validacion
     ):
 
+        if dias_retraso is None:
+
+            dias_retraso = 0
+
+            if (
+                fecha_limite
+                and fecha_validacion
+            ):
+                dias_retraso = max(
+                    0,
+                    (
+                        fecha_validacion
+                        - fecha_limite
+                    ).days,
+                )
+
+        if dias_retraso > 0:
+
+            unidad = (
+                "día"
+                if dias_retraso == 1
+                else "días"
+            )
+
+            return (
+                (
+                    "🟠 RESUELTO FUERA DE TIEMPO "
+                    f"({dias_retraso} {unidad})"
+                ),
+                "orange",
+            )
+
         return (
-            "✅ RESUELTO",
+            "🟢 RESUELTO A TIEMPO",
             "green",
         )
 
+    if fecha_limite:
+
+        estado, color, _ = (
+            obtener_estado_visual(
+                fecha_limite=fecha_limite,
+                fecha_resolucion=None,
+                estado_db=estado_db,
+                dias_alerta=dias_alerta,
+            )
+        )
+
+        return estado, color
+
+    # Compatibilidad con registros antiguos
     limite_preventivo = (
         dias_resolucion
         - dias_alerta
@@ -399,6 +453,16 @@ def construir_dataframe_casos(
                 dias,
                 c.estado,
                 c.fecha_validacion,
+                getattr(
+                    c,
+                    "fecha_limite",
+                    None,
+                ),
+                getattr(
+                    c,
+                    "dias_retraso",
+                    0,
+                ),
                 dias_resolucion,
                 dias_alerta,
             )
@@ -413,6 +477,28 @@ def construir_dataframe_casos(
             "Órgano": c.organo,
             "Fecha Ingreso": c.fecha_ingreso,
             "Fecha Validación": c.fecha_validacion,
+            "Fecha Límite": getattr(
+                c,
+                "fecha_limite",
+                None,
+            ),
+
+            "Fecha Resolución": c.fecha_validacion,
+
+            "Cumplimiento": (
+                getattr(
+                    c,
+                    "cumplimiento_plazo",
+                    None,
+                )
+                or ""
+            ),
+
+            "Días Retraso": getattr(
+                c,
+                "dias_retraso",
+                0,
+            ),
             "Profesional": c.profesional,
             "Estado DB": c.estado,
             "Días": dias,
