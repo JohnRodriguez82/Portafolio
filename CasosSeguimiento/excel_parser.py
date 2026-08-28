@@ -1,5 +1,5 @@
 """
-CasosSeguimiento v2.1
+CasosSeguimiento v2.3
 Procesamiento de Excel/CSV con actualización incremental.
 
 Características:
@@ -10,6 +10,12 @@ Características:
 - Inserción y actualización por numero_caso.
 - Campos adicionales almacenados como JSON.
 - Logs de procesamiento.
+- Cálculo de fecha límite por caso.
+- Conservación de fecha límite histórica.
+- Cálculo de días de retraso.
+- Identificación de casos resueltos a tiempo.
+- Identificación de casos resueltos fuera de tiempo.
+- Compatibilidad con registros existentes de v2.2.
 """
 
 import re
@@ -19,13 +25,16 @@ from pathlib import Path
 
 import pandas as pd
 
-from config_manager import get_campos_excel, get_tipo_archivo
-from database import Caso, LogProcesamiento, get_db
-
 from config_manager import (
     get_campos_excel,
     get_tipo_archivo,
     load_config,
+)
+
+from database import (
+    Caso,
+    LogProcesamiento,
+    get_db,
 )
 
 from cumplimiento import (
@@ -33,6 +42,7 @@ from cumplimiento import (
     calcular_dias_retraso,
     calcular_cumplimiento,
 )
+
 
 # ============================================================
 # CONSTANTES
@@ -77,7 +87,8 @@ def _normalizar_texto(valor) -> str:
     )
 
     texto = "".join(
-        c for c in texto
+        c
+        for c in texto
         if not unicodedata.combining(c)
     )
 
@@ -94,6 +105,10 @@ def _normalizar_texto(valor) -> str:
 
 
 def _valor_vacio(valor) -> bool:
+    """
+    Determina si un valor está vacío o es NaN.
+    """
+
     if valor is None:
         return True
 
@@ -120,11 +135,13 @@ def _parse_fecha(valor):
     Prioridad:
     1. datetime/date de Python
     2. Timestamp de pandas
-    3. fechas Excel interpretadas por pandas
-    4. DD/MM/YYYY
-    5. DD-MM-YYYY
-    6. YYYY-MM-DD
-    7. formatos cortos
+    3. DD/MM/YYYY
+    4. DD-MM-YYYY
+    5. DD/MM/YY
+    6. DD-MM-YY
+    7. YYYY-MM-DD
+    8. YYYY/MM/DD
+    9. pandas como último intento
 
     Para strings ambiguos se prioriza formato colombiano.
     """
@@ -143,7 +160,6 @@ def _parse_fecha(valor):
 
     texto = str(valor).strip()
 
-    # Formatos explícitos, priorizando Colombia
     formatos = [
         "%d/%m/%Y",
         "%d-%m-%Y",
@@ -162,7 +178,6 @@ def _parse_fecha(valor):
         except ValueError:
             continue
 
-    # Último intento con pandas
     try:
         parsed = pd.to_datetime(
             texto,
@@ -178,34 +193,59 @@ def _parse_fecha(valor):
 
     return None
 
-def _obtener_dias_resolucion():
+
+# ============================================================
+# CONFIGURACIÓN DE PLAZOS
+# ============================================================
+
+def _obtener_dias_resolucion() -> int:
     """
-    Obtiene el plazo configurado.
+    Obtiene el número de días configurado para resolver
+    un caso.
+
+    Si no existe la configuración, utiliza 10 días como
+    valor de compatibilidad.
     """
+
     try:
         cfg = load_config()
 
-        return int(
-            cfg.get(
-                "tiempo_resolucion_dias",
-                10,
-            )
+        valor = cfg.get(
+            "tiempo_resolucion_dias",
+            10,
         )
+
+        dias = int(valor)
+
+        if dias < 0:
+            return 10
+
+        return dias
 
     except Exception:
         return 10
+
 
 def _calcular_datos_cumplimiento(
     fecha_ingreso,
     fecha_validacion,
 ):
     """
-    Calcula fecha límite, días de retraso y
-    cumplimiento.
+    Calcula los datos de cumplimiento para un caso nuevo.
 
-    Para casos nuevos se utiliza la configuración
-    vigente.
+    Retorna:
+
+        fecha_limite
+        dias_retraso
+        cumplimiento
     """
+
+    if not fecha_ingreso:
+        return (
+            None,
+            0,
+            None,
+        )
 
     dias_resolucion = (
         _obtener_dias_resolucion()
@@ -238,6 +278,68 @@ def _calcular_datos_cumplimiento(
         cumplimiento,
     )
 
+
+def _calcular_datos_cumplimiento_existente(
+    existe,
+    fecha_ingreso,
+    fecha_validacion,
+):
+    """
+    Calcula cumplimiento para un caso existente.
+
+    Regla fundamental de v2.3:
+
+    - Si el caso ya tiene fecha_limite, se conserva.
+    - Si es un caso antiguo de v2.2 y no tiene fecha_limite,
+      se crea una sola vez utilizando la configuración actual.
+    - Una vez creada, la fecha límite queda histórica y no
+      cambia aunque posteriormente cambie la configuración.
+
+    Esto evita alterar resultados históricos.
+    """
+
+    fecha_limite_existente = getattr(
+        existe,
+        "fecha_limite",
+        None,
+    )
+
+    if fecha_limite_existente:
+        fecha_limite = (
+            fecha_limite_existente
+        )
+
+    else:
+        (
+            fecha_limite,
+            _,
+            _,
+        ) = _calcular_datos_cumplimiento(
+            fecha_ingreso,
+            fecha_validacion,
+        )
+
+    dias_retraso = (
+        calcular_dias_retraso(
+            fecha_limite,
+            fecha_validacion,
+        )
+    )
+
+    cumplimiento = (
+        calcular_cumplimiento(
+            fecha_limite,
+            fecha_validacion,
+        )
+    )
+
+    return (
+        fecha_limite,
+        dias_retraso,
+        cumplimiento,
+    )
+
+
 # ============================================================
 # COLUMNAS
 # ============================================================
@@ -267,15 +369,27 @@ def _detectar_columnas(
     ambiguos = []
 
     for campo in campos_config:
-        if not campo.get("activo", True):
+
+        if not campo.get(
+            "activo",
+            True,
+        ):
             continue
 
-        campo_id = str(campo.get("id", "")).strip()
+        campo_id = str(
+            campo.get(
+                "id",
+                "",
+            )
+        ).strip()
 
         sinonimos = [
             s.strip()
             for s in str(
-                campo.get("sinonimos", "")
+                campo.get(
+                    "sinonimos",
+                    "",
+                )
             ).split(",")
             if s.strip()
         ]
@@ -285,7 +399,10 @@ def _detectar_columnas(
 
         nombres_busqueda = [
             campo_id,
-            campo.get("nombre", ""),
+            campo.get(
+                "nombre",
+                "",
+            ),
             *sinonimos,
         ]
 
@@ -295,52 +412,88 @@ def _detectar_columnas(
             if _normalizar_texto(x)
         ]
 
-        # 1. Exactas
+        # ----------------------------------------------------
+        # Coincidencias exactas
+        # ----------------------------------------------------
+
         for columna in columnas:
-            col_norm = normalizadas[columna]
+
+            col_norm = normalizadas[
+                columna
+            ]
 
             if col_norm in nombres_normalizados:
-                candidatos_exactos.append(columna)
+                candidatos_exactos.append(
+                    columna
+                )
 
         if len(candidatos_exactos) == 1:
-            mapeo[campo_id] = candidatos_exactos[0]
+
+            mapeo[campo_id] = (
+                candidatos_exactos[0]
+            )
+
             continue
 
         if len(candidatos_exactos) > 1:
+
             ambiguos.append(
                 f"{campo.get('nombre', campo_id)}: "
                 f"{candidatos_exactos}"
             )
+
             continue
 
-        # 2. Parciales
+        # ----------------------------------------------------
+        # Coincidencias parciales
+        # ----------------------------------------------------
+
         for columna in columnas:
-            col_norm = normalizadas[columna]
+
+            col_norm = normalizadas[
+                columna
+            ]
 
             for nombre in nombres_normalizados:
+
                 if len(nombre) >= 4 and (
                     nombre in col_norm
                     or col_norm in nombre
                 ):
-                    candidatos_parciales.append(columna)
+                    candidatos_parciales.append(
+                        columna
+                    )
                     break
 
         candidatos_parciales = list(
-            dict.fromkeys(candidatos_parciales)
+            dict.fromkeys(
+                candidatos_parciales
+            )
         )
 
         if len(candidatos_parciales) == 1:
-            mapeo[campo_id] = candidatos_parciales[0]
+
+            mapeo[campo_id] = (
+                candidatos_parciales[0]
+            )
 
         elif len(candidatos_parciales) > 1:
+
             ambiguos.append(
                 f"{campo.get('nombre', campo_id)}: "
                 f"{candidatos_parciales}"
             )
 
-        elif campo.get("obligatorio", False):
+        elif campo.get(
+            "obligatorio",
+            False,
+        ):
+
             no_detectados.append(
-                campo.get("nombre", campo_id)
+                campo.get(
+                    "nombre",
+                    campo_id,
+                )
             )
 
     return (
@@ -351,7 +504,7 @@ def _detectar_columnas(
 
 
 # ============================================================
-# LECTURA
+# LECTURA DE ARCHIVOS
 # ============================================================
 
 def _leer_archivo(filepath: str):
@@ -362,20 +515,36 @@ def _leer_archivo(filepath: str):
     path = Path(filepath)
 
     if not path.exists():
+
         raise FileNotFoundError(
             f"No existe el archivo: {path}"
         )
 
     tipo_cfg = get_tipo_archivo()
-    extension = path.suffix.lower()
 
-    if extension == ".csv" or tipo_cfg == "csv":
+    extension = (
+        path.suffix.lower()
+    )
+
+    # --------------------------------------------------------
+    # CSV
+    # --------------------------------------------------------
+
+    if (
+        extension == ".csv"
+        or tipo_cfg == "csv"
+    ):
 
         errores_csv = []
 
-        for sep in [",", ";", "\t"]:
+        for sep in [
+            ",",
+            ";",
+            "\t",
+        ]:
 
             try:
+
                 df = pd.read_csv(
                     path,
                     sep=sep,
@@ -387,6 +556,7 @@ def _leer_archivo(filepath: str):
                     return df
 
             except Exception as exc:
+
                 errores_csv.append(
                     f"{sep}: {exc}"
                 )
@@ -397,10 +567,15 @@ def _leer_archivo(filepath: str):
             f"Detalles: {errores_csv}"
         )
 
+    # --------------------------------------------------------
+    # Excel
+    # --------------------------------------------------------
+
     if extension not in {
         ".xlsx",
         ".xls",
     }:
+
         raise ValueError(
             f"Extensión no soportada: {extension}"
         )
@@ -415,15 +590,32 @@ def _leer_archivo(filepath: str):
 # CONVERSIÓN DE VALORES
 # ============================================================
 
-def _convertir_valor(valor, tipo):
+def _convertir_valor(
+    valor,
+    tipo,
+):
+    """
+    Convierte un valor de acuerdo con el tipo configurado.
+    """
+
     if _valor_vacio(valor):
-        return None if tipo == "fecha" else ""
+
+        return (
+            None
+            if tipo == "fecha"
+            else ""
+        )
 
     if tipo == "fecha":
-        return _parse_fecha(valor)
+
+        return _parse_fecha(
+            valor
+        )
 
     if tipo == "numero":
+
         try:
+
             numero = pd.to_numeric(
                 valor,
                 errors="coerce",
@@ -435,16 +627,105 @@ def _convertir_valor(valor, tipo):
             return float(numero)
 
         except Exception:
+
             return ""
 
-    return str(valor).strip()
+    return str(
+        valor
+    ).strip()
 
 
 # ============================================================
-# PROCESAMIENTO
+# CAMPOS EXTRA
 # ============================================================
 
-def procesar_archivo(filepath: str) -> dict:
+def _obtener_campos_extra(
+    valores,
+):
+    """
+    Separa los campos parametrizables de los campos base.
+    """
+
+    campos_extra = {}
+
+    for campo_id, valor in valores.items():
+
+        if (
+            campo_id not in CAMPOS_BASE
+            and campo_id not in CAMPOS_FECHA
+            and campo_id != "numero_caso"
+        ):
+
+            campos_extra[
+                campo_id
+            ] = valor
+
+    return campos_extra
+
+
+# ============================================================
+# ESTADO
+# ============================================================
+
+def _obtener_estado(
+    valores,
+):
+    """
+    Determina el estado lógico del caso.
+
+    Si existe fecha de validación, se considera RESUELTO
+    aunque el Excel indique PENDIENTE.
+    """
+
+    fecha_validacion = valores.get(
+        "fecha_validacion"
+    )
+
+    estado_raw = str(
+        valores.get(
+            "estado"
+        )
+        or ""
+    ).strip().upper()
+
+    estado = (
+        estado_raw
+        if estado_raw
+        else (
+            "RESUELTO"
+            if fecha_validacion
+            else "PENDIENTE"
+        )
+    )
+
+    if (
+        fecha_validacion
+        and estado in {
+            "",
+            "PENDIENTE",
+        }
+    ):
+
+        estado = "RESUELTO"
+
+    return estado
+
+
+# ============================================================
+# PROCESAMIENTO PRINCIPAL
+# ============================================================
+
+def procesar_archivo(
+    filepath: str,
+) -> dict:
+    """
+    Procesa un archivo Excel/CSV y actualiza la base.
+
+    La identificación del registro se realiza por
+    numero_caso.
+
+    Los casos existentes conservan su fecha límite histórica.
+    """
 
     db = get_db()
 
@@ -458,23 +739,30 @@ def procesar_archivo(filepath: str) -> dict:
     }
 
     try:
-        # ----------------------------------------------------
-        # Leer
-        # ----------------------------------------------------
 
-        df = _leer_archivo(filepath)
+        # ====================================================
+        # LEER ARCHIVO
+        # ====================================================
+
+        df = _leer_archivo(
+            filepath
+        )
 
         if df.empty:
+
             resultado["error"] = (
                 "El archivo está vacío."
             )
+
             return resultado
 
-        # ----------------------------------------------------
-        # Configuración
-        # ----------------------------------------------------
+        # ====================================================
+        # CONFIGURACIÓN
+        # ====================================================
 
-        campos_config = get_campos_excel()
+        campos_config = (
+            get_campos_excel()
+        )
 
         (
             mapeo,
@@ -485,41 +773,53 @@ def procesar_archivo(filepath: str) -> dict:
             campos_config,
         )
 
-        resultado["columnas_detectadas"] = {
+        resultado[
+            "columnas_detectadas"
+        ] = {
             campo: str(columna)
             for campo, columna in mapeo.items()
         }
 
         if faltantes:
+
             resultado["error"] = (
-                "Columnas obligatorias no detectadas: "
+                "Columnas obligatorias no "
+                "detectadas: "
                 f"{faltantes}. "
-                f"Columnas encontradas: "
+                "Columnas encontradas: "
                 f"{list(df.columns)}"
             )
+
             return resultado
 
         if ambiguos:
+
             resultado["error"] = (
-                "Se encontraron columnas ambiguas: "
+                "Se encontraron columnas "
+                "ambiguas: "
                 f"{ambiguos}. "
-                "Corrige los nombres o sinónimos."
+                "Corrige los nombres o "
+                "sinónimos."
             )
+
             return resultado
 
-        # ----------------------------------------------------
-        # Configuración por ID
-        # ----------------------------------------------------
+        # ====================================================
+        # CONFIGURACIÓN POR ID
+        # ====================================================
 
         config_por_id = {
             campo["id"]: campo
             for campo in campos_config
-            if campo.get("activo", True)
+            if campo.get(
+                "activo",
+                True,
+            )
         }
 
-        # ----------------------------------------------------
-        # Procesar filas
-        # ----------------------------------------------------
+        # ====================================================
+        # PROCESAR FILAS
+        # ====================================================
 
         for idx, row in df.iterrows():
 
@@ -527,35 +827,60 @@ def procesar_archivo(filepath: str) -> dict:
 
             try:
 
+                # ------------------------------------------------
                 # Número de caso
-                if "numero_caso" not in mapeo:
-                    resultado["errores"].append(
+                # ------------------------------------------------
+
+                if (
+                    "numero_caso"
+                    not in mapeo
+                ):
+
+                    resultado[
+                        "errores"
+                    ].append(
                         f"Fila {numero_fila}: "
-                        "No se detectó número de caso."
+                        "No se detectó "
+                        "número de caso."
                     )
+
                     continue
 
                 numero_raw = row[
-                    mapeo["numero_caso"]
+                    mapeo[
+                        "numero_caso"
+                    ]
                 ]
 
-                if _valor_vacio(numero_raw):
-                    resultado["errores"].append(
+                if _valor_vacio(
+                    numero_raw
+                ):
+
+                    resultado[
+                        "errores"
+                    ].append(
                         f"Fila {numero_fila}: "
-                        "Número de caso vacío."
+                        "Número de caso "
+                        "vacío."
                     )
+
                     continue
 
                 numero_caso = str(
                     numero_raw
                 ).strip()
 
-                # Evitar números tipo 123.0 provenientes de Excel
+                # Evitar números tipo 123.0
+                # provenientes de Excel.
+
                 if re.fullmatch(
                     r"\d+\.0",
                     numero_caso,
                 ):
-                    numero_caso = numero_caso[:-2]
+
+                    numero_caso = (
+                        numero_caso[:-2]
+                    )
 
                 # ------------------------------------------------
                 # Extraer valores
@@ -563,11 +888,16 @@ def procesar_archivo(filepath: str) -> dict:
 
                 valores = {}
 
-                for campo_id, columna in mapeo.items():
+                for (
+                    campo_id,
+                    columna,
+                ) in mapeo.items():
 
-                    cfg = config_por_id.get(
-                        campo_id,
-                        {},
+                    cfg = (
+                        config_por_id.get(
+                            campo_id,
+                            {},
+                        )
                     )
 
                     tipo = cfg.get(
@@ -575,84 +905,84 @@ def procesar_archivo(filepath: str) -> dict:
                         "texto",
                     )
 
-                    valores[campo_id] = (
-                        _convertir_valor(
-                            row[columna],
-                            tipo,
-                        )
+                    valores[
+                        campo_id
+                    ] = _convertir_valor(
+                        row[columna],
+                        tipo,
                     )
 
                 # ------------------------------------------------
-                # Obligatorios
+                # Campos obligatorios
                 # ------------------------------------------------
 
-                fecha_ingreso = valores.get(
-                    "fecha_ingreso"
+                fecha_ingreso = (
+                    valores.get(
+                        "fecha_ingreso"
+                    )
                 )
 
-                profesional = valores.get(
-                    "profesional"
+                profesional = (
+                    valores.get(
+                        "profesional"
+                    )
                 )
 
                 if not fecha_ingreso:
-                    resultado["errores"].append(
+
+                    resultado[
+                        "errores"
+                    ].append(
                         f"Fila {numero_fila}: "
                         f"Caso {numero_caso}: "
-                        "fecha_ingreso inválida o vacía."
+                        "fecha_ingreso "
+                        "inválida o vacía."
                     )
+
                     continue
 
                 if not profesional:
-                    resultado["errores"].append(
+
+                    resultado[
+                        "errores"
+                    ].append(
                         f"Fila {numero_fila}: "
                         f"Caso {numero_caso}: "
                         "profesional vacío."
                     )
+
                     continue
 
-                fecha_validacion = valores.get(
-                    "fecha_validacion"
-                )
+                # ------------------------------------------------
+                # Fecha de resolución
+                # ------------------------------------------------
 
-                estado_raw = str(
-                    valores.get("estado") or ""
-                ).strip().upper()
-
-                estado = (
-                    estado_raw
-                    if estado_raw
-                    else (
-                        "RESUELTO"
-                        if fecha_validacion
-                        else "PENDIENTE"
+                fecha_validacion = (
+                    valores.get(
+                        "fecha_validacion"
                     )
                 )
 
-                # Si existe fecha de validación pero
-                # estado dice pendiente, prevalece RESUELTO.
-                if fecha_validacion and estado in {
-                    "",
-                    "PENDIENTE",
-                }:
-                    estado = "RESUELTO"
+                # ------------------------------------------------
+                # Estado
+                # ------------------------------------------------
+
+                estado = _obtener_estado(
+                    valores
+                )
 
                 # ------------------------------------------------
                 # Campos extra
                 # ------------------------------------------------
 
-                campos_extra = {}
-
-                for campo_id, valor in valores.items():
-
-                    if (
-                        campo_id not in CAMPOS_BASE
-                        and campo_id not in CAMPOS_FECHA
-                        and campo_id != "numero_caso"
-                    ):
-                        campos_extra[campo_id] = valor
+                campos_extra = (
+                    _obtener_campos_extra(
+                        valores
+                    )
+                )
 
                 # ------------------------------------------------
-                # Buscar existente
+                # Buscar caso existente
                 # ------------------------------------------------
 
                 existe = (
@@ -664,49 +994,86 @@ def procesar_archivo(filepath: str) -> dict:
                     .first()
                 )
 
-                # ------------------------------------------------
-                # ACTUALIZAR
-                # ------------------------------------------------
-                (
-                    nueva_fecha_limite,
-                    nuevos_dias_retraso,
-                    nuevo_cumplimiento,
-                ) = _calcular_datos_cumplimiento(
-                    fecha_ingreso,
-                    fecha_validacion,
-                )
+                # =================================================
+                # ACTUALIZAR CASO EXISTENTE
+                # =================================================
 
                 if existe:
 
                     cambios = []
 
+                    # ------------------------------------------------
+                    # Calcular cumplimiento conservando fecha límite
+                    # histórica.
+                    # ------------------------------------------------
+
+                    (
+                        fecha_limite,
+                        dias_retraso,
+                        cumplimiento,
+                    ) = (
+                        _calcular_datos_cumplimiento_existente(
+                            existe,
+                            fecha_ingreso,
+                            fecha_validacion,
+                        )
+                    )
+
                     campos_a_comparar = {
-                        "fecha_ingreso": fecha_ingreso,
-                        "fecha_validacion": fecha_validacion,
-                        "fecha_limite": fecha_limite,
-                        "dias_retraso": dias_retraso,
-                        "cumplimiento_plazo": cumplimiento,
-                        "estado": estado,
-                        "profesional": profesional,
-                        "sede": valores.get(
-                            "sede",
-                            "",
-                        ),
-                        "seccion": valores.get(
-                            "seccion",
-                            "",
-                        ),
-                        "estudios": valores.get(
-                            "estudios",
-                            "",
-                        ),
-                        "organo": valores.get(
-                            "organo",
-                            "",
-                        ),
+                        "fecha_ingreso":
+                            fecha_ingreso,
+
+                        "fecha_validacion":
+                            fecha_validacion,
+
+                        "fecha_limite":
+                            fecha_limite,
+
+                        "dias_retraso":
+                            dias_retraso,
+
+                        "cumplimiento_plazo":
+                            cumplimiento,
+
+                        "estado":
+                            estado,
+
+                        "profesional":
+                            profesional,
+
+                        "sede":
+                            valores.get(
+                                "sede",
+                                "",
+                            ),
+
+                        "seccion":
+                            valores.get(
+                                "seccion",
+                                "",
+                            ),
+
+                        "estudios":
+                            valores.get(
+                                "estudios",
+                                "",
+                            ),
+
+                        "organo":
+                            valores.get(
+                                "organo",
+                                "",
+                            ),
                     }
 
-                    for atributo, nuevo_valor in (
+                    # ------------------------------------------------
+                    # Comparar y actualizar campos
+                    # ------------------------------------------------
+
+                    for (
+                        atributo,
+                        nuevo_valor,
+                    ) in (
                         campos_a_comparar.items()
                     ):
 
@@ -716,7 +1083,10 @@ def procesar_archivo(filepath: str) -> dict:
                             None,
                         )
 
-                        if anterior != nuevo_valor:
+                        if (
+                            anterior
+                            != nuevo_valor
+                        ):
 
                             cambios.append(
                                 f"{atributo}: "
@@ -730,8 +1100,12 @@ def procesar_archivo(filepath: str) -> dict:
                                 nuevo_valor,
                             )
 
+                    # ------------------------------------------------
                     # Campos extra
+                    # ------------------------------------------------
+
                     if campos_extra:
+
                         anterior_extra = (
                             existe.campos_extra
                             or {}
@@ -741,12 +1115,20 @@ def procesar_archivo(filepath: str) -> dict:
                             anterior_extra
                         )
 
-                        for clave, valor in (
+                        for (
+                            clave,
+                            valor,
+                        ) in (
                             campos_extra.items()
                         ):
-                            if nuevo_extra.get(
-                                clave
-                            ) != valor:
+
+                            if (
+                                nuevo_extra.get(
+                                    clave
+                                )
+                                != valor
+                            ):
+
                                 cambios.append(
                                     f"{clave}: "
                                     f"{nuevo_extra.get(clave)} "
@@ -761,74 +1143,118 @@ def procesar_archivo(filepath: str) -> dict:
                             nuevo_extra
                         )
 
-                    # Si se resolvió nuevamente,
-                    # las alertas anteriores ya no aplican.
+                    # ------------------------------------------------
+                    # Reiniciar alertas cuando el caso se resuelve
+                    # ------------------------------------------------
+
                     if (
                         fecha_validacion
                         or estado == "RESUELTO"
                     ):
+
                         existe.alerta_preventiva_enviada = (
                             False
                         )
+
                         existe.alerta_vencido_enviada = (
                             False
                         )
 
+                    # ------------------------------------------------
+                    # Registrar cambios
+                    # ------------------------------------------------
+
                     if cambios:
+
                         resultado[
                             "cambios"
                         ].append(
                             f"Caso {numero_caso}: "
-                            + "; ".join(cambios)
+                            + "; ".join(
+                                cambios
+                            )
                         )
 
                     resultado[
                         "actualizados"
                     ] += 1
 
-                # ------------------------------------------------
-                # INSERTAR
-                # ------------------------------------------------
+                # =================================================
+                # INSERTAR CASO NUEVO
+                # =================================================
 
                 else:
+
                     (
                         fecha_limite,
                         dias_retraso,
                         cumplimiento,
-                    ) = _calcular_datos_cumplimiento(
-                        fecha_ingreso,
-                        fecha_validacion,
+                    ) = (
+                        _calcular_datos_cumplimiento(
+                            fecha_ingreso,
+                            fecha_validacion,
+                        )
                     )
 
                     nuevo = Caso(
                         numero_caso=numero_caso,
-                        fecha_ingreso=fecha_ingreso,
-                        fecha_validacion=fecha_validacion,
-                        fecha_limite=fecha_limite,
-                        dias_retraso=dias_retraso,
-                        cumplimiento_plazo=cumplimiento,
-                        estado=estado,
-                        profesional=profesional,
+
+                        fecha_ingreso=(
+                            fecha_ingreso
+                        ),
+
+                        fecha_validacion=(
+                            fecha_validacion
+                        ),
+
+                        fecha_limite=(
+                            fecha_limite
+                        ),
+
+                        dias_retraso=(
+                            dias_retraso
+                        ),
+
+                        cumplimiento_plazo=(
+                            cumplimiento
+                        ),
+
+                        estado=(
+                            estado
+                        ),
+
+                        profesional=(
+                            profesional
+                        ),
+
                         sede=valores.get(
                             "sede",
                             "",
                         ),
+
                         seccion=valores.get(
                             "seccion",
                             "",
                         ),
+
                         estudios=valores.get(
                             "estudios",
                             "",
                         ),
+
                         organo=valores.get(
                             "organo",
                             "",
                         ),
-                        campos_extra=campos_extra,
+
+                        campos_extra=(
+                            campos_extra
+                        ),
                     )
 
-                    db.add(nuevo)
+                    db.add(
+                        nuevo
+                    )
 
                     resultado[
                         "insertados"
@@ -840,41 +1266,61 @@ def procesar_archivo(filepath: str) -> dict:
                     "errores"
                 ].append(
                     f"Fila {numero_fila}: "
-                    f"{type(exc).__name__}: {exc}"
+                    f"{type(exc).__name__}: "
+                    f"{exc}"
                 )
 
-        # ----------------------------------------------------
-        # Commit principal
-        # ----------------------------------------------------
+        # ====================================================
+        # COMMIT PRINCIPAL
+        # ====================================================
 
         db.commit()
 
-        # ----------------------------------------------------
-        # Log
-        # ----------------------------------------------------
+        # ====================================================
+        # LOG DE PROCESAMIENTO
+        # ====================================================
 
         log = LogProcesamiento(
             archivo=str(
-                Path(filepath).resolve()
+                Path(
+                    filepath
+                ).resolve()
             ),
-            insertados=resultado[
-                "insertados"
-            ],
-            actualizados=resultado[
-                "actualizados"
-            ],
+
+            insertados=(
+                resultado[
+                    "insertados"
+                ]
+            ),
+
+            actualizados=(
+                resultado[
+                    "actualizados"
+                ]
+            ),
+
             errores=len(
-                resultado["errores"]
+                resultado[
+                    "errores"
+                ]
             ),
+
             detalle="\n".join(
-                resultado["cambios"][:50]
+                resultado[
+                    "cambios"
+                ][:50]
             ),
         )
 
-        db.add(log)
+        db.add(
+            log
+        )
+
         db.commit()
 
-        resultado["ok"] = True
+        resultado[
+            "ok"
+        ] = True
 
         return resultado
 
@@ -882,12 +1328,19 @@ def procesar_archivo(filepath: str) -> dict:
 
         db.rollback()
 
-        resultado["ok"] = False
-        resultado["error"] = (
-            f"{type(exc).__name__}: {exc}"
+        resultado[
+            "ok"
+        ] = False
+
+        resultado[
+            "error"
+        ] = (
+            f"{type(exc).__name__}: "
+            f"{exc}"
         )
 
         return resultado
 
     finally:
+
         db.close()
