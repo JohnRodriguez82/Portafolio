@@ -81,6 +81,22 @@ class Caso(Base):
         Date,
         nullable=True,
     )
+    
+        fecha_limite = Column(
+        Date,
+        nullable=True,
+    )
+
+    dias_retraso = Column(
+        Integer,
+        nullable=True,
+        default=0,
+    )
+
+    cumplimiento_plazo = Column(
+        String(50),
+        nullable=True,
+    )
 
     estado = Column(
         String(100),
@@ -237,10 +253,51 @@ def init_db() -> None:
     """
     Base.metadata.create_all(bind=ENGINE)
 
+def migrar_v23():
+    """
+    Agrega las columnas de v2.3 a una base existente
+    sin eliminar información.
+    """
+
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(ENGINE)
+
+    tablas = inspector.get_table_names()
+
+    if "casos" not in tablas:
+        return
+
+    columnas = {
+        columna["name"]
+        for columna in inspector.get_columns(
+            "casos"
+        )
+    }
+
+    nuevas_columnas = {
+        "fecha_limite": "DATE",
+        "dias_retraso": "INTEGER",
+        "cumplimiento_plazo": "VARCHAR(50)",
+    }
+
+    with ENGINE.begin() as conn:
+
+        for nombre, tipo in nuevas_columnas.items():
+
+            if nombre not in columnas:
+
+                conn.execute(
+                    text(
+                        f"ALTER TABLE casos "
+                        f"ADD COLUMN {nombre} {tipo}"
+                    )
+                )
 
 # Mantener el comportamiento original:
 # al importar database.py, garantizar las tablas.
 init_db()
+migrar_v23()
 
 
 # ============================================================
