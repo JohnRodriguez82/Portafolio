@@ -542,10 +542,7 @@ def construir_dataframe_casos(
 
         else:
 
-            fecha_limite = getattr(
-                c,
-                "fecha_limite",
-                None,
+            fecha_limite = None
             )
 
             # Compatibilidad con registros antiguos
