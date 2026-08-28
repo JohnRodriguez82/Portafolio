@@ -71,6 +71,7 @@ from scheduler_service import (
 from cumplimiento import (
     obtener_estado_visual,
     detalle_cumplimiento,
+    calcular_fecha_limite,
 )
 
 # ============================================================
@@ -518,21 +519,73 @@ def construir_dataframe_casos(
             c.fecha_validacion,
         )
 
+        # ========================================================
+        # FECHA LÍMITE
+        # ========================================================
+        #
+        # Casos pendientes:
+        #   utilizan SIEMPRE la configuración vigente.
+        #
+        # Casos resueltos:
+        #   conservan la fecha límite histórica almacenada.
+        #
+        # Esto permite modificar los parámetros de configuración
+        # sin alterar el resultado histórico de casos ya resueltos.
+        # ========================================================
+
+        if not c.fecha_validacion:
+
+            fecha_limite = calcular_fecha_limite(
+                c.fecha_ingreso,
+                dias_resolucion,
+            )
+
+        else:
+
+            fecha_limite = getattr(
+                c,
+                "fecha_limite",
+                None,
+            )
+
+            # Compatibilidad con registros antiguos
+            # que no tengan fecha límite almacenada.
+            if not fecha_limite:
+
+                fecha_limite = calcular_fecha_limite(
+                    c.fecha_ingreso,
+                    dias_resolucion,
+                )
+
+        # ========================================================
+        # DÍAS DE RETRASO
+        # ========================================================
+
+        if c.fecha_validacion and fecha_limite:
+
+            dias_retraso = max(
+                0,
+                (
+                    c.fecha_validacion
+                    - fecha_limite
+                ).days,
+            )
+
+        else:
+
+            dias_retraso = 0
+
+        # ========================================================
+        # ESTADO VISUAL
+        # ========================================================
+
         estado_str, color = (
             estado_visual(
                 dias,
                 c.estado,
                 c.fecha_validacion,
-                getattr(
-                    c,
-                    "fecha_limite",
-                    None,
-                ),
-                getattr(
-                    c,
-                    "dias_retraso",
-                    0,
-                ),
+                fecha_limite,
+                dias_retraso,
                 dias_resolucion,
                 dias_alerta,
             )
@@ -547,14 +600,8 @@ def construir_dataframe_casos(
             "Órgano": c.organo,
             "Fecha Ingreso": c.fecha_ingreso,
             "Fecha Validación": c.fecha_validacion,
-            "Fecha Límite": getattr(
-                c,
-                "fecha_limite",
-                None,
-            ),
-
+            "Fecha Límite": fecha_limite,
             "Fecha Resolución": c.fecha_validacion,
-
             "Cumplimiento": (
                 getattr(
                     c,
@@ -564,11 +611,7 @@ def construir_dataframe_casos(
                 or ""
             ),
 
-            "Días Retraso": getattr(
-                c,
-                "dias_retraso",
-                0,
-            ),
+            "Días Retraso": dias_retraso,
             "Profesional": c.profesional,
             "Estado DB": c.estado,
             "Días": dias,
