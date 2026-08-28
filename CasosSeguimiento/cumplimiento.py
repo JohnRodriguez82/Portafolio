@@ -137,7 +137,7 @@ def calcular_estado_pendiente(
     )
 
 
-ddef obtener_estado_visual(
+def obtener_estado_visual(
     fecha_limite,
     fecha_resolucion=None,
     estado_db=None,
