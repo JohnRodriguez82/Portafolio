@@ -1,18 +1,30 @@
 """
-CasosSeguimiento v2.1
+CasosSeguimiento v2.2
 Gestión segura de configuración encriptada.
 
 Las credenciales IMAP/SMTP se almacenan cifradas mediante Fernet.
+
+v2.2:
+- Se agregan funciones centralizadas para identificar
+  profesionales bajo seguimiento.
+- La comparación de profesionales ignora mayúsculas,
+  minúsculas, acentos y espacios repetidos.
 """
 
 import json
 import os
 import tempfile
+import unicodedata
+
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from paths import CONFIG_FILE, KEY_FILE, ensure_directories
+from paths import (
+    CONFIG_FILE,
+    KEY_FILE,
+    ensure_directories,
+)
 
 
 # ============================================================
@@ -39,7 +51,9 @@ def _campos_default():
             "nombre": "Sede",
             "tipo": "texto",
             "obligatorio": False,
-            "sinonimos": "sede,ubicación,ubicacion,lugar",
+            "sinonimos": (
+                "sede,ubicación,ubicacion,lugar"
+            ),
             "activo": True,
         },
         {
@@ -124,20 +138,26 @@ def _campos_default():
 # ============================================================
 
 def _get_or_create_key() -> bytes:
+
     ensure_directories()
 
     if KEY_FILE.exists():
+
         return KEY_FILE.read_bytes()
 
     key = Fernet.generate_key()
 
-    # Escritura de la clave
     KEY_FILE.write_bytes(key)
 
-    # Intento de permisos restrictivos en sistemas que los soportan
     try:
-        os.chmod(KEY_FILE, 0o600)
+
+        os.chmod(
+            KEY_FILE,
+            0o600,
+        )
+
     except OSError:
+
         pass
 
     return key
@@ -158,6 +178,7 @@ def save_config(data: dict) -> None:
     ensure_directories()
 
     key = _get_or_create_key()
+
     fernet = Fernet(key)
 
     json_bytes = json.dumps(
@@ -166,11 +187,14 @@ def save_config(data: dict) -> None:
         indent=2,
     ).encode("utf-8")
 
-    encrypted = fernet.encrypt(json_bytes)
+    encrypted = fernet.encrypt(
+        json_bytes
+    )
 
     temp_path = None
 
     try:
+
         with tempfile.NamedTemporaryFile(
             mode="wb",
             delete=False,
@@ -178,18 +202,37 @@ def save_config(data: dict) -> None:
             prefix="config_",
             suffix=".tmp",
         ) as tmp:
+
             tmp.write(encrypted)
+
             tmp.flush()
-            os.fsync(tmp.fileno())
+
+            os.fsync(
+                tmp.fileno()
+            )
+
             temp_path = tmp.name
 
-        os.replace(temp_path, CONFIG_FILE)
+        os.replace(
+            temp_path,
+            CONFIG_FILE,
+        )
 
     finally:
-        if temp_path and os.path.exists(temp_path):
+
+        if (
+            temp_path
+            and os.path.exists(temp_path)
+        ):
+
             try:
-                os.remove(temp_path)
+
+                os.remove(
+                    temp_path
+                )
+
             except OSError:
+
                 pass
 
 
@@ -198,32 +241,47 @@ def save_config(data: dict) -> None:
 # ============================================================
 
 def load_config() -> dict:
+
     if not CONFIG_FILE.exists():
+
         return {}
 
     key = _get_or_create_key()
+
     fernet = Fernet(key)
 
     try:
+
         encrypted = CONFIG_FILE.read_bytes()
-        json_bytes = fernet.decrypt(encrypted)
+
+        json_bytes = fernet.decrypt(
+            encrypted
+        )
+
         return json.loads(
-            json_bytes.decode("utf-8")
+            json_bytes.decode(
+                "utf-8"
+            )
         )
 
     except InvalidToken as exc:
+
         raise RuntimeError(
             "No se pudo desencriptar la configuración. "
-            "Verifica que data/.secret.key corresponda a data/config.enc."
+            "Verifica que data/.secret.key corresponda "
+            "a data/config.enc."
         ) from exc
 
     except json.JSONDecodeError as exc:
+
         raise RuntimeError(
-            "El archivo de configuración no contiene JSON válido."
+            "El archivo de configuración "
+            "no contiene JSON válido."
         ) from exc
 
 
 def config_exists() -> bool:
+
     return CONFIG_FILE.exists()
 
 
@@ -232,22 +290,39 @@ def config_exists() -> bool:
 # ============================================================
 
 def get_email_settings() -> dict:
+
     cfg = load_config()
-    return cfg.get("email", {})
+
+    return cfg.get(
+        "email",
+        {},
+    )
 
 
 def get_profesionales() -> list:
+
     cfg = load_config()
-    return cfg.get("profesionales", [])
+
+    return cfg.get(
+        "profesionales",
+        [],
+    )
 
 
 def get_encargado() -> dict:
+
     cfg = load_config()
-    return cfg.get("encargado", {})
+
+    return cfg.get(
+        "encargado",
+        {},
+    )
 
 
 def get_campos_excel() -> list:
+
     cfg = load_config()
+
     return cfg.get(
         "campos_excel",
         _campos_default(),
@@ -255,17 +330,154 @@ def get_campos_excel() -> list:
 
 
 def get_tipo_archivo() -> str:
-    cfg = load_config()
-    tipo = cfg.get("tipo_archivo", "excel")
 
-    if tipo not in {"excel", "csv"}:
+    cfg = load_config()
+
+    tipo = cfg.get(
+        "tipo_archivo",
+        "excel",
+    )
+
+    if tipo not in {
+        "excel",
+        "csv",
+    }:
+
         return "excel"
 
     return tipo
 
 
 def get_filtro_nombre_adjunto() -> str:
+
     cfg = load_config()
+
     return str(
-        cfg.get("filtro_nombre_adjunto", "")
+        cfg.get(
+            "filtro_nombre_adjunto",
+            "",
+        )
     ).strip()
+
+
+# ============================================================
+# PROFESIONALES DE SEGUIMIENTO
+# ============================================================
+
+def normalizar_nombre_profesional(
+    nombre: Any,
+) -> str:
+    """
+    Normaliza un nombre para comparaciones.
+
+    Ignora:
+    - Mayúsculas/minúsculas.
+    - Acentos.
+    - Espacios repetidos.
+    """
+
+    if nombre is None:
+
+        return ""
+
+    texto = str(nombre).strip()
+
+    texto = " ".join(
+        texto.split()
+    )
+
+    texto = unicodedata.normalize(
+        "NFKD",
+        texto,
+    )
+
+    texto = "".join(
+        caracter
+        for caracter in texto
+        if not unicodedata.combining(
+            caracter
+        )
+    )
+
+    return texto.casefold()
+
+
+def get_profesionales_seguimiento_nombres() -> list:
+    """
+    Devuelve únicamente los nombres de profesionales
+    configurados para seguimiento.
+    """
+
+    profesionales = get_profesionales()
+
+    resultado = []
+
+    for profesional in profesionales:
+
+        if isinstance(
+            profesional,
+            dict,
+        ):
+
+            nombre = profesional.get(
+                "nombre",
+                "",
+            )
+
+        else:
+
+            nombre = profesional
+
+        nombre = str(
+            nombre or ""
+        ).strip()
+
+        if nombre:
+
+            resultado.append(
+                nombre
+            )
+
+    return resultado
+
+
+def get_profesionales_seguimiento_normalizados() -> set:
+    """
+    Devuelve los profesionales configurados en un conjunto
+    normalizado para comparaciones rápidas.
+    """
+
+    return {
+        normalizar_nombre_profesional(
+            nombre
+        )
+        for nombre
+        in get_profesionales_seguimiento_nombres()
+        if normalizar_nombre_profesional(
+            nombre
+        )
+    }
+
+
+def profesional_en_seguimiento(
+    profesional: Any,
+) -> bool:
+    """
+    Indica si un profesional pertenece a la población
+    configurada para seguimiento.
+    """
+
+    nombre_normalizado = (
+        normalizar_nombre_profesional(
+            profesional
+        )
+    )
+
+    if not nombre_normalizado:
+
+        return False
+
+    return (
+        nombre_normalizado
+        in get_profesionales_seguimiento_normalizados()
+    )
