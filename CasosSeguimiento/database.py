@@ -82,7 +82,7 @@ class Caso(Base):
         nullable=True,
     )
     
-        fecha_limite = Column(
+    fecha_limite = Column(
         Date,
         nullable=True,
     )
