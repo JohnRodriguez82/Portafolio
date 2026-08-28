@@ -220,17 +220,57 @@ inicializar_navegacion()
 
 def calcular_dias(
     fecha_ingreso,
+    fecha_validacion=None,
 ):
+    """
+    Calcula los días reales del caso.
+
+    Pendiente:
+        Hoy - fecha de ingreso
+
+    Resuelto:
+        Fecha de resolución - fecha de ingreso
+    """
 
     if not fecha_ingreso:
-
         return 0
 
-    return (
-        date.today()
-        - fecha_ingreso
-    ).days
+    # Caso resuelto:
+    # los días quedan congelados en el tiempo real
+    # que tardó en resolverse.
+    if fecha_validacion:
 
+        try:
+            return max(
+                0,
+                (
+                    fecha_validacion
+                    - fecha_ingreso
+                ).days,
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+            pass
+
+    # Caso pendiente:
+    # continúa aumentando diariamente.
+    try:
+        return max(
+            0,
+            (
+                date.today()
+                - fecha_ingreso
+            ).days,
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return 0
 
 def estado_visual(
     dias,
@@ -445,7 +485,8 @@ def construir_dataframe_casos(
     for c in casos:
 
         dias = calcular_dias(
-            c.fecha_ingreso
+            c.fecha_ingreso,
+            c.fecha_validacion,
         )
 
         estado_str, color = (
