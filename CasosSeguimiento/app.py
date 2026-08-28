@@ -2061,29 +2061,28 @@ def pagina_procesar():
 
                     if res["ok"]:
 
-                        st.success(
-                            f"✅ "
-                            f"{os.path.basename(f)}: "
-                            f"{res['insertados']} "
-                            "insertados, "
-                            f"{res['actualizados']} "
-                            "actualizados."
-                        )
+                            st.success(
+                                "✅ Archivo procesado correctamente: "
+                                f"{res['insertados']} "
+                                "insertados, "
+                                f"{res['actualizados']} "
+                                "actualizados."
+                            )
 
-                        if st.button(
-                            "🔄 Actualizar tablero",
-                            key="actualizar_tablero_archivo",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            st.rerun()
+                            if st.button(
+                                "🔄 Actualizar tablero",
+                                key="actualizar_tablero_archivo",
+                                type="primary",
+                                use_container_width=True,
+                            ):
+                                st.rerun()
 
-                    else:
+                            else:
 
-                        st.error(
-                            f"❌ "
-                            f"{res.get('error')}"
-                        )
+                                st.error(
+                                    f"❌ "
+                                    f"{res.get('error')}"
+                                )
             else:
 
                 st.info(
@@ -2147,8 +2146,7 @@ def pagina_procesar():
             if res["ok"]:
                 
                 st.success(
-                    f"✅ "
-                    f"{os.path.basename(f)}: "
+                    "✅ Archivo procesado correctamente: "
                     f"{res['insertados']} "
                     "insertados, "
                     f"{res['actualizados']} "
