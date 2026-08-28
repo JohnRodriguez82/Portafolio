@@ -1,49 +1,100 @@
 """
-CasosSeguimiento v2.1
+CasosSeguimiento v2.2
 Servicio de tareas programadas.
 
-Tareas:
-- Revisar correo cada 5 minutos.
-- Verificar alertas cada hora.
+Funciones:
+- Revisar correo periódicamente.
+- Procesar archivos nuevos.
+- Verificar alertas automáticamente.
 
-IMPORTANTE:
-Este módulo NO debe depender del ciclo de vida de Streamlit.
-Para ejecución continua se recomienda scheduler_runner.py.
+Regla v2.2:
+Las alertas automáticas solamente se generan para
+profesionales configurados para seguimiento.
 """
 
-import logging
-from datetime import date
-from pathlib import Path
+import os
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
+from datetime import (
+    datetime,
+    date,
+)
 
-from config_manager import get_encargado
-from database import Caso, LogAlerta, get_db
+from apscheduler.schedulers.background import (
+    BackgroundScheduler,
+)
+
+from apscheduler.triggers.interval import (
+    IntervalTrigger,
+)
+
+from database import (
+    get_db,
+    Caso,
+    LogAlerta,
+)
+
 from email_processor import (
     check_emails_and_download_excel,
 )
+
+from excel_parser import (
+    procesar_archivo,
+)
+
 from email_sender import (
     enviar_alerta_individual,
     enviar_resumen_casos,
 )
-from excel_parser import procesar_archivo
 
-
-logger = logging.getLogger(__name__)
+from config_manager import (
+    get_encargado,
+    get_profesionales_seguimiento_normalizados,
+    normalizar_nombre_profesional,
+    load_config,
+)
 
 
 scheduler = None
 
 
 # ============================================================
-# REVISAR CORREO
+# PROFESIONALES
+# ============================================================
+
+def caso_en_seguimiento(
+    caso,
+    profesionales_normalizados,
+):
+    """
+    Determina si un caso pertenece a un profesional
+    configurado para seguimiento.
+    """
+
+    nombre = (
+        normalizar_nombre_profesional(
+            caso.profesional
+        )
+    )
+
+    if not nombre:
+
+        return False
+
+    return (
+        nombre
+        in profesionales_normalizados
+    )
+
+
+# ============================================================
+# REVISIÓN DE CORREO
 # ============================================================
 
 def tarea_revisar_correo():
 
-    logger.info(
-        "Iniciando revisión automática de correo."
+    print(
+        f"[{datetime.now()}] "
+        "Revisando correos..."
     )
 
     try:
@@ -52,133 +103,166 @@ def tarea_revisar_correo():
             check_emails_and_download_excel()
         )
 
-        if not files:
-            logger.info(
-                "No se encontraron archivos nuevos."
-            )
-            return
+        for f in files:
 
-        for filepath in files:
-
-            logger.info(
-                "Procesando archivo: %s",
-                Path(filepath).name,
+            print(
+                "  → Procesando: "
+                f"{os.path.basename(f)}"
             )
 
-            resultado = procesar_archivo(
-                filepath
+            res = procesar_archivo(
+                f
             )
 
-            if resultado["ok"]:
+            if res["ok"]:
 
-                logger.info(
-                    "Archivo procesado. "
-                    "Insertados=%s Actualizados=%s "
-                    "Errores=%s",
-                    resultado["insertados"],
-                    resultado["actualizados"],
-                    len(
-                        resultado.get(
-                            "errores",
-                            [],
-                        )
-                    ),
+                print(
+                    "     Insertados: "
+                    f"{res['insertados']}, "
+                    "Actualizados: "
+                    f"{res['actualizados']}, "
+                    "Cambios: "
+                    f"{len(res.get('cambios', []))}"
                 )
 
             else:
 
-                logger.error(
-                    "Error procesando %s: %s",
-                    filepath,
-                    resultado.get(
-                        "error"
-                    ),
+                print(
+                    "     ERROR: "
+                    f"{res.get('error')}"
                 )
 
-    except Exception:
+    except Exception as exc:
 
-        logger.exception(
-            "Error en tarea_revisar_correo."
+        print(
+            "  → ERROR revisando correo: "
+            f"{exc}"
         )
 
 
 # ============================================================
-# ALERTAS
+# ALERTAS AUTOMÁTICAS
 # ============================================================
 
 def tarea_verificar_alertas():
 
-    logger.info(
-        "Iniciando verificación automática de alertas."
+    print(
+        f"[{datetime.now()}] "
+        "Verificando alertas..."
     )
 
     db = get_db()
 
     try:
 
-        encargado = get_encargado()
+        hoy = date.today()
 
-        destino = str(
-            encargado.get(
-                "email",
-                "",
+        cfg = load_config()
+
+        limite_dias = int(
+            cfg.get(
+                "tiempo_resolucion_dias",
+                10,
             )
-        ).strip()
+        )
 
-        if not destino:
+        dias_alerta = int(
+            cfg.get(
+                "dias_alerta_previa",
+                2,
+            )
+        )
 
-            logger.warning(
-                "No existe correo de encargado."
+        profesionales_normalizados = (
+            get_profesionales_seguimiento_normalizados()
+        )
+
+        if not profesionales_normalizados:
+
+            print(
+                "  → No hay profesionales "
+                "configurados para seguimiento."
             )
 
             return
 
-        hoy = date.today()
+        encargado = get_encargado()
 
-        limite_dias = 10
-        dias_alerta = 2
-
-        dia_alerta_preventiva = (
-            limite_dias - dias_alerta
+        destino = encargado.get(
+            "email",
+            "",
         )
 
+        if not destino:
+
+            print(
+                "  → No hay correo de "
+                "encargado configurado."
+            )
+
+            return
+
         casos = (
-            db.query(Caso)
-            .all()
+            db.query(
+                Caso
+            ).all()
         )
 
         vencidos = []
+
         preventivos = []
+
         pendientes = []
+
+        casos_ignorados = 0
 
         for caso in casos:
 
+            # ------------------------------------------------
+            # FILTRO CENTRAL DE v2.2
+            # ------------------------------------------------
+
+            if not caso_en_seguimiento(
+                caso,
+                profesionales_normalizados,
+            ):
+
+                casos_ignorados += 1
+
+                continue
+
             if (
                 caso.estado == "RESUELTO"
-                or caso.fecha_validacion
                 or not caso.fecha_ingreso
             ):
+
                 continue
 
             dias_transcurridos = (
-                hoy - caso.fecha_ingreso
+                hoy
+                - caso.fecha_ingreso
             ).days
 
-            pendientes.append(caso)
+            pendientes.append(
+                caso
+            )
 
             # ------------------------------------------------
-            # PREVENTIVA
+            # ALERTA PREVENTIVA
             # ------------------------------------------------
 
             if (
                 dias_transcurridos
-                >= dia_alerta_preventiva
-                and not caso.alerta_preventiva_enviada
+                >= (
+                    limite_dias
+                    - dias_alerta
+                )
                 and dias_transcurridos
                 <= limite_dias
+                and not caso.alerta_preventiva_enviada
             ):
 
-                ok, error = (
+                ok, err = (
                     enviar_alerta_individual(
                         destino,
                         caso,
@@ -196,7 +280,9 @@ def tarea_verificar_alertas():
                     db.add(
                         LogAlerta(
                             caso_id=caso.id,
-                            tipo_alerta="PREVENTIVA",
+                            tipo_alerta=(
+                                "PREVENTIVA"
+                            ),
                             destinatario=destino,
                             contenido=(
                                 "Alerta preventiva. "
@@ -205,22 +291,89 @@ def tarea_verificar_alertas():
                         )
                     )
 
-                    logger.info(
-                        "Alerta preventiva enviada: %s",
-                        caso.numero_caso,
+                    preventivos.append(
+                        caso
+                    )
+
+                    print(
+                        "  → ALERTA PREVENTIVA "
+                        "enviada: "
+                        f"{caso.numero_caso}"
                     )
 
                 else:
 
-                    logger.error(
-                        "No se pudo enviar alerta preventiva "
-                        "%s: %s",
-                        caso.numero_caso,
-                        error,
+                    print(
+                        "  → ERROR enviando "
+                        "preventiva "
+                        f"{caso.numero_caso}: "
+                        f"{err}"
                     )
 
             # ------------------------------------------------
-            # VENCIDA
+            # ALERTA VENCIDA
+            # ------------------------------------------------
+
+            if (
+                dias_transcurridos
+                > limite_dias
+                and not caso.alerta_vencido_enviada
+            ):
+
+                caso.estado = (
+                    "VENCIDO"
+                )
+
+                ok, err = (
+                    enviar_alerta_individual(
+                        destino,
+                        caso,
+                        "VENCIDA",
+                        dias_transcurridos,
+                    )
+                )
+
+                if ok:
+
+                    caso.alerta_vencido_enviada = (
+                        True
+                    )
+
+                    db.add(
+                        LogAlerta(
+                            caso_id=caso.id,
+                            tipo_alerta=(
+                                "VENCIDA"
+                            ),
+                            destinatario=destino,
+                            contenido=(
+                                "Caso vencido. "
+                                f"Día {dias_transcurridos}."
+                            ),
+                        )
+                    )
+
+                    vencidos.append(
+                        caso
+                    )
+
+                    print(
+                        "  → ALERTA VENCIDA "
+                        "enviada: "
+                        f"{caso.numero_caso}"
+                    )
+
+                else:
+
+                    print(
+                        "  → ERROR enviando "
+                        "vencida "
+                        f"{caso.numero_caso}: "
+                        f"{err}"
+                    )
+
+            # ------------------------------------------------
+            # CLASIFICACIÓN PARA RESUMEN
             # ------------------------------------------------
 
             if (
@@ -229,75 +382,47 @@ def tarea_verificar_alertas():
             ):
 
                 if caso not in vencidos:
-                    vencidos.append(caso)
 
-                caso.estado = "VENCIDO"
-
-                if not caso.alerta_vencido_enviada:
-
-                    ok, error = (
-                        enviar_alerta_individual(
-                            destino,
-                            caso,
-                            "VENCIDA",
-                            dias_transcurridos,
-                        )
+                    vencidos.append(
+                        caso
                     )
 
-                    if ok:
-
-                        caso.alerta_vencido_enviada = (
-                            True
-                        )
-
-                        db.add(
-                            LogAlerta(
-                                caso_id=caso.id,
-                                tipo_alerta="VENCIDA",
-                                destinatario=destino,
-                                contenido=(
-                                    "Caso vencido. "
-                                    f"Día {dias_transcurridos}."
-                                ),
-                            )
-                        )
-
-                        logger.info(
-                            "Alerta vencida enviada: %s",
-                            caso.numero_caso,
-                        )
-
-                    else:
-
-                        logger.error(
-                            "No se pudo enviar alerta vencida "
-                            "%s: %s",
-                            caso.numero_caso,
-                            error,
-                        )
-
-            # ------------------------------------------------
-            # PREVENTIVOS PARA RESUMEN
-            # ------------------------------------------------
-
-            if (
+            elif (
                 dias_transcurridos
-                == dia_alerta_preventiva
+                >= (
+                    limite_dias
+                    - dias_alerta
+                )
             ):
+
                 if caso not in preventivos:
+
                     preventivos.append(
                         caso
                     )
 
         db.commit()
 
+        print(
+            "  → Casos bajo seguimiento: "
+            f"{len(pendientes)}"
+        )
+
+        print(
+            "  → Casos fuera de seguimiento "
+            f"ignorados: {casos_ignorados}"
+        )
+
         # ----------------------------------------------------
         # RESUMEN
         # ----------------------------------------------------
 
-        if vencidos or preventivos:
+        if (
+            vencidos
+            or preventivos
+        ):
 
-            ok, error = (
+            ok, err = (
                 enviar_resumen_casos(
                     destino,
                     pendientes,
@@ -308,25 +433,32 @@ def tarea_verificar_alertas():
 
             if ok:
 
-                logger.info(
-                    "Resumen automático enviado a %s",
-                    destino,
+                print(
+                    "  → Resumen enviado a "
+                    f"{destino}"
                 )
 
             else:
 
-                logger.error(
-                    "No se pudo enviar resumen: %s",
-                    error,
+                print(
+                    "  → ERROR enviando resumen: "
+                    f"{err}"
                 )
 
-    except Exception:
+    except Exception as exc:
 
-        db.rollback()
-
-        logger.exception(
-            "Error general verificando alertas."
+        print(
+            "  → ERROR general en alertas: "
+            f"{exc}"
         )
+
+        try:
+
+            db.rollback()
+
+        except Exception:
+
+            pass
 
     finally:
 
@@ -334,50 +466,50 @@ def tarea_verificar_alertas():
 
 
 # ============================================================
-# SCHEDULER
+# INICIAR
 # ============================================================
 
 def iniciar_scheduler():
 
     global scheduler
 
-    if scheduler and scheduler.running:
+    if (
+        scheduler
+        and scheduler.running
+    ):
+
         return scheduler
 
-    scheduler = BackgroundScheduler(
-        daemon=True,
+    scheduler = (
+        BackgroundScheduler()
     )
 
     scheduler.add_job(
         tarea_revisar_correo,
-        trigger=IntervalTrigger(
+        IntervalTrigger(
             minutes=5
         ),
         id="revisar_correo",
         replace_existing=True,
-        max_instances=1,
-        coalesce=True,
     )
 
     scheduler.add_job(
         tarea_verificar_alertas,
-        trigger=IntervalTrigger(
+        IntervalTrigger(
             hours=1
         ),
         id="verificar_alertas",
         replace_existing=True,
-        max_instances=1,
-        coalesce=True,
     )
 
     scheduler.start()
 
-    logger.info(
-        "Scheduler iniciado."
-    )
-
     return scheduler
 
+
+# ============================================================
+# DETENER
+# ============================================================
 
 def detener_scheduler():
 
@@ -385,17 +517,6 @@ def detener_scheduler():
 
     if scheduler:
 
-        try:
-            scheduler.shutdown(
-                wait=False
-            )
-        except Exception:
-            logger.exception(
-                "Error cerrando scheduler."
-            )
+        scheduler.shutdown()
 
         scheduler = None
-
-        logger.info(
-            "Scheduler detenido."
-        )
