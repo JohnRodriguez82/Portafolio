@@ -1,86 +1,50 @@
 """
 CasosSeguimiento v2.1
-Aplicación principal Streamlit.
+Sistema de seguimiento de casos profesionales.
 
-Características:
-- Dashboard de casos.
-- Excel / CSV.
-- Actualización incremental.
-- Configuración parametrizable.
-- Procesamiento manual.
-- Procesamiento IMAP.
-- Alertas SMTP.
-- Logs.
-
-IMPORTANTE:
-El scheduler automático se ejecuta mediante:
-
-    python scheduler_runner.py
-
-No se inicia dentro de Streamlit para evitar múltiples schedulers
-cuando Streamlit crea/recrea sesiones.
+Cambios principales:
+- Configuración inicial guiada por pasos.
+- La configuración queda editable después de finalizar.
+- Menú principal permanente.
+- Separación entre Configuración y Seguimiento.
+- Profesionales editables en cualquier momento.
+- Parámetros de seguimiento editables.
+- No es necesario eliminar config.enc para modificar la configuración.
 """
 
-import logging
-from datetime import date, datetime
-from pathlib import Path
+import os
+from datetime import datetime, date
 
 import pandas as pd
 import streamlit as st
 
+from database import get_db, Caso, LogAlerta, LogProcesamiento
+
 from config_manager import (
-    _campos_default,
     config_exists,
-    get_campos_excel,
-    get_encargado,
-    get_filtro_nombre_adjunto,
-    get_profesionales,
-    get_tipo_archivo,
-    load_config,
     save_config,
+    load_config,
+    get_email_settings,
+    get_encargado,
+    get_profesionales,
+    get_campos_excel,
+    get_tipo_archivo,
+    get_filtro_nombre_adjunto,
+    _campos_default,
 )
-from database import (
-    Caso,
-    LogAlerta,
-    LogProcesamiento,
-    get_db,
-)
-from email_processor import (
-    check_emails_and_download_excel,
-)
-from email_sender import (
-    enviar_resumen_casos,
-)
-from excel_parser import (
-    procesar_archivo,
-)
-from paths import (
-    DATABASE_FILE,
-    UPLOAD_DIR,
-)
+
+from email_processor import check_emails_and_download_excel
+from excel_parser import procesar_archivo
+from email_sender import enviar_resumen_casos
+from scheduler_service import iniciar_scheduler
 
 
 # ============================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN DE STREAMLIT
 # ============================================================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format=(
-        "%(asctime)s | "
-        "%(levelname)s | "
-        "%(name)s | "
-        "%(message)s"
-    ),
-)
-
-logger = logging.getLogger(
-    "casos_seguimiento.app"
-)
-
 
 st.set_page_config(
-    page_title="Seguimiento de Casos v2.1",
+    page_title="Casos Seguimiento v2.1",
     page_icon="📋",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -95,62 +59,70 @@ st.markdown(
     """
     <style>
 
-        .kpi-card {
-            background:
-                linear-gradient(
-                    135deg,
-                    #667eea 0%,
-                    #764ba2 100%
-                );
+    .kpi-card {
+        background: linear-gradient(
+            135deg,
+            #667eea 0%,
+            #764ba2 100%
+        );
+        padding: 20px;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
 
-            padding: 20px;
-            border-radius: 15px;
-            color: white;
-            text-align: center;
+    .kpi-title {
+        font-size: 14px;
+        opacity: 0.9;
+    }
 
-            box-shadow:
-                0 4px 6px rgba(0,0,0,0.1);
-        }
+    .kpi-value {
+        font-size: 32px;
+        font-weight: bold;
+    }
 
-        .kpi-title {
-            font-size: 14px;
-            opacity: 0.9;
-        }
+    .alert-vencido {
+        background-color: #ffebee;
+        border-left: 5px solid #f44336;
+        padding: 10px;
+        border-radius: 5px;
+    }
 
-        .kpi-value {
-            font-size: 32px;
-            font-weight: bold;
-        }
+    .alert-preventiva {
+        background-color: #fff8e1;
+        border-left: 5px solid #ffc107;
+        padding: 10px;
+        border-radius: 5px;
+    }
 
-        .alert-vencido {
-            background-color: #ffebee;
-            border-left: 5px solid #f44336;
-            padding: 10px;
-            border-radius: 5px;
-        }
+    .campo-card {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 8px 0;
+        border: 1px solid #dee2e6;
+    }
 
-        .alert-preventiva {
-            background-color: #fff8e1;
-            border-left: 5px solid #ffc107;
-            padding: 10px;
-            border-radius: 5px;
-        }
+    .campo-obligatorio {
+        border-left: 4px solid #dc3545;
+    }
 
-        .campo-card {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 10px;
-            margin: 8px 0;
-            border: 1px solid #dee2e6;
-        }
+    .campo-opcional {
+        border-left: 4px solid #28a745;
+    }
 
-        .campo-obligatorio {
-            border-left: 4px solid #dc3545;
-        }
-
-        .campo-opcional {
-            border-left: 4px solid #28a745;
-        }
+    .menu-card {
+        background: linear-gradient(
+            135deg,
+            #f8f9fa 0%,
+            #e9ecef 100%
+        );
+        padding: 25px;
+        border-radius: 15px;
+        border: 1px solid #dee2e6;
+        margin-bottom: 15px;
+    }
 
     </style>
     """,
@@ -159,576 +131,823 @@ st.markdown(
 
 
 # ============================================================
-# ESTADOS
+# SCHEDULER
 # ============================================================
 
-def calcular_dias(
-    fecha_ingreso,
-):
+if "scheduler_started" not in st.session_state:
+
+    if config_exists():
+
+        try:
+            iniciar_scheduler()
+        except Exception:
+            pass
+
+        st.session_state.scheduler_started = True
+
+
+# ============================================================
+# NAVEGACIÓN
+# ============================================================
+
+def inicializar_navegacion():
+
+    if "pagina" not in st.session_state:
+
+        if config_exists():
+
+            st.session_state.pagina = "inicio"
+
+        else:
+
+            st.session_state.pagina = "configuracion_inicial"
+
+    if "config_step" not in st.session_state:
+
+        st.session_state.config_step = (
+            "1. Correo y Encargado"
+        )
+
+
+inicializar_navegacion()
+
+
+# ============================================================
+# FUNCIONES GENERALES
+# ============================================================
+
+def calcular_dias(fecha_ingreso):
+
     if not fecha_ingreso:
         return 0
 
-    return (
-        date.today()
-        - fecha_ingreso
-    ).days
+    return (date.today() - fecha_ingreso).days
 
 
 def estado_visual(
     dias,
     estado_db,
-    fecha_validacion,
+    fecha_validacion
 ):
 
-    estado_normalizado = (
-        str(
-            estado_db or ""
-        )
-        .strip()
-        .upper()
-    )
+    if estado_db == "RESUELTO" or fecha_validacion:
 
-    if (
-        estado_normalizado == "RESUELTO"
-        or fecha_validacion
-    ):
         return "✅ RESUELTO", "green"
 
     if dias > 10:
+
         return "🚨 VENCIDO", "red"
 
-    if dias == 10:
-        return "🔴 VENCE HOY", "red"
-
     if dias == 8:
-        return (
-            "⚠️ 2 DÍAS RESTANTES",
-            "orange",
-        )
+
+        return "⚠️ 2 DÍAS RESTANTES", "orange"
 
     if dias >= 9:
+
         return "🔴 CRÍTICO", "red"
 
     return "🔵 PENDIENTE", "blue"
+
+
+def guardar_y_mostrar_mensaje(
+    cfg,
+    mensaje="Configuración guardada correctamente."
+):
+
+    save_config(cfg)
+
+    st.success(mensaje)
+
+    st.session_state.config_saved = True
+
+
+# ============================================================
+# PASO 1 - CORREO Y ENCARGADO
+# ============================================================
+
+def configurar_correo():
+
+    cfg = load_config()
+
+    email_cfg = cfg.get("email", {})
+    encargado_cfg = cfg.get("encargado", {})
+
+    st.subheader("📧 Correo y encargado")
+
+    st.info(
+        "Configure el correo utilizado para recibir archivos "
+        "y enviar alertas."
+    )
+
+    with st.form("config_correo"):
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            email = st.text_input(
+                "Correo electrónico",
+                value=email_cfg.get("email", ""),
+                placeholder="seguimiento@empresa.com",
+            )
+
+            password = st.text_input(
+                "Contraseña / App Password",
+                value=email_cfg.get("password", ""),
+                type="password",
+                help=(
+                    "Para Gmail se recomienda utilizar "
+                    "una App Password."
+                ),
+            )
+
+        with col2:
+
+            imap_server = st.text_input(
+                "Servidor IMAP",
+                value=email_cfg.get(
+                    "imap_server",
+                    "imap.gmail.com"
+                ),
+            )
+
+            smtp_server = st.text_input(
+                "Servidor SMTP",
+                value=email_cfg.get(
+                    "smtp_server",
+                    "smtp.gmail.com"
+                ),
+            )
+
+        col3, col4 = st.columns(2)
+
+        with col3:
+
+            imap_port = st.number_input(
+                "Puerto IMAP",
+                value=int(
+                    email_cfg.get(
+                        "imap_port",
+                        993
+                    )
+                ),
+                step=1,
+            )
+
+        with col4:
+
+            smtp_port = st.number_input(
+                "Puerto SMTP",
+                value=int(
+                    email_cfg.get(
+                        "smtp_port",
+                        587
+                    )
+                ),
+                step=1,
+            )
+
+        st.divider()
+
+        st.subheader(
+            "👤 Encargado de seguimiento"
+        )
+
+        nombre_encargado = st.text_input(
+            "Nombre completo",
+            value=encargado_cfg.get(
+                "nombre",
+                ""
+            ),
+        )
+
+        guardar = st.form_submit_button(
+            "💾 Guardar cambios",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if guardar:
+
+            if not all(
+                [
+                    email.strip(),
+                    password.strip(),
+                    nombre_encargado.strip(),
+                ]
+            ):
+
+                st.error(
+                    "Todos los campos son obligatorios."
+                )
+
+            else:
+
+                cfg["email"] = {
+                    "email": email.strip(),
+                    "password": password,
+                    "imap_server": imap_server.strip(),
+                    "smtp_server": smtp_server.strip(),
+                    "imap_port": int(imap_port),
+                    "smtp_port": int(smtp_port),
+                }
+
+                cfg["encargado"] = {
+                    "nombre": nombre_encargado.strip(),
+                    "email": email.strip(),
+                }
+
+                guardar_y_mostrar_mensaje(
+                    cfg,
+                    "✅ Datos de correo y encargado guardados."
+                )
+
+
+# ============================================================
+# PASO 2 - CAMPOS
+# ============================================================
+
+def configurar_campos():
+
+    cfg = load_config()
+
+    campos = cfg.get(
+        "campos_excel",
+        _campos_default()
+    )
+
+    st.subheader(
+        "📋 Campos del archivo"
+    )
+
+    st.info(
+        "Puede activar, desactivar o modificar "
+        "los campos que se utilizan para procesar "
+        "los archivos."
+    )
+
+    with st.form("config_campos"):
+
+        campos_editados = []
+
+        for i, campo in enumerate(campos):
+
+            cols = st.columns(
+                [2, 2, 3, 1, 1, 1]
+            )
+
+            with cols[0]:
+
+                cid = st.text_input(
+                    f"ID {i + 1}",
+                    value=campo.get("id", ""),
+                    key=f"cid_{i}",
+                )
+
+            with cols[1]:
+
+                cname = st.text_input(
+                    f"Nombre {i + 1}",
+                    value=campo.get(
+                        "nombre",
+                        ""
+                    ),
+                    key=f"cname_{i}",
+                )
+
+            with cols[2]:
+
+                csin = st.text_input(
+                    f"Sinónimos {i + 1}",
+                    value=campo.get(
+                        "sinonimos",
+                        ""
+                    ),
+                    key=f"csin_{i}",
+                )
+
+            with cols[3]:
+
+                tipos = [
+                    "texto",
+                    "fecha",
+                    "numero",
+                ]
+
+                tipo_actual = campo.get(
+                    "tipo",
+                    "texto"
+                )
+
+                if tipo_actual not in tipos:
+                    tipo_actual = "texto"
+
+                ctipo = st.selectbox(
+                    f"Tipo {i + 1}",
+                    tipos,
+                    index=tipos.index(
+                        tipo_actual
+                    ),
+                    key=f"ctipo_{i}",
+                )
+
+            with cols[4]:
+
+                coblig = st.checkbox(
+                    "Obligatorio",
+                    value=campo.get(
+                        "obligatorio",
+                        False
+                    ),
+                    key=f"coblig_{i}",
+                )
+
+            with cols[5]:
+
+                cactivo = st.checkbox(
+                    "Activo",
+                    value=campo.get(
+                        "activo",
+                        True
+                    ),
+                    key=f"cactivo_{i}",
+                )
+
+            if cactivo:
+
+                campos_editados.append(
+                    {
+                        "id": cid.strip(),
+                        "nombre": cname.strip(),
+                        "tipo": ctipo,
+                        "obligatorio": coblig,
+                        "sinonimos": csin.strip(),
+                        "activo": True,
+                    }
+                )
+
+        st.divider()
+
+        st.subheader(
+            "➕ Agregar nuevo campo"
+        )
+
+        cols = st.columns(
+            [2, 2, 3, 1, 1]
+        )
+
+        with cols[0]:
+
+            new_id = st.text_input(
+                "ID nuevo",
+                placeholder="observacion",
+            )
+
+        with cols[1]:
+
+            new_name = st.text_input(
+                "Nombre visible",
+                placeholder="Observación",
+            )
+
+        with cols[2]:
+
+            new_sin = st.text_input(
+                "Sinónimos",
+                placeholder=(
+                    "observacion,nota,comentario"
+                ),
+            )
+
+        with cols[3]:
+
+            new_tipo = st.selectbox(
+                "Tipo nuevo",
+                [
+                    "texto",
+                    "fecha",
+                    "numero",
+                ],
+            )
+
+        with cols[4]:
+
+            new_oblig = st.checkbox(
+                "Obligatorio nuevo"
+            )
+
+        guardar = st.form_submit_button(
+            "💾 Guardar campos",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if guardar:
+
+            if new_id.strip() and new_name.strip():
+
+                campos_editados.append(
+                    {
+                        "id": new_id.strip(),
+                        "nombre": new_name.strip(),
+                        "tipo": new_tipo,
+                        "obligatorio": new_oblig,
+                        "sinonimos": new_sin.strip(),
+                        "activo": True,
+                    }
+                )
+
+            if not campos_editados:
+
+                st.error(
+                    "Debe existir al menos un campo activo."
+                )
+
+            else:
+
+                cfg["campos_excel"] = campos_editados
+
+                guardar_y_mostrar_mensaje(
+                    cfg,
+                    (
+                        f"✅ Se guardaron "
+                        f"{len(campos_editados)} campos activos."
+                    ),
+                )
+
+
+# ============================================================
+# PASO 3 - ARCHIVO
+# ============================================================
+
+def configurar_archivo():
+
+    cfg = load_config()
+
+    tipo_actual = cfg.get(
+        "tipo_archivo",
+        "excel"
+    )
+
+    filtro_actual = cfg.get(
+        "filtro_nombre_adjunto",
+        ""
+    )
+
+    st.subheader(
+        "📁 Tipo de archivo y adjunto"
+    )
+
+    with st.form("config_archivo"):
+
+        tipo_archivo = st.radio(
+            "Formato de archivo",
+            ["excel", "csv"],
+            horizontal=True,
+            index=(
+                0 if tipo_actual == "excel"
+                else 1
+            ),
+        )
+
+        filtro = st.text_input(
+            "Filtro del nombre del archivo",
+            value=filtro_actual,
+            placeholder=(
+                "reporte_casos*"
+            ),
+            help=(
+                "Puede utilizar * como comodín. "
+                "Deje vacío para aceptar cualquier archivo."
+            ),
+        )
+
+        guardar = st.form_submit_button(
+            "💾 Guardar configuración",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if guardar:
+
+            cfg["tipo_archivo"] = tipo_archivo
+
+            cfg["filtro_nombre_adjunto"] = (
+                filtro.strip()
+            )
+
+            guardar_y_mostrar_mensaje(
+                cfg,
+                "✅ Configuración del archivo guardada."
+            )
+
+
+# ============================================================
+# PASO 4 - PROFESIONALES
+# ============================================================
+
+def configurar_profesionales():
+
+    cfg = load_config()
+
+    profesionales = cfg.get(
+        "profesionales",
+        []
+    )
+
+    nombres_actuales = [
+        p.get("nombre", "")
+        for p in profesionales
+        if p.get("nombre")
+    ]
+
+    st.subheader(
+        "👨‍⚕️ Profesionales a monitorear"
+    )
+
+    st.info(
+        "Seleccione los profesionales que deben "
+        "ser incluidos en el seguimiento."
+    )
+
+    profesionales_input = st.text_area(
+        "Profesionales",
+        value=", ".join(nombres_actuales),
+        height=150,
+        placeholder=(
+            "Dr. Pérez, Dra. López, "
+            "Dr. Martínez"
+        ),
+        help=(
+            "Ingrese los nombres separados por comas."
+        ),
+    )
+
+    with st.form(
+        "config_profesionales"
+    ):
+
+        guardar = st.form_submit_button(
+            "💾 Guardar profesionales",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if guardar:
+
+            lista = [
+                p.strip()
+                for p in profesionales_input.split(",")
+                if p.strip()
+            ]
+
+            # Eliminar duplicados
+            lista = list(
+                dict.fromkeys(lista)
+            )
+
+            if not lista:
+
+                st.error(
+                    "Debe seleccionar al menos "
+                    "un profesional."
+                )
+
+            else:
+
+                cfg["profesionales"] = [
+                    {
+                        "nombre": nombre,
+                        "especialidad": "",
+                    }
+                    for nombre in lista
+                ]
+
+                if "tiempo_resolucion_dias" not in cfg:
+
+                    cfg[
+                        "tiempo_resolucion_dias"
+                    ] = 10
+
+                if "dias_alerta_previa" not in cfg:
+
+                    cfg[
+                        "dias_alerta_previa"
+                    ] = 2
+
+                guardar_y_mostrar_mensaje(
+                    cfg,
+                    (
+                        f"✅ Se guardaron "
+                        f"{len(lista)} profesionales."
+                    ),
+                )
+
+
+# ============================================================
+# PARÁMETROS DE SEGUIMIENTO
+# ============================================================
+
+def configurar_parametros():
+
+    cfg = load_config()
+
+    st.subheader(
+        "⏱️ Parámetros de seguimiento"
+    )
+
+    with st.form("config_parametros"):
+
+        dias_resolucion = st.number_input(
+            "Días máximos para resolver un caso",
+            min_value=1,
+            max_value=365,
+            value=int(
+                cfg.get(
+                    "tiempo_resolucion_dias",
+                    10
+                )
+            ),
+        )
+
+        dias_alerta = st.number_input(
+            "Días de anticipación para alerta",
+            min_value=0,
+            max_value=100,
+            value=int(
+                cfg.get(
+                    "dias_alerta_previa",
+                    2
+                )
+            ),
+        )
+
+        guardar = st.form_submit_button(
+            "💾 Guardar parámetros",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if guardar:
+
+            cfg[
+                "tiempo_resolucion_dias"
+            ] = int(dias_resolucion)
+
+            cfg[
+                "dias_alerta_previa"
+            ] = int(dias_alerta)
+
+            guardar_y_mostrar_mensaje(
+                cfg,
+                "✅ Parámetros de seguimiento guardados."
+            )
+
+
+# ============================================================
+# CONFIGURACIÓN GENERAL
+# ============================================================
+
+def pagina_configuracion():
+
+    st.title(
+        "⚙️ Configuración general"
+    )
+
+    st.caption(
+        "Todos los cambios quedan almacenados "
+        "y pueden modificarse posteriormente."
+    )
+
+    tabs = st.tabs(
+        [
+            "📧 Correo y encargado",
+            "📋 Campos",
+            "📁 Archivo",
+            "👨‍⚕️ Profesionales",
+            "⏱️ Parámetros",
+            "📜 Logs",
+        ]
+    )
+
+    with tabs[0]:
+
+        configurar_correo()
+
+    with tabs[1]:
+
+        configurar_campos()
+
+    with tabs[2]:
+
+        configurar_archivo()
+
+    with tabs[3]:
+
+        configurar_profesionales()
+
+    with tabs[4]:
+
+        configurar_parametros()
+
+    with tabs[5]:
+
+        mostrar_logs()
 
 
 # ============================================================
 # CONFIGURACIÓN INICIAL
 # ============================================================
 
-def pantalla_configuracion():
+def pantalla_configuracion_inicial():
 
     st.title(
-        "🔧 Configuración Inicial "
-        "CasosSeguimiento v2.1"
+        "🔧 Configuración inicial"
     )
 
     st.info(
-        "Complete los cuatro pasos. "
-        "Las credenciales de correo se almacenarán "
-        "encriptadas."
+        "Complete los cuatro pasos para dejar "
+        "CasosSeguimiento listo para operar."
     )
 
+    pasos = [
+        "1. Correo y Encargado",
+        "2. Campos del Archivo",
+        "3. Tipo de Archivo y Adjunto",
+        "4. Profesionales",
+    ]
+
+    if (
+        st.session_state.config_step
+        not in pasos
+    ):
+
+        st.session_state.config_step = pasos[0]
+
     step = st.radio(
-        "Paso",
-        [
-            "1. Correo y Encargado",
-            "2. Campos del Archivo",
-            "3. Tipo de Archivo y Adjunto",
-            "4. Profesionales",
-        ],
+        "Paso de configuración",
+        pasos,
+        index=pasos.index(
+            st.session_state.config_step
+        ),
         horizontal=True,
     )
 
-    # --------------------------------------------------------
-    # PASO 1
-    # --------------------------------------------------------
+    st.session_state.config_step = step
 
-    if step == "1. Correo y Encargado":
+    st.divider()
 
-        with st.form(
-            "config_paso1"
-        ):
+    if step == pasos[0]:
 
-            st.subheader(
-                "📧 Configuración del Correo"
-            )
+        configurar_correo()
 
-            col1, col2 = st.columns(2)
+    elif step == pasos[1]:
 
-            with col1:
+        configurar_campos()
 
-                email = st.text_input(
-                    "Correo electrónico",
-                    placeholder=(
-                        "seguimiento@empresa.com"
-                    ),
-                )
+    elif step == pasos[2]:
 
-                password = st.text_input(
-                    "Contraseña / App Password",
-                    type="password",
-                    help=(
-                        "Gmail: utiliza una App Password."
-                    ),
-                )
+        configurar_archivo()
 
-            with col2:
+    elif step == pasos[3]:
 
-                imap_server = st.text_input(
-                    "Servidor IMAP",
-                    value="imap.gmail.com",
-                )
-
-                smtp_server = st.text_input(
-                    "Servidor SMTP",
-                    value="smtp.gmail.com",
-                )
-
-            col3, col4 = st.columns(2)
-
-            with col3:
-
-                imap_port = st.number_input(
-                    "Puerto IMAP",
-                    value=993,
-                    min_value=1,
-                    step=1,
-                )
-
-            with col4:
-
-                smtp_port = st.number_input(
-                    "Puerto SMTP",
-                    value=587,
-                    min_value=1,
-                    step=1,
-                )
-
-            st.divider()
-
-            st.subheader(
-                "👤 Encargado"
-            )
-
-            nombre_encargado = st.text_input(
-                "Nombre completo"
-            )
-
-            if st.form_submit_button(
-                "Guardar y continuar ➡️",
-                type="primary",
-            ):
-
-                if not all(
-                    [
-                        email.strip(),
-                        password,
-                        nombre_encargado.strip(),
-                    ]
-                ):
-
-                    st.error(
-                        "Todos los campos son obligatorios."
-                    )
-
-                else:
-
-                    cfg = load_config()
-
-                    cfg["email"] = {
-                        "email": email.strip(),
-                        "password": password,
-                        "imap_server": imap_server.strip(),
-                        "smtp_server": smtp_server.strip(),
-                        "imap_port": int(imap_port),
-                        "smtp_port": int(smtp_port),
-                    }
-
-                    cfg["encargado"] = {
-                        "nombre": (
-                            nombre_encargado.strip()
-                        ),
-                        "email": email.strip(),
-                    }
-
-                    save_config(cfg)
-
-                    st.success(
-                        "Paso 1 guardado."
-                    )
-
-    # --------------------------------------------------------
-    # PASO 2
-    # --------------------------------------------------------
-
-    elif step == "2. Campos del Archivo":
-
-        st.subheader(
-            "📋 Campos del Archivo"
-        )
-
-        st.info(
-            "Configure las columnas esperadas "
-            "del Excel/CSV."
-        )
+        configurar_profesionales()
 
         cfg = load_config()
 
-        campos = cfg.get(
-            "campos_excel",
-            _campos_default(),
+        tiene_correo = bool(
+            cfg.get("email", {}).get("email")
         )
 
-        with st.form(
-            "config_campos"
+        tiene_encargado = bool(
+            cfg.get("encargado", {}).get("nombre")
+        )
+
+        tiene_profesionales = bool(
+            cfg.get("profesionales")
+        )
+
+        if (
+            tiene_correo
+            and tiene_encargado
+            and tiene_profesionales
         ):
-
-            campos_editados = []
-
-            for i, campo in enumerate(
-                campos
-            ):
-
-                cols = st.columns(
-                    [
-                        2,
-                        2,
-                        3,
-                        1,
-                        1,
-                        1,
-                    ]
-                )
-
-                with cols[0]:
-
-                    cid = st.text_input(
-                        f"ID {i + 1}",
-                        value=campo["id"],
-                        key=f"cid_{i}",
-                    )
-
-                with cols[1]:
-
-                    cname = st.text_input(
-                        f"Nombre {i + 1}",
-                        value=campo["nombre"],
-                        key=f"cname_{i}",
-                    )
-
-                with cols[2]:
-
-                    csin = st.text_input(
-                        f"Sinónimos {i + 1}",
-                        value=campo.get(
-                            "sinonimos",
-                            "",
-                        ),
-                        key=f"csin_{i}",
-                    )
-
-                with cols[3]:
-
-                    tipos = [
-                        "texto",
-                        "fecha",
-                        "numero",
-                    ]
-
-                    tipo_actual = campo.get(
-                        "tipo",
-                        "texto",
-                    )
-
-                    index_tipo = (
-                        tipos.index(tipo_actual)
-                        if tipo_actual in tipos
-                        else 0
-                    )
-
-                    ctipo = st.selectbox(
-                        f"Tipo {i + 1}",
-                        tipos,
-                        index=index_tipo,
-                        key=f"ctipo_{i}",
-                    )
-
-                with cols[4]:
-
-                    coblig = st.checkbox(
-                        "Obligatorio",
-                        value=campo.get(
-                            "obligatorio",
-                            False,
-                        ),
-                        key=f"coblig_{i}",
-                    )
-
-                with cols[5]:
-
-                    cactivo = st.checkbox(
-                        "Activo",
-                        value=campo.get(
-                            "activo",
-                            True,
-                        ),
-                        key=f"cactivo_{i}",
-                    )
-
-                if cactivo:
-
-                    campos_editados.append(
-                        {
-                            "id": cid.strip(),
-                            "nombre": cname.strip(),
-                            "tipo": ctipo,
-                            "obligatorio": coblig,
-                            "sinonimos": csin.strip(),
-                            "activo": True,
-                        }
-                    )
 
             st.divider()
 
-            st.subheader(
-                "➕ Agregar campo"
-            )
-
-            cols_new = st.columns(
-                [2, 2, 3, 1, 1]
-            )
-
-            with cols_new[0]:
-
-                new_id = st.text_input(
-                    "ID",
-                    key="new_id",
-                    placeholder="observacion",
-                )
-
-            with cols_new[1]:
-
-                new_name = st.text_input(
-                    "Nombre visible",
-                    key="new_name",
-                    placeholder="Observación",
-                )
-
-            with cols_new[2]:
-
-                new_sin = st.text_input(
-                    "Sinónimos",
-                    key="new_sin",
-                    placeholder=(
-                        "observacion,nota,comentario"
-                    ),
-                )
-
-            with cols_new[3]:
-
-                new_tipo = st.selectbox(
-                    "Tipo",
-                    [
-                        "texto",
-                        "fecha",
-                        "numero",
-                    ],
-                    key="new_tipo",
-                )
-
-            with cols_new[4]:
-
-                new_oblig = st.checkbox(
-                    "Obligatorio",
-                    key="new_oblig",
-                )
-
-            if st.form_submit_button(
-                "💾 Guardar Campos",
+            if st.button(
+                "🚀 Finalizar configuración y abrir menú principal",
                 type="primary",
+                use_container_width=True,
             ):
 
-                ids_existentes = {
-                    c["id"]
-                    for c in campos_editados
-                }
-
-                if new_id and new_name:
-
-                    if new_id.strip() in ids_existentes:
-
-                        st.error(
-                            "El ID del nuevo campo ya existe."
-                        )
-
-                        return
-
-                    campos_editados.append(
-                        {
-                            "id": new_id.strip(),
-                            "nombre": new_name.strip(),
-                            "tipo": new_tipo,
-                            "obligatorio": new_oblig,
-                            "sinonimos": new_sin.strip(),
-                            "activo": True,
-                        }
-                    )
-
-                campos_editados = [
-                    c
-                    for c in campos_editados
-                    if c["id"] and c["nombre"]
-                ]
-
-                cfg["campos_excel"] = (
-                    campos_editados
+                st.session_state.pagina = "inicio"
+                st.session_state.pop(
+                    "config_step",
+                    None
                 )
 
-                save_config(cfg)
-
-                st.success(
-                    f"Campos guardados: "
-                    f"{len(campos_editados)}."
-                )
-
-    # --------------------------------------------------------
-    # PASO 3
-    # --------------------------------------------------------
-
-    elif step == "3. Tipo de Archivo y Adjunto":
-
-        with st.form(
-            "config_archivo"
-        ):
-
-            st.subheader(
-                "📁 Tipo de Archivo"
-            )
-
-            tipo_archivo = st.radio(
-                "Formato",
-                [
-                    "excel",
-                    "csv",
-                ],
-                horizontal=True,
-                index=(
-                    0
-                    if get_tipo_archivo()
-                    == "excel"
-                    else 1
-                ),
-            )
-
-            st.divider()
-
-            filtro = st.text_input(
-                "Filtro del nombre del adjunto",
-                value=get_filtro_nombre_adjunto(),
-                placeholder=(
-                    "reporte_casos*.xlsx"
-                ),
-                help=(
-                    "Ejemplo: reporte_casos*.xlsx"
-                ),
-            )
-
-            if st.form_submit_button(
-                "💾 Guardar",
-                type="primary",
-            ):
-
-                cfg = load_config()
-
-                cfg[
-                    "tipo_archivo"
-                ] = tipo_archivo
-
-                cfg[
-                    "filtro_nombre_adjunto"
-                ] = filtro.strip()
-
-                save_config(cfg)
-
-                st.success(
-                    "Configuración guardada."
-                )
-
-    # --------------------------------------------------------
-    # PASO 4
-    # --------------------------------------------------------
-
-    else:
-
-        with st.form(
-            "config_profesionales"
-        ):
-
-            st.subheader(
-                "👨‍⚕️ Profesionales"
-            )
-
-            profesionales_input = (
-                st.text_area(
-                    "Nombres separados por comas",
-                    height=120,
-                    placeholder=(
-                        "Dr. Pérez, Dra. López"
-                    ),
-                )
-            )
-
-            if st.form_submit_button(
-                "✅ Finalizar Configuración",
-                type="primary",
-            ):
-
-                profesionales = [
-                    p.strip()
-                    for p
-                    in profesionales_input.split(",")
-                    if p.strip()
-                ]
-
-                if not profesionales:
-
-                    st.error(
-                        "Ingrese al menos un profesional."
-                    )
-
-                    return
-
-                cfg = load_config()
-
-                cfg[
-                    "profesionales"
-                ] = [
-                    {
-                        "nombre": p,
-                        "especialidad": "",
-                    }
-                    for p in profesionales
-                ]
-
-                cfg[
-                    "tiempo_resolucion_dias"
-                ] = 10
-
-                cfg[
-                    "dias_alerta_previa"
-                ] = 2
-
-                save_config(cfg)
-
-                st.success(
-                    "🎉 Configuración completada."
-                )
-
-                st.info(
-                    "Recargue la página para entrar "
-                    "al dashboard."
-                )
+                st.rerun()
 
 
 # ============================================================
@@ -745,13 +964,7 @@ def dashboard():
 
     try:
 
-        casos = (
-            db.query(Caso)
-            .order_by(
-                Caso.fecha_ingreso.asc()
-            )
-            .all()
-        )
+        casos = db.query(Caso).all()
 
     finally:
 
@@ -760,58 +973,55 @@ def dashboard():
     if not casos:
 
         st.warning(
-            "📭 No hay casos registrados."
+            "📭 No hay casos registrados. "
+            "Puede subir un archivo desde "
+            "'Procesar datos'."
         )
 
         return
 
     data = []
 
-    for caso in casos:
+    for c in casos:
 
         dias = calcular_dias(
-            caso.fecha_ingreso
+            c.fecha_ingreso
         )
 
-        estado_str, color = (
-            estado_visual(
-                dias,
-                caso.estado,
-                caso.fecha_validacion,
-            )
+        estado_str, color = estado_visual(
+            dias,
+            c.estado,
+            c.fecha_validacion,
         )
 
         row = {
-            "ID": caso.id,
-            "Número Caso": caso.numero_caso,
-            "Sede": caso.sede,
-            "Sección": caso.seccion,
-            "Estudios": caso.estudios,
-            "Órgano": caso.organo,
-            "Fecha Ingreso": caso.fecha_ingreso,
-            "Fecha Validación": caso.fecha_validacion,
-            "Profesional": caso.profesional,
-            "Estado DB": caso.estado,
+            "ID": c.id,
+            "Número Caso": c.numero_caso,
+            "Sede": c.sede,
+            "Sección": c.seccion,
+            "Estudios": c.estudios,
+            "Órgano": c.organo,
+            "Fecha Ingreso": c.fecha_ingreso,
+            "Fecha Validación": c.fecha_validacion,
+            "Profesional": c.profesional,
+            "Estado DB": c.estado,
             "Días": dias,
             "Estado Visual": estado_str,
             "Color": color,
-            "Última Actualización": (
-                caso.fecha_ultima_actualizacion
-            ),
+            "Última Actualización":
+                c.fecha_ultima_actualizacion,
         }
 
-        if caso.campos_extra:
+        if c.campos_extra:
 
-            for key, value in (
-                caso.campos_extra.items()
-            ):
+            for k, v in c.campos_extra.items():
 
                 row[
-                    key.replace(
+                    k.replace(
                         "_",
-                        " ",
+                        " "
                     ).title()
-                ] = value
+                ] = v
 
         data.append(row)
 
@@ -821,20 +1031,22 @@ def dashboard():
 
     resueltos = len(
         df[
-            df["Estado Visual"]
-            == "✅ RESUELTO"
+            df["Estado DB"]
+            == "RESUELTO"
         ]
     )
 
     vencidos = len(
         df[
-            df["Color"] == "red"
+            df["Color"]
+            == "red"
         ]
     )
 
     preventiva = len(
         df[
-            df["Color"] == "orange"
+            df["Color"]
+            == "orange"
         ]
     )
 
@@ -845,50 +1057,54 @@ def dashboard():
         - preventiva
     )
 
-    k1, k2, k3, k4, k5 = st.columns(5)
+    kpi1, kpi2, kpi3, kpi4, kpi5 = (
+        st.columns(5)
+    )
 
-    with k1:
+    with kpi1:
 
         st.metric(
-            "TOTAL",
-            total,
+            "TOTAL CASOS",
+            total
         )
 
-    with k2:
+    with kpi2:
 
         st.metric(
             "RESUELTOS",
-            resueltos,
+            resueltos
         )
 
-    with k3:
+    with kpi3:
 
         st.metric(
             "PENDIENTES",
-            pendientes,
+            pendientes
         )
 
-    with k4:
+    with kpi4:
 
         st.metric(
             "ALERTA PREVENTIVA",
-            preventiva,
+            preventiva
         )
 
-    with k5:
+    with kpi5:
 
         st.metric(
             "VENCIDOS",
-            vencidos,
+            vencidos
         )
+
+    st.divider()
 
     if vencidos:
 
         st.markdown(
             f"""
             <div class="alert-vencido">
-                🚨 <b>ATENCIÓN:</b>
-                {vencidos} casos requieren atención.
+            🚨 <b>ATENCIÓN:</b>
+            {vencidos} casos vencidos.
             </div>
             """,
             unsafe_allow_html=True,
@@ -899,8 +1115,8 @@ def dashboard():
         st.markdown(
             f"""
             <div class="alert-preventiva">
-                ⚠️ {preventiva}
-                casos están en alerta preventiva.
+            ⚠️ {preventiva} casos requieren
+            atención preventiva.
             </div>
             """,
             unsafe_allow_html=True,
@@ -914,11 +1130,11 @@ def dashboard():
 
         profesionales = sorted(
             [
-                x
-                for x in df[
+                p
+                for p in df[
                     "Profesional"
                 ].dropna().unique()
-                if str(x).strip()
+                if p
             ]
         )
 
@@ -929,29 +1145,24 @@ def dashboard():
 
     with col2:
 
-        estados = sorted(
-            [
-                x
-                for x in df[
-                    "Estado Visual"
-                ].dropna().unique()
-            ]
-        )
-
         filtro_estado = st.multiselect(
             "Estado",
-            estados,
+            sorted(
+                df[
+                    "Estado Visual"
+                ].unique()
+            ),
         )
 
     with col3:
 
         sedes = sorted(
             [
-                x
-                for x in df[
+                s
+                for s in df[
                     "Sede"
                 ].dropna().unique()
-                if str(x).strip()
+                if s
             ]
         )
 
@@ -987,66 +1198,24 @@ def dashboard():
         ]
 
     st.subheader(
-        "📋 Listado de Casos"
+        "📋 Listado de casos"
     )
 
-    def color_rows(row):
-
-        color = row.get(
-            "Color",
-            "",
-        )
-
-        if color == "red":
-
-            return [
-                "background-color:#ffebee"
-            ] * len(row)
-
-        if color == "orange":
-
-            return [
-                "background-color:#fff8e1"
-            ] * len(row)
-
-        if color == "green":
-
-            return [
-                "background-color:#e8f5e9"
-            ] * len(row)
-
-        return [""] * len(row)
-
-    # Se estiliza ANTES de eliminar Color.
-    styled_df = (
-        df_filtered
-        .style
-        .apply(
-            color_rows,
-            axis=1,
-        )
-    )
+    columnas_ocultar = [
+        "Color",
+        "Estado DB",
+    ]
 
     display_df = df_filtered.drop(
         columns=[
-            "Color",
-            "Estado DB",
-        ],
-        errors="ignore",
-    )
-
-    # El estilo se aplica sobre la copia que sí contiene Color.
-    styled_display = (
-        df_filtered
-        .style
-        .apply(
-            color_rows,
-            axis=1,
-        )
+            c
+            for c in columnas_ocultar
+            if c in df_filtered.columns
+        ]
     )
 
     st.dataframe(
-        styled_display,
+        display_df,
         use_container_width=True,
         height=450,
     )
@@ -1058,13 +1227,13 @@ def dashboard():
     with col_g1:
 
         st.subheader(
-            "📈 Casos por Profesional"
+            "📈 Casos por profesional"
         )
 
         prof_counts = (
             df[
-                df["Estado Visual"]
-                != "✅ RESUELTO"
+                df["Estado DB"]
+                != "RESUELTO"
             ]["Profesional"]
             .value_counts()
         )
@@ -1078,13 +1247,12 @@ def dashboard():
     with col_g2:
 
         st.subheader(
-            "🥧 Distribución de Estados"
+            "🥧 Distribución de estados"
         )
 
         estado_counts = (
-            df[
-                "Estado Visual"
-            ].value_counts()
+            df["Estado Visual"]
+            .value_counts()
         )
 
         if not estado_counts.empty:
@@ -1096,15 +1264,6 @@ def dashboard():
                 fig = px.pie(
                     values=estado_counts.values,
                     names=estado_counts.index,
-                    color=estado_counts.index,
-                    color_discrete_map={
-                        "✅ RESUELTO": "#38ef7d",
-                        "🔵 PENDIENTE": "#6dd5ed",
-                        "⚠️ 2 DÍAS RESTANTES": "#ffd200",
-                        "🔴 CRÍTICO": "#ff6b6b",
-                        "🔴 VENCE HOY": "#ff6b6b",
-                        "🚨 VENCIDO": "#ef473a",
-                    },
                 )
 
                 fig.update_traces(
@@ -1125,23 +1284,20 @@ def dashboard():
 
 
 # ============================================================
-# PROCESAR DATOS
+# PROCESAMIENTO
 # ============================================================
 
-def pestaña_procesar():
+def pagina_procesar():
 
     st.header(
-        "📥 Procesamiento de Datos"
+        "📥 Procesamiento de datos"
     )
 
     tipo = get_tipo_archivo()
 
     if tipo == "excel":
 
-        ext_label = (
-            "Excel (.xlsx, .xls)"
-        )
-
+        ext_label = "Excel (.xlsx, .xls)"
         ext_accept = [
             "xlsx",
             "xls",
@@ -1150,22 +1306,15 @@ def pestaña_procesar():
     else:
 
         ext_label = "CSV (.csv)"
-
-        ext_accept = [
-            "csv"
-        ]
+        ext_accept = ["csv"]
 
     st.info(
-        f"Modo: **{ext_label}**. "
+        f"Modo: **{ext_label}** | "
         f"Filtro: "
-        f"`{get_filtro_nombre_adjunto() or 'Cualquier nombre'}`"
+        f"'{get_filtro_nombre_adjunto() or 'Cualquiera'}'"
     )
 
     col1, col2 = st.columns(2)
-
-    # --------------------------------------------------------
-    # CORREO
-    # --------------------------------------------------------
 
     with col1:
 
@@ -1187,97 +1336,45 @@ def pestaña_procesar():
                     check_emails_and_download_excel()
                 )
 
-            if not files:
+            if files:
+
+                st.success(
+                    f"📎 {len(files)} archivo(s) encontrado(s)."
+                )
+
+                for f in files:
+
+                    with st.spinner(
+                        f"Procesando {os.path.basename(f)}..."
+                    ):
+
+                        res = procesar_archivo(f)
+
+                    if res["ok"]:
+
+                        st.success(
+                            f"✅ {os.path.basename(f)}: "
+                            f"{res['insertados']} insertados, "
+                            f"{res['actualizados']} actualizados."
+                        )
+
+                    else:
+
+                        st.error(
+                            f"❌ {res.get('error')}"
+                        )
+
+            else:
 
                 st.info(
                     "📭 No se encontraron "
                     "archivos nuevos."
                 )
 
-            else:
-
-                st.success(
-                    f"📎 {len(files)} "
-                    "archivo(s) encontrado(s)."
-                )
-
-                for filepath in files:
-
-                    with st.spinner(
-                        f"Procesando "
-                        f"{Path(filepath).name}..."
-                    ):
-
-                        resultado = (
-                            procesar_archivo(
-                                filepath
-                            )
-                        )
-
-                    if resultado["ok"]:
-
-                        st.success(
-                            f"✅ "
-                            f"{Path(filepath).name}: "
-                            f"{resultado['insertados']} "
-                            "insertados, "
-                            f"{resultado['actualizados']} "
-                            "actualizados."
-                        )
-
-                        if resultado.get(
-                            "errores"
-                        ):
-
-                            with st.expander(
-                                "Ver errores"
-                            ):
-
-                                for error in (
-                                    resultado[
-                                        "errores"
-                                    ]
-                                ):
-
-                                    st.text(
-                                        error
-                                    )
-
-                        if resultado.get(
-                            "cambios"
-                        ):
-
-                            with st.expander(
-                                "Ver cambios"
-                            ):
-
-                                for cambio in (
-                                    resultado[
-                                        "cambios"
-                                    ]
-                                ):
-
-                                    st.text(
-                                        cambio
-                                    )
-
-                    else:
-
-                        st.error(
-                            resultado.get(
-                                "error",
-                                "Error desconocido",
-                            )
-                        )
-
-    # --------------------------------------------------------
-    # MANUAL
-    # --------------------------------------------------------
-
     with col2:
 
         st.subheader(
-            "2️⃣ Subir archivo manualmente"
+            "2️⃣ Cargar archivo manualmente"
         )
 
         uploaded = st.file_uploader(
@@ -1287,384 +1384,140 @@ def pestaña_procesar():
 
         if uploaded:
 
-            timestamp = datetime.now().strftime(
-                "%Y%m%d_%H%M%S_%f"
+            upload_dir = "data/uploads"
+
+            os.makedirs(
+                upload_dir,
+                exist_ok=True
             )
 
-            safe_name = Path(
-                uploaded.name
-            ).name
-
-            filepath = (
-                UPLOAD_DIR
-                / f"manual_{timestamp}_{safe_name}"
+            tmp_path = os.path.join(
+                upload_dir,
+                (
+                    "manual_"
+                    + datetime.now().strftime(
+                        "%Y%m%d_%H%M%S"
+                    )
+                    + "_"
+                    + uploaded.name
+                ),
             )
 
-            try:
+            with open(
+                tmp_path,
+                "wb"
+            ) as f:
 
-                filepath.write_bytes(
+                f.write(
                     uploaded.getvalue()
                 )
 
-                with st.spinner(
-                    "Procesando archivo..."
-                ):
+            with st.spinner(
+                "Procesando archivo..."
+            ):
 
-                    resultado = (
-                        procesar_archivo(
-                            str(filepath)
-                        )
-                    )
-
-                if resultado["ok"]:
-
-                    st.success(
-                        "✅ Archivo procesado."
-                    )
-
-                    st.write(
-                        f"**Insertados:** "
-                        f"{resultado['insertados']}"
-                    )
-
-                    st.write(
-                        f"**Actualizados:** "
-                        f"{resultado['actualizados']}"
-                    )
-
-                    if resultado.get(
-                        "errores"
-                    ):
-
-                        with st.expander(
-                            f"Errores "
-                            f"({len(resultado['errores'])})"
-                        ):
-
-                            for error in (
-                                resultado[
-                                    "errores"
-                                ]
-                            ):
-
-                                st.text(
-                                    error
-                                )
-
-                    if resultado.get(
-                        "cambios"
-                    ):
-
-                        with st.expander(
-                            f"Cambios "
-                            f"({len(resultado['cambios'])})"
-                        ):
-
-                            for cambio in (
-                                resultado[
-                                    "cambios"
-                                ]
-                            ):
-
-                                st.text(
-                                    cambio
-                                )
-
-                else:
-
-                    st.error(
-                        resultado.get(
-                            "error",
-                            "Error desconocido",
-                        )
-                    )
-
-            except Exception as exc:
-
-                logger.exception(
-                    "Error procesando archivo manual."
+                res = procesar_archivo(
+                    tmp_path
                 )
 
-                st.error(
-                    f"Error: {exc}"
-                )
+            if res["ok"]:
 
-
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
-
-def pestaña_configuracion():
-
-    st.header(
-        "⚙️ Configuración"
-    )
-
-    cfg = load_config()
-
-    tabs = st.tabs(
-        [
-            "📧 Correo",
-            "📋 Campos",
-            "📁 Archivo",
-            "👨‍⚕️ Profesionales",
-            "📜 Logs",
-            "💾 Sistema",
-        ]
-    )
-
-    # --------------------------------------------------------
-    # CORREO
-    # --------------------------------------------------------
-
-    with tabs[0]:
-
-        st.subheader(
-            "Configuración de Correo"
-        )
-
-        email_cfg = cfg.get(
-            "email",
-            {},
-        )
-
-        safe_cfg = dict(
-            email_cfg
-        )
-
-        if "password" in safe_cfg:
-
-            safe_cfg["password"] = "***"
-
-        st.json(
-            safe_cfg
-        )
-
-        st.caption(
-            "Para modificar las credenciales, "
-            "utilice nuevamente la configuración inicial "
-            "o gestione data/config.enc."
-        )
-
-    # --------------------------------------------------------
-    # CAMPOS
-    # --------------------------------------------------------
-
-    with tabs[1]:
-
-        st.subheader(
-            "Campos Parametrizados"
-        )
-
-        for campo in get_campos_excel():
-
-            obligatorio = (
-                "🔴 Obligatorio"
-                if campo.get(
-                    "obligatorio"
-                )
-                else "🟢 Opcional"
-            )
-
-            st.markdown(
-                f"""
-                <div class="
-                    campo-card
-                    {
-                        'campo-obligatorio'
-                        if campo.get('obligatorio')
-                        else 'campo-opcional'
-                    }
-                ">
-                    <b>{campo['nombre']}</b>
-                    <br>
-                    ID:
-                    <code>{campo['id']}</code>
-                    <br>
-                    Tipo:
-                    {campo.get('tipo', 'texto')}
-                    <br>
-                    {obligatorio}
-                    <br>
-                    Sinónimos:
-                    {campo.get('sinonimos', 'N/A')}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    # --------------------------------------------------------
-    # ARCHIVO
-    # --------------------------------------------------------
-
-    with tabs[2]:
-
-        st.subheader(
-            "Tipo de Archivo"
-        )
-
-        st.write(
-            f"**Formato:** "
-            f"{get_tipo_archivo().upper()}"
-        )
-
-        st.write(
-            f"**Filtro:** "
-            f"{get_filtro_nombre_adjunto() or 'Cualquiera'}"
-        )
-
-    # --------------------------------------------------------
-    # PROFESIONALES
-    # --------------------------------------------------------
-
-    with tabs[3]:
-
-        st.subheader(
-            "Profesionales"
-        )
-
-        profesionales = (
-            get_profesionales()
-        )
-
-        if profesionales:
-
-            st.dataframe(
-                pd.DataFrame(
-                    profesionales
-                ),
-                use_container_width=True,
-            )
-
-        encargado = get_encargado()
-
-        st.write(
-            f"**Encargado:** "
-            f"{encargado.get('nombre', 'N/A')}"
-        )
-
-        st.write(
-            f"**Correo:** "
-            f"{encargado.get('email', 'N/A')}"
-        )
-
-    # --------------------------------------------------------
-    # LOGS
-    # --------------------------------------------------------
-
-    with tabs[4]:
-
-        st.subheader(
-            "📜 Historial de Procesamiento"
-        )
-
-        db = get_db()
-
-        try:
-
-            logs = (
-                db.query(
-                    LogProcesamiento
-                )
-                .order_by(
-                    LogProcesamiento.fecha_proceso.desc()
-                )
-                .limit(50)
-                .all()
-            )
-
-            if logs:
-
-                df_logs = pd.DataFrame(
-                    [
-                        {
-                            "Fecha": log.fecha_proceso,
-                            "Archivo": Path(
-                                log.archivo
-                            ).name,
-                            "Insertados": log.insertados,
-                            "Actualizados": log.actualizados,
-                            "Errores": log.errores,
-                            "Detalle": (
-                                log.detalle[:200]
-                                + "..."
-                                if log.detalle
-                                and len(log.detalle) > 200
-                                else (
-                                    log.detalle
-                                    or ""
-                                )
-                            ),
-                        }
-                        for log in logs
-                    ]
-                )
-
-                st.dataframe(
-                    df_logs,
-                    use_container_width=True,
+                st.success(
+                    f"✅ Procesado: "
+                    f"{res['insertados']} insertados, "
+                    f"{res['actualizados']} actualizados."
                 )
 
             else:
 
-                st.info(
-                    "No hay logs todavía."
+                st.error(
+                    f"❌ {res.get('error')}"
                 )
 
-        finally:
-
-            db.close()
-
-    # --------------------------------------------------------
-    # SISTEMA
-    # --------------------------------------------------------
-
-    with tabs[5]:
-
-        st.subheader(
-            "💾 Información del Sistema"
-        )
-
-        st.write(
-            f"**Base de datos:** "
-            f"`{DATABASE_FILE}`"
-        )
-
-        st.write(
-            f"**Existe:** "
-            f"{'Sí' if DATABASE_FILE.exists() else 'No'}"
-        )
-
-        st.write(
-            f"**Uploads:** "
-            f"`{UPLOAD_DIR}`"
-        )
-
-        st.info(
-            "El scheduler automático se ejecuta "
-            "como proceso independiente mediante "
-            "`python scheduler_runner.py`."
-        )
-
 
 # ============================================================
-# ALERTAS
+# LOGS
 # ============================================================
 
-def pestaña_alertas():
+def mostrar_logs():
 
-    st.header(
-        "📤 Alertas e Informes"
+    st.subheader(
+        "📜 Historial de procesamiento"
     )
 
     db = get_db()
 
     try:
 
-        casos = (
-            db.query(Caso)
+        logs = (
+            db.query(
+                LogProcesamiento
+            )
+            .order_by(
+                LogProcesamiento.fecha_proceso.desc()
+            )
+            .limit(50)
             .all()
         )
+
+        if not logs:
+
+            st.info(
+                "No hay logs registrados."
+            )
+
+            return
+
+        df_logs = pd.DataFrame(
+            [
+                {
+                    "Fecha": l.fecha_proceso,
+                    "Archivo": os.path.basename(
+                        l.archivo
+                    ),
+                    "Insertados": l.insertados,
+                    "Actualizados": l.actualizados,
+                    "Errores": l.errores,
+                    "Detalle": (
+                        l.detalle[:150]
+                        + "..."
+                        if l.detalle
+                        and len(l.detalle) > 150
+                        else (
+                            l.detalle
+                            or ""
+                        )
+                    ),
+                }
+                for l in logs
+            ]
+        )
+
+        st.dataframe(
+            df_logs,
+            use_container_width=True,
+        )
+
+    finally:
+
+        db.close()
+
+
+# ============================================================
+# ALERTAS
+# ============================================================
+
+def pagina_alertas():
+
+    st.header(
+        "📤 Alertas e informes"
+    )
+
+    db = get_db()
+
+    try:
+
+        casos = db.query(Caso).all()
 
     finally:
 
@@ -1676,108 +1529,116 @@ def pestaña_alertas():
     preventivos = []
     pendientes = []
 
-    for caso in casos:
+    cfg = load_config()
+
+    dias_resolucion = int(
+        cfg.get(
+            "tiempo_resolucion_dias",
+            10
+        )
+    )
+
+    dias_alerta = int(
+        cfg.get(
+            "dias_alerta_previa",
+            2
+        )
+    )
+
+    for c in casos:
 
         if (
-            caso.estado == "RESUELTO"
-            or caso.fecha_validacion
-            or not caso.fecha_ingreso
+            c.estado == "RESUELTO"
+            or not c.fecha_ingreso
         ):
+
             continue
 
         dias = (
-            hoy - caso.fecha_ingreso
+            hoy - c.fecha_ingreso
         ).days
 
-        pendientes.append(caso)
+        pendientes.append(c)
 
-        if dias > 10:
+        if dias > dias_resolucion:
 
-            vencidos.append(caso)
+            vencidos.append(c)
 
-        elif dias == 8:
+        elif (
+            dias
+            >= dias_resolucion
+            - dias_alerta
+        ):
 
-            preventivos.append(caso)
+            preventivos.append(c)
 
-    c1, c2, c3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
 
-    c1.metric(
+    col1.metric(
         "Vencidos",
-        len(vencidos),
+        len(vencidos)
     )
 
-    c2.metric(
-        "Preventiva",
-        len(preventivos),
+    col2.metric(
+        "Preventivos",
+        len(preventivos)
     )
 
-    c3.metric(
+    col3.metric(
         "Pendientes",
-        len(pendientes),
+        len(pendientes)
     )
 
     st.divider()
 
-    encargado = get_encargado()
+    enc = get_encargado()
 
-    destino = (
-        encargado.get(
-            "email",
-            "",
-        )
+    destino = enc.get(
+        "email",
+        ""
     )
 
     st.subheader(
-        "📨 Enviar Resumen"
+        "📨 Enviar resumen"
     )
 
     st.write(
-        f"Destinatario: **{destino or 'No configurado'}**"
+        f"Destinatario: **{destino}**"
     )
 
     if st.button(
-        "📧 Enviar Resumen Ahora",
+        "📧 Enviar resumen ahora",
         type="primary",
         use_container_width=True,
     ):
 
-        if not destino:
+        with st.spinner(
+            "Enviando correo..."
+        ):
 
-            st.error(
-                "No existe destinatario configurado."
+            ok, err = enviar_resumen_casos(
+                destino,
+                pendientes,
+                vencidos,
+                preventivos,
+            )
+
+        if ok:
+
+            st.success(
+                "✅ Resumen enviado correctamente."
             )
 
         else:
 
-            with st.spinner(
-                "Enviando..."
-            ):
-
-                ok, error = (
-                    enviar_resumen_casos(
-                        destino,
-                        pendientes,
-                        vencidos,
-                        preventivos,
-                    )
-                )
-
-            if ok:
-
-                st.success(
-                    "✅ Resumen enviado."
-                )
-
-            else:
-
-                st.error(
-                    f"❌ {error}"
-                )
+            st.error(
+                f"❌ Error: {err}"
+            )
 
     st.divider()
 
     st.subheader(
-        "📜 Historial de Alertas"
+        "📜 Alertas enviadas"
     )
 
     db = get_db()
@@ -1785,9 +1646,7 @@ def pestaña_alertas():
     try:
 
         logs = (
-            db.query(
-                LogAlerta
-            )
+            db.query(LogAlerta)
             .order_by(
                 LogAlerta.fecha_envio.desc()
             )
@@ -1797,21 +1656,26 @@ def pestaña_alertas():
 
         if logs:
 
-            df_logs = pd.DataFrame(
+            df = pd.DataFrame(
                 [
                     {
-                        "Fecha": log.fecha_envio,
-                        "Tipo": log.tipo_alerta,
-                        "Caso ID": log.caso_id,
-                        "Destinatario": log.destinatario,
-                        "Contenido": log.contenido,
+                        "Fecha":
+                            l.fecha_envio,
+                        "Tipo":
+                            l.tipo_alerta,
+                        "Caso":
+                            l.caso_id,
+                        "Destinatario":
+                            l.destinatario,
+                        "Contenido":
+                            l.contenido,
                     }
-                    for log in logs
+                    for l in logs
                 ]
             )
 
             st.dataframe(
-                df_logs,
+                df,
                 use_container_width=True,
             )
 
@@ -1827,96 +1691,309 @@ def pestaña_alertas():
 
 
 # ============================================================
+# INICIO
+# ============================================================
+
+def pagina_inicio():
+
+    st.title(
+        "📋 Casos Seguimiento"
+    )
+
+    st.subheader(
+        "Menú principal"
+    )
+
+    st.write(
+        "Seleccione la operación que desea realizar."
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.markdown(
+            """
+            <div class="menu-card">
+
+            <h2>⚙️ Configuración general</h2>
+
+            <p>
+            Modifique el correo, encargado,
+            campos, tipo de archivo,
+            profesionales y parámetros
+            de seguimiento.
+            </p>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if st.button(
+            "⚙️ Abrir configuración",
+            use_container_width=True,
+        ):
+
+            st.session_state.pagina = (
+                "configuracion"
+            )
+
+            st.rerun()
+
+    with col2:
+
+        st.markdown(
+            """
+            <div class="menu-card">
+
+            <h2>📊 Realizar seguimiento</h2>
+
+            <p>
+            Consulte el tablero, procese
+            nuevos archivos y revise
+            las alertas.
+            </p>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if st.button(
+            "📊 Abrir seguimiento",
+            use_container_width=True,
+            type="primary",
+        ):
+
+            st.session_state.pagina = (
+                "seguimiento"
+            )
+
+            st.rerun()
+
+    st.divider()
+
+    cfg = load_config()
+
+    profesionales = cfg.get(
+        "profesionales",
+        []
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        st.metric(
+            "Profesionales configurados",
+            len(profesionales)
+        )
+
+    with col2:
+
+        st.metric(
+            "Tipo de archivo",
+            get_tipo_archivo().upper()
+        )
+
+    with col3:
+
+        st.metric(
+            "Días de resolución",
+            cfg.get(
+                "tiempo_resolucion_dias",
+                10
+            )
+        )
+
+
+# ============================================================
+# SEGUIMIENTO
+# ============================================================
+
+def pagina_seguimiento():
+
+    st.title(
+        "📊 Realizar seguimiento"
+    )
+
+    tabs = st.tabs(
+        [
+            "📊 Tablero",
+            "📥 Procesar datos",
+            "📤 Alertas",
+        ]
+    )
+
+    with tabs[0]:
+
+        dashboard()
+
+    with tabs[1]:
+
+        pagina_procesar()
+
+    with tabs[2]:
+
+        pagina_alertas()
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+def mostrar_sidebar():
+
+    with st.sidebar:
+
+        st.title(
+            "📋 Casos Seguimiento"
+        )
+
+        st.caption(
+            "Versión 2.1"
+        )
+
+        st.divider()
+
+        if config_exists():
+
+            enc = get_encargado()
+
+            nombre = enc.get(
+                "nombre",
+                "No configurado"
+            )
+
+            email = enc.get(
+                "email",
+                "No configurado"
+            )
+
+            st.write(
+                f"**Encargado:** {nombre}"
+            )
+
+            st.write(
+                f"**Correo:** {email}"
+            )
+
+            st.divider()
+
+            if st.button(
+                "🏠 Inicio",
+                use_container_width=True,
+            ):
+
+                st.session_state.pagina = (
+                    "inicio"
+                )
+
+                st.rerun()
+
+            if st.button(
+                "⚙️ Configuración general",
+                use_container_width=True,
+            ):
+
+                st.session_state.pagina = (
+                    "configuracion"
+                )
+
+                st.rerun()
+
+            if st.button(
+                "📊 Realizar seguimiento",
+                use_container_width=True,
+                type="primary",
+            ):
+
+                st.session_state.pagina = (
+                    "seguimiento"
+                )
+
+                st.rerun()
+
+            st.divider()
+
+            if st.button(
+                "🔄 Recargar aplicación",
+                use_container_width=True,
+            ):
+
+                st.rerun()
+
+        else:
+
+            st.info(
+                "La configuración inicial "
+                "aún no ha terminado."
+            )
+
+
+# ============================================================
 # MAIN
 # ============================================================
 
 def main():
 
+    # --------------------------------------------------------
+    # PRIMERA EJECUCIÓN
+    # --------------------------------------------------------
+
     if not config_exists():
 
-        pantalla_configuracion()
-
-        return
-
-    with st.sidebar:
-
-        st.title(
-            "📋 CasosSeguimiento"
+        st.session_state.pagina = (
+            "configuracion_inicial"
         )
 
-        st.caption(
-            "v2.1"
-        )
+    # --------------------------------------------------------
+    # SIDEBAR
+    # --------------------------------------------------------
 
-        st.divider()
+    if config_exists():
 
-        encargado = get_encargado()
+        mostrar_sidebar()
 
-        st.write(
-            f"**Encargado:** "
-            f"{encargado.get('nombre', 'N/A')}"
-        )
+    # --------------------------------------------------------
+    # PÁGINA ACTUAL
+    # --------------------------------------------------------
 
-        st.write(
-            f"**Correo:** "
-            f"{encargado.get('email', 'N/A')}"
-        )
-
-        st.write(
-            f"**Archivo:** "
-            f"{get_tipo_archivo().upper()}"
-        )
-
-        st.divider()
-
-        if st.button(
-            "🔄 Recargar datos",
-            use_container_width=True,
-        ):
-
-            st.rerun()
-
-        st.divider()
-
-        st.caption(
-            "📅 Scheduler independiente"
-        )
-
-        st.caption(
-            "Correo: cada 5 min"
-        )
-
-        st.caption(
-            "Alertas: cada hora"
-        )
-
-    tab_dashboard, tab_procesar, tab_config, tab_alertas = (
-        st.tabs(
-            [
-                "📊 Dashboard",
-                "📥 Procesar Datos",
-                "⚙️ Configuración",
-                "📤 Alertas",
-            ]
-        )
+    pagina = st.session_state.get(
+        "pagina",
+        "inicio"
     )
 
-    with tab_dashboard:
+    if pagina == "configuracion_inicial":
 
-        dashboard()
+        pantalla_configuracion_inicial()
 
-    with tab_procesar:
+    elif pagina == "inicio":
 
-        pestaña_procesar()
+        pagina_inicio()
 
-    with tab_config:
+    elif pagina == "configuracion":
 
-        pestaña_configuracion()
+        pagina_configuracion()
 
-    with tab_alertas:
+    elif pagina == "seguimiento":
 
-        pestaña_alertas()
+        pagina_seguimiento()
 
+    else:
+
+        st.session_state.pagina = (
+            "inicio"
+        )
+
+        st.rerun()
+
+
+# ============================================================
+# EJECUCIÓN
+# ============================================================
 
 if __name__ == "__main__":
+
     main()
