@@ -1,0 +1,6 @@
+Número de caso;Sede;Sección;Estudios;Órgano;Fecha de ingreso;Fecha de validación;Estado;Nombre del profesional;Observación
+CAS-001;Principal;Cardiología;Ecocardiograma;Corazón;16/08/2026;;PENDIENTE;Dr. Pérez;Urgente
+CAS-002;Norte;Neurología;Electroencefalograma;Cerebro;20/08/2026;;PENDIENTE;Dra. López;Normal
+CAS-003;Sur;Radiología;Rayos X;Tórax;23/08/2026;;PENDIENTE;Dr. Martínez;Normal
+CAS-004;Principal;Cardiología;Resonancia;Corazón;26/08/2026;28/08/2026;RESUELTO;Dr. Pérez;Resuelto rápido
+CAS-005;Norte;Neurología;Tomografía;Cerebro;13/08/2026;;PENDIENTE;Dra. López;Crítico
