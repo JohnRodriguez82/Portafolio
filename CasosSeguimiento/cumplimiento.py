@@ -137,39 +137,54 @@ def calcular_estado_pendiente(
     )
 
 
-def obtener_estado_visual(
+ddef obtener_estado_visual(
     fecha_limite,
     fecha_resolucion=None,
     estado_db=None,
     dias_alerta=2,
 ):
     """
-    Devuelve:
+    Determina el estado visual del caso.
 
-        texto visual
-        color
-        días de retraso
+    Reglas:
+
+    1. RESUELTO + fecha de resolución:
+       se determina si cumplió o no el plazo.
+
+    2. RESUELTO sin fecha de resolución:
+       se muestra como RESUELTO - SIN FECHA.
+       No se asume que fue resuelto a tiempo.
+
+    3. PENDIENTE:
+       se calcula según la fecha límite.
     """
 
-    resuelto = (
-        estado_db == ESTADO_RESUELTO
-        or fecha_resolucion is not None
-    )
+    # ========================================================
+    # CASO RESUELTO CON FECHA
+    # ========================================================
 
-    if resuelto:
+    if (
+        estado_db == ESTADO_RESUELTO
+        and fecha_resolucion is not None
+    ):
+
         if not fecha_limite:
+
             return (
                 "🟢 RESUELTO",
                 "green",
                 0,
             )
 
-        dias_retraso = calcular_dias_retraso(
-            fecha_limite,
-            fecha_resolucion,
+        dias_retraso = (
+            calcular_dias_retraso(
+                fecha_limite,
+                fecha_resolucion,
+            )
         )
 
         if dias_retraso > 0:
+
             return (
                 (
                     "🟠 RESUELTO FUERA DE TIEMPO "
@@ -186,10 +201,30 @@ def obtener_estado_visual(
             0,
         )
 
+    # ========================================================
+    # CASO RESUELTO SIN FECHA
+    # ========================================================
+
+    if (
+        estado_db == ESTADO_RESUELTO
+        and fecha_resolucion is None
+    ):
+
+        return (
+            "🟣 RESUELTO - SIN FECHA",
+            "purple",
+            0,
+        )
+
+    # ========================================================
+    # CASO PENDIENTE
+    # ========================================================
+
     return calcular_estado_pendiente(
         fecha_limite,
         dias_alerta=dias_alerta,
     )
+
 
 
 def detalle_cumplimiento(
